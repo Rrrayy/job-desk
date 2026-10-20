@@ -1,0 +1,216 @@
+classDiagram
+  direction LR
+
+  class SyncAdapter {
+    <<interface>>
+    +id: PlatformId
+    +name: string
+    +platform: PlatformId
+    +version: string
+    +lastVerifiedAt: string
+    +urlPattern?: string
+    +inputType: 'paste' / 'file' / 'dom'
+    +matchUrl(url?): boolean
+    +parse(raw: AdapterInput, ctx: ParseContext): AdapterResult
+  }
+
+  class AdapterInput {
+    +url?: string
+    +title?: string
+    +text: string
+    +html?: string
+    +capturedAt: string
+  }
+
+  class NormalizedRecord {
+    +externalId?: string
+    +companyName: string
+    +jobTitle?: string
+    +city?: string
+    +status?: string
+    +platformStatusText?: string
+    +lastContactAt?: string
+    +salaryText?: string
+    +jdUrl?: string
+    +rawSnippet?: string
+    +confidence: FieldConfidence
+    +overall: Confidence
+  }
+
+  class AdapterResult {
+    +records: NormalizedRecord[]
+    +unparsed: UnparsedItem[]
+  }
+
+  class BossAdapter
+  class ShixisengAdapter
+  class CustomAdapter
+  class AdapterRegistry {
+    +ADAPTERS: SyncAdapter[]
+    +adapterById(id): SyncAdapter
+    +adapterForUrl(url): SyncAdapter
+    +isAdapterStale(a, now): boolean
+  }
+
+  class Normalize {
+    <<module>>
+    +normalizeCompanyName(s): string
+    +normalizeJobTitle(s): string
+    +diceCoefficient(a, b): number
+    +buildMatchKey(company, title): string
+    +NORMALIZE_VERSION: number
+  }
+
+  class StatusMap {
+    <<module>>
+    +STATUS_RULES: StatusRule[]
+    +mapPlatformStatus(raw, overrides): MappedStatus
+  }
+
+  class OwnershipTable {
+    <<module>>
+    +FIELD_OWNERSHIP: Record~keyof Application, Ownership~
+    +SYNC_WRITABLE: (keyof Application)[]
+  }
+
+  class SyncEngine {
+    <<module>>
+    +plan(input): MergePlan
+    +apply(db, opts): ApplyResult
+    +revertSync(draft: DB, undo: SyncUndo): void
+  }
+
+  class MergePlan {
+    +platform: PlatformId
+    +capturedAt: string
+    +parsedCount: number
+    +unparsed: UnparsedItem[]
+    +counts: MergeCounts
+    +rows: PlannedRow[]
+  }
+
+  class PlannedRow {
+    +key: string
+    +kind: 'new' / 'update' / 'unchanged' / 'conflict' / 'staged'
+    +targetAppId?: string
+    +matchedBy?: MatchBy
+    +record: NormalizedRecord
+    +mappedStatus: Status / null
+    +changes: PlannedChange[]
+    +conflict?: ConflictInfo
+    +defaultChecked: boolean
+    +warnings: string[]
+  }
+
+  class SyncUndo {
+    +id: string
+    +at: string
+    +apps: AppSnapshot[]
+    +createdCompanyIds: string[]
+    +noteIds: string[]
+    +stagedAddedIds: string[]
+    +stagedRemoved: StagedSyncItem[]
+  }
+
+  class DB {
+    +settings: AppSettings
+    +companies: Company[]
+    +applications: Application[]
+    +interviews: Interview[]
+    +notes: Note[]
+    +experiences: InterviewExperience[]
+    +questions: Question[]
+    +staging: StagedSyncItem[]
+  }
+
+  class Application {
+    +id: string
+    +companyId: string
+    +jobTitle: string
+    +status: Status
+    +statusChangedAt: string
+    +lastActivityAt: string
+    +sync?: SyncMeta
+    +userEditedAt?: UserEditedMap
+  }
+
+  class InterviewExperience {
+    +id: string
+    +applicationId?: string / null
+    +companyName: string
+    +jobTitle?: string
+    +round?: number / null
+    +interviewDate: string
+    +result: ExperienceResult
+    +overallNote?: string
+    +source: ExperienceSource
+  }
+
+  class Question {
+    +id: string
+    +experienceId: string
+    +category: QuestionCategory / null
+    +difficulty: 1-3
+    +text: string
+    +myAnswer?: string
+    +mastery: Mastery
+    +rootCause?: RootCause
+    +nextReviewAt?: string
+    +reviewCount: number
+  }
+
+  class Migrator {
+    <<module>>
+    +migrateV1ToV2(input, ctx): MigrateResult
+    +normalizeV1(raw, ctx): ImportResult
+    +validateV2(raw): ImportResult
+  }
+
+  class Storage {
+    <<module>>
+    +loadDB(): LoadResult
+    +saveDB(db): string / null
+    +exportJSON(db): string
+    +importFromText(text): ImportResult
+    +writeRollbackPoint(raw, at): Result
+  }
+
+  class InterviewRules {
+    <<module>>
+    +sortQuestionsForReview(qs, now): Question[]
+    +reviewQueue(qs, now): Question[]
+    +deriveInitialNextReviewAt(date, now): string
+    +nextReviewAtFor(masteryAfter, today): string
+    +statsByCategory(db): CategoryStat[]
+    +statsByCompany(db): CompanyStat[]
+    +statsByRootCause(db): RootCauseStat[]
+    +pendingReviewInterviews(db, now): Interview[]
+  }
+
+  class InterviewMarkdown {
+    <<module>>
+    +renderExperienceMarkdown(exp, questions, opts): string
+    +desensitize(text): string
+  }
+
+  SyncAdapter <|.. BossAdapter
+  SyncAdapter <|.. ShixisengAdapter
+  SyncAdapter <|.. CustomAdapter
+  AdapterRegistry o-- SyncAdapter
+  BossAdapter ..> AdapterInput : consumes
+  BossAdapter ..> AdapterResult : produces
+  AdapterResult *-- NormalizedRecord
+  SyncEngine ..> Normalize : uses
+  SyncEngine ..> StatusMap : uses
+  SyncEngine ..> OwnershipTable : uses
+  SyncEngine ..> MergePlan : produces
+  MergePlan *-- PlannedRow
+  SyncEngine ..> SyncUndo : produces
+  Storage ..> Migrator : delegates
+  DB *-- Application
+  DB *-- InterviewExperience
+  DB *-- Question
+  InterviewExperience "1" o-- "0..*" Question : experienceId
+  Application "0..1" <-- "0..*" InterviewExperience : applicationId
+  InterviewRules ..> Question : reads
+  InterviewMarkdown ..> InterviewExperience : reads

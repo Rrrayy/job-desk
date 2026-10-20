@@ -1,0 +1,82 @@
+name: 同步解析失败（平台改版）
+description: 同步时「识别 0 条」或者字段错乱 —— 大概率是平台改版了
+title: '[adapter] '
+labels: ['adapter', 'bug']
+body:
+  - type: markdown
+    attributes:
+      value: |
+        平台改版是**一定会发生**的事，这个仓库的选择是：不偷偷在线拉配置，而是每个平台一个适配器 + 一份 fixture，
+        改版了就在这里报，改一个解析函数就行。
+
+        报之前请确认：你抓的是**列表页**（沟通中 / 已投递），不是单个职位详情页。
+
+  - type: dropdown
+    id: platform
+    attributes:
+      label: 哪个平台
+      options:
+        - BOSS 直聘
+        - 实习僧
+        - 牛客
+        - 其他 / 通用表格
+    validations:
+      required: true
+
+  - type: dropdown
+    id: channel
+    attributes:
+      label: 你用的抓取通道
+      options:
+        - 手动 Ctrl+A / Ctrl+C 整页复制
+        - 扩展抓取（extension/）
+        - 拖入 .txt / .json 文件
+    validations:
+      required: true
+
+  - type: textarea
+    id: sample
+    attributes:
+      label: 抓到的原始文本（请替换敏感信息）
+      description: |
+        只贴 1–2 条就够，够复现问题就行。
+        **务必替换**：真实姓名 → 「某 HR」，手机号 → 「138****0000」，其他隐私 → 删掉。
+        这段文本会被做成 fixture 进仓库，所以它一定会公开。
+      render: text
+      placeholder: |
+        某公司
+        前端开发实习生
+        北京 · 海淀区
+        200-250元/天
+        沟通中
+        3月12日 10:20
+    validations:
+      required: true
+
+  - type: textarea
+    id: actual
+    attributes:
+      label: 实际解析结果
+      description: 比如「识别 0 条」、公司名跑到了岗位名里、状态没认出来变成待归类
+      placeholder: |
+        识别 5 条，但每条的岗位名都是「沟通中」，状态全部落进暂存区（unmapped）。
+    validations:
+      required: true
+
+  - type: input
+    id: version
+    attributes:
+      label: 版本与日期
+      placeholder: '0.2.0 / 2025-03-12'
+    validations:
+      required: true
+
+  - type: checkboxes
+    id: privacy
+    attributes:
+      label: 提交前确认
+      options:
+        - label: 我贴出的原始文本已经去掉真实姓名、手机号、邮箱等私人信息
+          required: true
+        - label: 这段文本来自**我自己**的账号页面，不是别人的
+          required: true

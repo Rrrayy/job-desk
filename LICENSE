@@ -1,0 +1,31 @@
+MIT License
+
+Copyright (c) 2025 job-desk contributors
+
+Permission is hereby granted, free of charge, to any person obtaining a copy
+of this software and associated documentation files (the "Software"), to deal
+in the Software without restriction, including without limitation the rights
+to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+copies of the Software, and to permit persons to whom the Software is
+furnished to do so, subject to the following conditions:
+
+The above copyright notice and this permission notice shall be included in all
+copies or substantial portions of the Software.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+SOFTWARE.
+
+---
+
+说明（非许可证正文，仅供阅读）：
+
+- 本许可证覆盖**代码**：`app/`、`extension/`、`scripts/`、`.github/`。
+- **不覆盖** `community/` 下的面经内容 —— 那些是 CC BY-SA 4.0，
+  见 `community/LICENSE`。两套许可是分开的，故意的：
+  代码随便用，别人写的面经要署名、且衍生作品同样开放。
+- 这是 MIT 原文，未做任何删改。「说明」段落不属于许可证条款。

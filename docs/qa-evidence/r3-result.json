@@ -1,0 +1,536 @@
+{
+  "pass": 72,
+  "fail": 0,
+  "results": [
+    {
+      "name": "S0-1 欢迎层出现",
+      "expected": true,
+      "actual": true,
+      "pass": true
+    },
+    {
+      "name": "S0-3 示例 8 条",
+      "expected": 8,
+      "actual": 8,
+      "pass": true
+    },
+    {
+      "name": "S0-2 看板出现",
+      "expected": true,
+      "actual": true,
+      "pass": true
+    },
+    {
+      "name": "S0-4 注入后 9 条",
+      "expected": 9,
+      "actual": 9,
+      "pass": true
+    },
+    {
+      "name": "R6-1 抽屉打开",
+      "expected": true,
+      "actual": true,
+      "pass": true
+    },
+    {
+      "name": "R6-2 抽屉状态 chip=已投递",
+      "expected": "已投递",
+      "actual": "已投递",
+      "pass": true
+    },
+    {
+      "name": "R6-3 内联出现轮次快选",
+      "expected": true,
+      "actual": true,
+      "pass": true
+    },
+    {
+      "name": "R6-4 快选 5 个档位",
+      "expected": [
+        "第 1 轮",
+        "第 2 轮",
+        "第 3 轮",
+        "HR 面",
+        "不记得了"
+      ],
+      "actual": [
+        "第 1 轮",
+        "第 2 轮",
+        "第 3 轮",
+        "HR 面",
+        "不记得了"
+      ],
+      "pass": true
+    },
+    {
+      "name": "R6-5 有「先不记」",
+      "expected": true,
+      "actual": true,
+      "pass": true
+    },
+    {
+      "name": "R6-6 状态先落库 rejected / round=null",
+      "expected": {
+        "status": "rejected",
+        "round": null
+      },
+      "actual": {
+        "status": "rejected",
+        "round": null
+      },
+      "pass": true
+    },
+    {
+      "name": "R6-7 「先不记」收起快选",
+      "expected": false,
+      "actual": false,
+      "pass": true
+    },
+    {
+      "name": "R6-8 不选也仍是 rejected / round=null",
+      "expected": {
+        "status": "rejected",
+        "round": null
+      },
+      "actual": {
+        "status": "rejected",
+        "round": null
+      },
+      "pass": true
+    },
+    {
+      "name": "R6-9 Esc 关抽屉",
+      "expected": false,
+      "actual": false,
+      "pass": true
+    },
+    {
+      "name": "R6-10 重开后状态=已挂",
+      "expected": "已挂",
+      "actual": "已挂",
+      "pass": true
+    },
+    {
+      "name": "R6-11 顶部 chip=轮次未记",
+      "expected": "轮次未记",
+      "actual": "轮次未记",
+      "pass": true
+    },
+    {
+      "name": "R6-12 概览补录入口文案",
+      "expected": true,
+      "actual": true,
+      "pass": true
+    },
+    {
+      "name": "R6-13 点「第 2 轮」落库 = 2",
+      "expected": 2,
+      "actual": 2,
+      "pass": true
+    },
+    {
+      "name": "R6-14 顶部 chip=第 2 轮",
+      "expected": "第 2 轮",
+      "actual": "第 2 轮",
+      "pass": true
+    },
+    {
+      "name": "R6-15 概览标签=第 2 轮",
+      "expected": "第 2 轮",
+      "actual": "第 2 轮",
+      "pass": true
+    },
+    {
+      "name": "R6-16 点「HR 面」落库 = 4",
+      "expected": 4,
+      "actual": 4,
+      "pass": true
+    },
+    {
+      "name": "R6-17 HR 面展示为「HR 面」不裸「第 4 轮」",
+      "expected": "HR 面",
+      "actual": "HR 面",
+      "pass": true
+    },
+    {
+      "name": "R6-18 概览标签=第 4 轮（HR 面）",
+      "expected": "第 4 轮（HR 面）",
+      "actual": "第 4 轮（HR 面）",
+      "pass": true
+    },
+    {
+      "name": "R6-19 列表状态列=已挂 + HR 面",
+      "expected": {
+        "status": "已挂",
+        "round": "HR 面"
+      },
+      "actual": {
+        "status": "已挂",
+        "round": "HR 面"
+      },
+      "pass": true
+    },
+    {
+      "name": "R6-20 第二条也变已挂",
+      "expected": "已挂",
+      "actual": "已挂",
+      "pass": true
+    },
+    {
+      "name": "R6-21 撤销后回到 applied / round=null",
+      "expected": {
+        "status": "applied",
+        "round": null
+      },
+      "actual": {
+        "status": "applied",
+        "round": null
+      },
+      "pass": true
+    },
+    {
+      "name": "R7-1 设置抽屉打开",
+      "expected": true,
+      "actual": true,
+      "pass": true
+    },
+    {
+      "name": "R7-2 文件名模板",
+      "expected": "求职工作台-备份-2026-10-20.json",
+      "actual": "求职工作台-备份-2026-10-20.json",
+      "pass": true
+    },
+    {
+      "name": "R10-1 表头 9 列",
+      "expected": 9,
+      "actual": 9,
+      "pass": true
+    },
+    {
+      "name": "R10-2 第 5 列是简历版本",
+      "expected": "简历版本",
+      "actual": "简历版本",
+      "pass": true
+    },
+    {
+      "name": "R10-3 前后列位置",
+      "expected": {
+        "c3": "渠道",
+        "c5": "投递日"
+      },
+      "actual": {
+        "c3": "渠道",
+        "c5": "投递日"
+      },
+      "pass": true
+    },
+    {
+      "name": "R10-4 点表头出现排序箭头 ↓",
+      "expected": true,
+      "actual": true,
+      "pass": true
+    },
+    {
+      "name": "R10-5 再点变 ↑",
+      "expected": true,
+      "actual": true,
+      "pass": true
+    },
+    {
+      "name": "R10-6 降序有序",
+      "expected": true,
+      "actual": true,
+      "pass": true
+    },
+    {
+      "name": "R10-7 升序有序",
+      "expected": true,
+      "actual": true,
+      "pass": true
+    },
+    {
+      "name": "R10-8 版本列有多值",
+      "expected": true,
+      "actual": true,
+      "pass": true
+    },
+    {
+      "name": "R10-9 版本筛选生效",
+      "expected": {
+        "vals": [
+          "v2-前端-基础版"
+        ]
+      },
+      "actual": {
+        "vals": [
+          "v2-前端-基础版"
+        ]
+      },
+      "pass": true
+    },
+    {
+      "name": "R10-10 清除筛选恢复 9 条",
+      "expected": 9,
+      "actual": 9,
+      "pass": true
+    },
+    {
+      "name": "R10-11 面板展开",
+      "expected": true,
+      "actual": true,
+      "pass": true
+    },
+    {
+      "name": "R10-12 含「未填城市」",
+      "expected": 1,
+      "actual": 1,
+      "pass": true
+    },
+    {
+      "name": "R10-13 空的归到未填城市（count=1）",
+      "expected": 1,
+      "actual": 1,
+      "pass": true
+    },
+    {
+      "name": "R10-14 选项条数之和=9",
+      "expected": 9,
+      "actual": 9,
+      "pass": true
+    },
+    {
+      "name": "R10-15 触发器初始「全部城市」",
+      "expected": "全部城市",
+      "actual": "全部城市",
+      "pass": true
+    },
+    {
+      "name": "R10-16 单选后触发器显示城市名",
+      "expected": "北京",
+      "actual": "北京",
+      "pass": true
+    },
+    {
+      "name": "R10-17 单选后行数=该城市条数",
+      "expected": 3,
+      "actual": 3,
+      "pass": true
+    },
+    {
+      "name": "R10-17b 探查：改动别的筛选后城市条件才生效",
+      "expected": 3,
+      "actual": 3,
+      "pass": true
+    },
+    {
+      "name": "R10-18 多选后显示「已选 2 个城市」",
+      "expected": "已选 2 个城市",
+      "actual": "已选 2 个城市",
+      "pass": true
+    },
+    {
+      "name": "R10-19 多选后行数=两城之和",
+      "expected": 4,
+      "actual": 4,
+      "pass": true
+    },
+    {
+      "name": "R10-20 触发器高亮 is-active",
+      "expected": true,
+      "actual": true,
+      "pass": true
+    },
+    {
+      "name": "R10-21 点空白处收起面板",
+      "expected": false,
+      "actual": false,
+      "pass": true
+    },
+    {
+      "name": "R10-22 收起后筛选仍生效",
+      "expected": 4,
+      "actual": 4,
+      "pass": true
+    },
+    {
+      "name": "R10-23 清除筛选把城市一起清掉",
+      "expected": "全部城市",
+      "actual": "全部城市",
+      "pass": true
+    },
+    {
+      "name": "R10-24 清除后回到 9 条",
+      "expected": 9,
+      "actual": 9,
+      "pass": true
+    },
+    {
+      "name": "R10-25 清除后无高亮",
+      "expected": false,
+      "actual": false,
+      "pass": true
+    },
+    {
+      "name": "R10-26 勾北京立刻只剩北京行",
+      "expected": 3,
+      "actual": 3,
+      "pass": true
+    },
+    {
+      "name": "R10-27 筛选态下点表头排序不丢结果集",
+      "expected": 3,
+      "actual": 3,
+      "pass": true
+    },
+    {
+      "name": "R10-28 筛选态下排序结果=公司降序",
+      "expected": [
+        "字节",
+        "美团",
+        "快手"
+      ],
+      "actual": [
+        "字节",
+        "美团",
+        "快手"
+      ],
+      "pass": true
+    },
+    {
+      "name": "R10-28b 表头出现 ↓",
+      "expected": true,
+      "actual": true,
+      "pass": true
+    },
+    {
+      "name": "R10-28c 再点变升序且结果集不变",
+      "expected": {
+        "n": 3,
+        "list": [
+          "快手",
+          "美团",
+          "字节"
+        ]
+      },
+      "actual": {
+        "n": 3,
+        "list": [
+          "快手",
+          "美团",
+          "字节"
+        ]
+      },
+      "pass": true
+    },
+    {
+      "name": "R10-28d 表头出现 ↑",
+      "expected": true,
+      "actual": true,
+      "pass": true
+    },
+    {
+      "name": "R10-29 城市+排序叠加=两城之和",
+      "expected": 4,
+      "actual": 4,
+      "pass": true
+    },
+    {
+      "name": "R10-30 取消勾北京→只剩上海",
+      "expected": 1,
+      "actual": 1,
+      "pass": true
+    },
+    {
+      "name": "R10-31 城市+状态组合筛选行数",
+      "expected": 0,
+      "actual": 0,
+      "pass": true
+    },
+    {
+      "name": "R10-32 组合筛选后状态单一且正确",
+      "expected": true,
+      "actual": true,
+      "pass": true
+    },
+    {
+      "name": "R10-33 清除筛选：城市与状态一起归零",
+      "expected": {
+        "trigger": "全部城市",
+        "n": 9
+      },
+      "actual": {
+        "trigger": "全部城市",
+        "n": 9
+      },
+      "pass": true
+    },
+    {
+      "name": "R6-22 已记 HR 面时仅该 chip 高亮",
+      "expected": {
+        "n": 1,
+        "text": [
+          "HR 面"
+        ]
+      },
+      "actual": {
+        "n": 1,
+        "text": [
+          "HR 面"
+        ]
+      },
+      "pass": true
+    },
+    {
+      "name": "R6-23 快选区初始无 chip 高亮",
+      "expected": 0,
+      "actual": 0,
+      "pass": true
+    },
+    {
+      "name": "R6-24 显式点「不记得了」→ 落库 null 且该 chip 高亮",
+      "expected": {
+        "active": [
+          "不记得了"
+        ],
+        "round": null
+      },
+      "actual": {
+        "active": [
+          "不记得了"
+        ],
+        "round": null
+      },
+      "pass": true
+    },
+    {
+      "name": "R6-25 hint 文案为「轮次未记」",
+      "expected": true,
+      "actual": true,
+      "pass": true
+    },
+    {
+      "name": "S375-1 375px 不横向溢出",
+      "expected": true,
+      "actual": true,
+      "pass": true
+    },
+    {
+      "name": "S375-2 窄屏表格内部滚动",
+      "expected": true,
+      "actual": true,
+      "pass": true
+    },
+    {
+      "name": "S-1 刷新后 9 条仍在",
+      "expected": 9,
+      "actual": 9,
+      "pass": true
+    },
+    {
+      "name": "S-2 刷新后轮次仍是 4",
+      "expected": 4,
+      "actual": 4,
+      "pass": true
+    }
+  ]
+}

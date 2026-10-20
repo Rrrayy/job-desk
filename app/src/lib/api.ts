@@ -1,0 +1,195 @@
+/**
+ * 视图与「操作 API」的类型契约。
+ * App.tsx 负责实现，视图组件只依赖这里的类型 —— 避免组件之间互相 import 造成循环依赖。
+ */
+
+import type {
+  AppSettings,
+  Application,
+  Company,
+  DB,
+  ExperienceResult,
+  Interview,
+  InterviewExperience,
+  InterviewFormat,
+  Mastery,
+  NoteType,
+  PlatformId,
+  Question,
+  Status,
+} from '../types';
+import type { MergePlan, PlannedRow } from './sync/types';
+
+export type ViewKey = 'today' | 'board' | 'list' | 'calendar' | 'insights';
+
+export const VIEWS: Array<{ key: ViewKey; label: string; hint: string }> = [
+  { key: 'today', label: '今日', hint: '1' },
+  { key: 'board', label: '看板', hint: '2' },
+  { key: 'list', label: '列表', hint: '3' },
+  { key: 'calendar', label: '日历', hint: '4' },
+  { key: 'insights', label: '复盘', hint: '5' },
+];
+
+/** 复盘内的二级 tab（PRD §E.1：不新增一级 tab） */
+export type InsightsTab = 'data' | 'interview';
+
+/** 二级 tab 与视图一起记忆（第二次按 5 不重置） */
+export interface UIViewState {
+  view: ViewKey;
+  insightsTab: InsightsTab;
+}
+
+/** 新增投递：只要求公司名 + 岗位名 */
+export interface NewApplicationInput {
+  companyName: string;
+  jobTitle: string;
+  status?: Status;
+  city?: string;
+  channel?: Application['channel'];
+  appliedAt?: string;
+  resumeVersion?: string;
+  salaryText?: string;
+  daysPerWeek?: number;
+  durationMonths?: number;
+  jdUrl?: string;
+  priority?: 1 | 2 | 3;
+}
+
+export interface NewInterviewInput {
+  applicationId: string;
+  round?: number;
+  scheduledAt: string;
+  format: InterviewFormat;
+  durationMin?: number;
+  locationOrLink?: string;
+  interviewer?: string;
+  result?: Interview['result'];
+  notes?: string;
+}
+
+/** 拖拽落列后的 3 字段轻面板 */
+export interface StatusChangeOpts {
+  /** 发生时间（ISO），默认现在 */
+  at?: string;
+  /** 备注 */
+  note?: string;
+  /** 轮次 */
+  round?: number;
+}
+
+/** 快记的带入上下文（来自投递详情 / 今日待复盘卡片） */
+export interface QuickNoteContext {
+  applicationId?: string;
+  companyName?: string;
+  jobTitle?: string;
+  round?: number;
+  interviewDate?: string;
+}
+
+/** 新增面经：companyName + interviewDate 必填，其余可空 */
+export interface NewExperienceInput {
+  applicationId?: string | null;
+  companyName: string;
+  jobTitle?: string;
+  round?: number | null;
+  interviewDate: string;
+  result: ExperienceResult;
+  overallNote?: string;
+  source?: InterviewExperience['source'];
+  originFile?: string;
+}
+
+/** ① → ② 的结果 */
+export type SyncPlanOutcome =
+  | { ok: true; plan: MergePlan; adapterId: PlatformId; adapterStale: boolean }
+  | { ok: false; error: string };
+
+export interface AppApi {
+  db: DB;
+  now: Date;
+  view: ViewKey;
+  selectedId: string | null;
+  highlightedId: string | null;
+
+  setView: (view: ViewKey) => void;
+  openDetail: (id: string) => void;
+  closeDetail: () => void;
+  /** 跳到看板并高亮某条投递 */
+  focusApp: (id: string) => void;
+  openNew: (initialStatus?: Status) => void;
+  openSettings: () => void;
+  toast: (text: string) => void;
+
+  addApplication: (input: NewApplicationInput) => string;
+  updateApplication: (id: string, patch: Partial<Application>) => void;
+  changeStatus: (id: string, status: Status, opts?: StatusChangeOpts) => void;
+  deleteApplication: (id: string) => void;
+
+  addNote: (applicationId: string, type: NoteType, content: string, at?: string) => void;
+  deleteNote: (noteId: string) => void;
+
+  addInterview: (input: NewInterviewInput) => void;
+  updateInterview: (id: string, patch: Partial<Interview>) => void;
+  deleteInterview: (id: string) => void;
+
+  updateCompany: (id: string, patch: Partial<Company>) => void;
+  updateSettings: (patch: Partial<AppSettings>) => void;
+
+  loadSampleData: () => void;
+  clearAllData: () => void;
+  /** 完整备份（JSON，可无损往返 —— 这是唯一能「搬回本应用」的格式） */
+  exportData: () => void;
+  /** 投递表 CSV（单向导出，给 Excel / Numbers 看） */
+  exportCsv: () => void;
+  /** 面试日历 ICS（单向导出，导进系统日历） */
+  exportIcs: () => void;
+  importData: (file: File) => void;
+
+  /* ---------------- 复盘二级 tab（v2） ---------------- */
+  insightsTab: InsightsTab;
+  setInsightsTab: (tab: InsightsTab) => void;
+
+  /* ---------------- 同步（全部是动作，不是视图） ---------------- */
+  syncOpen: boolean;
+  openSync: () => void;
+  closeSync: () => void;
+  /** 最近一次解析出的计划（null = 还没解析） */
+  syncPlan: MergePlan | null;
+  /** 计划对应的平台与「适配器可能已失效」标记 */
+  syncAdapterId: PlatformId | null;
+  syncAdapterStale: boolean;
+  /** ① → ②：对原始文本跑适配器 + 合并计划。返回计划供面板渲染 */
+  planSync: (input: { text: string; platform?: PlatformId; capturedAt: string }) => SyncPlanOutcome;
+  /** ④ 确认合并。rows 是用户最终勾选的行 */
+  commitSync: (rows: PlannedRow[]) => void;
+  /** 暂存区逐条处理。status 为 null = 忽略（丢弃） */
+  resolveStaged: (stagedId: string, status: Status | null) => void;
+  clearStaging: () => void;
+  ackSyncRisk: () => void;
+
+  /* ---------------- 面经 ---------------- */
+  addExperience: (input: NewExperienceInput) => string;
+  updateExperience: (id: string, patch: Partial<InterviewExperience>) => void;
+  deleteExperience: (id: string) => void;
+  /** 批量加题（快记用），返回实际写入条数 */
+  addQuestions: (experienceId: string, texts: string[]) => number;
+  updateQuestion: (id: string, patch: Partial<Question>) => void;
+  deleteQuestion: (id: string) => void;
+  /** 复习一次：reviewCount+1、lastReviewedAt、nextReviewAt 按新 mastery 重算 */
+  reviewQuestion: (id: string, mastery: Mastery) => void;
+  /** 快记浮层 */
+  quickNote: QuickNoteContext | null;
+  openQuickNote: (ctx?: QuickNoteContext) => void;
+  closeQuickNote: () => void;
+  exportExperienceMarkdown: (experiences: InterviewExperience[], opts: { desensitize: boolean }) => void;
+  /** 社区题库导入（P1）：拖入/粘贴已下载的 .json */
+  importCommunityFile: (file: File) => void;
+
+  /*
+   * v0.2 实现补充（架构 §2.7 未列，但 T05-6 要求详情抽屉里能直接「看已有 N 题」）：
+   * 面经编辑器是一个跨视图浮层，状态必须在中枢，不能塞进某个视图组件里。
+   */
+  experienceEditorId: string | null;
+  openExperience: (id: string) => void;
+  closeExperience: () => void;
+}

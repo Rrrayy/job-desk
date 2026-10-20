@@ -1,0 +1,63 @@
+{
+  "version": 1,
+  "updatedAt": "2025-03-12",
+  "license": "CC-BY-SA-4.0",
+  "note": "索引与面经文件必须对得上：每个文件都要在这里列一行，questionCount 必须等于实际题数（npm run validate:community 会检查）。",
+  "entries": [
+    {
+      "id": "boss-bytedance-douyin-fe-intern-2025-03",
+      "file": "boss-bytedance-fe-intern-2025-03.json",
+      "company": "字节跳动",
+      "jobTitle": "抖音前端开发实习生",
+      "round": 1,
+      "interviewDate": "2025-03-04",
+      "result": "failed",
+      "questionCount": 7,
+      "tags": ["前端", "一面", "手写题", "React"]
+    },
+    {
+      "id": "boss-meituan-dianping-fe-intern-2025-03",
+      "file": "boss-meituan-fe-intern-2025-03.json",
+      "company": "美团",
+      "jobTitle": "到店事业群 前端实习生",
+      "round": 2,
+      "interviewDate": "2025-03-06",
+      "result": "passed",
+      "questionCount": 6,
+      "tags": ["前端", "二面", "性能优化", "通过"]
+    },
+    {
+      "id": "shixiseng-xiaohongshu-fe-intern-2025-03",
+      "file": "shixiseng-xiaohongshu-fe-intern-2025-03.json",
+      "company": "小红书",
+      "jobTitle": "前端开发实习生（社区）",
+      "round": 1,
+      "interviewDate": "2025-03-08",
+      "result": "pending",
+      "questionCount": 6,
+      "tags": ["前端", "一面", "长列表", "CORS"]
+    },
+    {
+      "id": "nowcoder-tencent-pcg-fe-intern-2025-02",
+      "file": "nowcoder-tencent-pcg-fe-intern-2025-02.json",
+      "company": "腾讯",
+      "jobTitle": "PCG 前端开发实习生",
+      "round": 1,
+      "interviewDate": "2025-02-26",
+      "result": "failed",
+      "questionCount": 7,
+      "tags": ["前端", "一面", "计算机基础", "算法"]
+    },
+    {
+      "id": "boss-kuaishou-fe-intern-2025-02",
+      "file": "boss-kuaishou-fe-intern-2025-02.json",
+      "company": "快手",
+      "jobTitle": "商业化 前端实习生",
+      "round": 1,
+      "interviewDate": "2025-02-21",
+      "result": "passed",
+      "questionCount": 6,
+      "tags": ["前端", "一面", "TypeScript", "通过"]
+    }
+  ]
+}

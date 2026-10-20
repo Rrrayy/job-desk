@@ -1,0 +1,43 @@
+sequenceDiagram
+    autonumber
+    actor U as 用户
+    participant TB as TopBar
+    participant SD as SyncDrawer
+    participant RG as RiskGate
+    participant CAP as sync/capture.ts
+    participant AD as adapters/boss/parse.ts
+    participant EN as sync/engine.ts
+    participant APP as App.tsx (mutate)
+    participant ST as lib/storage.ts
+
+    U->>TB: 点 ⇅ 同步
+    TB->>SD: openSync()（读 settings.sync.riskAckAt）
+    alt 未确认风险
+        SD->>RG: 渲染风险提示（PRD §B.2 原文）
+        U->>RG: 勾「我已了解风险，由我自行决定」
+        RG->>APP: ackSyncRisk() → mutate(settings.sync.riskAckAt=now)
+    end
+
+    U->>SD: Ctrl+V 粘贴 / 拖入 .json / 从扩展剪贴板
+    SD->>CAP: planSync({text, capturedAt: now})
+    CAP->>CAP: detectEnvelope() → 取 url/title/text
+    CAP->>CAP: adapterForUrl(url) ?? adapterById(defaultPlatform)
+    CAP->>AD: parse({url,title,text,capturedAt}, {now})
+    AD-->>CAP: AdapterResult { records[], unparsed[] }
+    CAP->>EN: plan({records, db, platform, capturedAt, overrides})
+    EN->>EN: normalize + dedupe(5 级) + statusMap + ownership
+    EN-->>CAP: MergePlan { rows[], counts, unparsed }
+    CAP-->>SD: { ok:true, plan, adapterStale }
+    SD->>U: ② 预览：新增 6 · 更新 9 · 无变化 2 · 冲突 1 · 待归类 2
+
+    U->>SD: ③ 勾选 / 处理冲突（默认已按矩阵设好）
+    U->>SD: ④ 确认合并
+    SD->>APP: commitSync(checkedRows)
+    APP->>EN: apply(db, {rows, now, capturedAt, platform})
+    EN-->>APP: { db: nextDb, undo, written, staged }
+    APP->>APP: mutate(replace with nextDb)（沿用 cloneDB 语义）
+    APP->>ST: saveDB(nextDb)（体积 block 时拒绝并返回错误串）
+    APP->>U: toast「已写入 12 条 · 2 条留暂存」+ [撤销]
+    U->>APP: 点撤销
+    APP->>EN: revertSync(draft, undo)
+    EN-->>APP: draft 回到合并前（逐字段 diff 为空）

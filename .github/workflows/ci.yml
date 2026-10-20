@@ -1,0 +1,71 @@
+name: CI
+
+# 六步全绿才算过：
+#   ① 类型  ② 单测  ③ 零网络扫描  ④ 构建  ⑤ 产物体积  ⑥ 社区面经校验
+#
+# 每一步都对应产品的一条硬承诺，不是「顺手加上去」的检查：
+#   ③ 对应「数据不出本机」，⑤ 对应「单文件双击就能用」，⑥ 对应「社区数据不许带隐私」。
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  verify:
+    name: verify (node ${{ matrix.node }})
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        node: ['18', '20']
+
+    defaults:
+      run:
+        working-directory: app
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ matrix.node }}
+          cache: npm
+          cache-dependency-path: app/package-lock.json
+
+      - name: Install
+        run: npm ci
+
+      - name: ① 类型检查
+        run: npx tsc --noEmit
+
+      - name: ② 单元测试（纯函数）
+        run: npm test
+
+      - name: ③ 零网络扫描（app/src + extension）
+        run: npm run check:no-network
+
+      - name: ④ 构建单文件产物
+        run: npm run build
+
+      - name: ⑤ 产物体积红线（>450KB 警告 / >600KB 失败）
+        run: npm run check:bundle
+
+      - name: ⑥ 社区面经格式与脱敏
+        run: npm run validate:community
+
+      - name: 产物存档（方便 review 时下载来看）
+        uses: actions/upload-artifact@v4
+        with:
+          name: dist-html-node${{ matrix.node }}
+          path: app/dist/index.html
+          if-no-files-found: error
+          retention-days: 14

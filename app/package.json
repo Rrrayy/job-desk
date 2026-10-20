@@ -1,0 +1,51 @@
+{
+  "name": "job-desk",
+  "private": false,
+  "version": "0.3.0",
+  "type": "module",
+  "description": "求职工作台 · 把投递当管线管，数据只留在你自己的浏览器里",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/OWNER/job-desk.git"
+  },
+  "homepage": "https://github.com/OWNER/job-desk#readme",
+  "keywords": [
+    "job-search",
+    "internship",
+    "kanban",
+    "local-first",
+    "privacy",
+    "offline",
+    "react",
+    "single-file"
+  ],
+  "engines": {
+    "node": ">=18"
+  },
+  "scripts": {
+    "dev": "vite",
+    "build": "tsc --noEmit && vite build",
+    "preview": "vite preview",
+    "typecheck": "tsc --noEmit",
+    "test": "node scripts/run-tests.mjs",
+    "test:watch": "vitest",
+    "check:bundle": "node scripts/check-bundle.mjs",
+    "check:no-network": "node scripts/check-no-network.mjs",
+    "validate:community": "node scripts/validate-community.mjs",
+    "verify": "npm run typecheck && npm test && npm run check:no-network && npm run build && npm run check:bundle && npm run validate:community"
+  },
+  "dependencies": {
+    "react": "^18.3.1",
+    "react-dom": "^18.3.1"
+  },
+  "devDependencies": {
+    "@types/react": "^18.3.12",
+    "@types/react-dom": "^18.3.1",
+    "@vitejs/plugin-react": "^4.3.4",
+    "typescript": "^5.6.3",
+    "vite": "^5.4.11",
+    "vite-plugin-singlefile": "^2.0.3",
+    "vitest": "^2.1.8"
+  }
+}

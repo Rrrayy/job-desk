@@ -1,0 +1,51 @@
+{
+  "_comment": [
+    "这份 JSON 是 content.js 里 SELECTORS 表的镜像，给不想读 JS 的人看，也方便改完对照。",
+    "扩展不能直接读同包的 JSON（那需要 fetch，而这个项目承诺零网络调用），所以 content.js 里有一份同源的表。",
+    "改选择器时两处都要改，并把 version 一起改掉。"
+  ],
+  "version": "2025-03-01",
+  "platforms": [
+    {
+      "id": "boss",
+      "label": "BOSS 直聘",
+      "hosts": ["zhipin.com"],
+      "urlHints": ["/web/chat", "/web/geek/job", "/web/geek/recommend", "/web/job"],
+      "cards": [
+        ".chat-item",
+        ".geek-chat-item",
+        ".job-card-wrapper",
+        ".job-card-body",
+        "li.job-card-box",
+        ".card-item"
+      ],
+      "note": "列表虚拟滚动，Ctrl+A 或本扩展都只能拿到已渲染的条目 —— 「识别 N 条」小于总条数是正常的。"
+    },
+    {
+      "id": "shixiseng",
+      "label": "实习僧",
+      "hosts": ["shixiseng.com"],
+      "urlHints": ["/interns", "/deliver", "/chat"],
+      "cards": [".intern-wrap", ".deliver-list-item", ".chat-item", ".job-list-item", ".intern-item"],
+      "note": "实习僧的列表把公司名放在 .intern-company，岗位名在 .intern-name，两条都在同一张卡片里。"
+    },
+    {
+      "id": "nowcoder",
+      "label": "牛客",
+      "hosts": ["nowcoder.com"],
+      "urlHints": ["/job", "/myapply", "/applications"],
+      "cards": [".job-item", ".apply-item", ".nc-job-card", "li.job-list-item", ".job-list li"],
+      "note": "牛客的投递记录页常把状态放在徽标里，状态文字会被一起抓进文本，交给适配器识别。"
+    }
+  ],
+  "generic": {
+    "cards": [
+      "[class*='job-card']",
+      "[class*='card-item']",
+      "[class*='list-item']",
+      "[class*='apply-item']",
+      "li"
+    ],
+    "note": "认不出平台时的兜底：先按这些通用选择器切卡片，一条都切不出来就退回整页可见文本。"
+  }
+}

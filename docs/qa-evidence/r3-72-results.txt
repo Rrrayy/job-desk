@@ -1,0 +1,85 @@
+-- 首屏
+PASS  S0-1 欢迎层出现
+PASS  S0-3 示例 8 条
+PASS  S0-2 看板出现
+PASS  S0-4 注入后 9 条
+-- R-6 标为已挂 → 先落库 → 非阻塞 chip
+-- 目标记录：美团 · 到店事业群 前端实习生
+PASS  R6-1 抽屉打开
+PASS  R6-2 抽屉状态 chip=已投递
+PASS  R6-3 内联出现轮次快选
+PASS  R6-4 快选 5 个档位
+PASS  R6-5 有「先不记」
+PASS  R6-6 状态先落库 rejected / round=null
+PASS  R6-7 「先不记」收起快选
+PASS  R6-8 不选也仍是 rejected / round=null
+PASS  R6-9 Esc 关抽屉
+PASS  R6-10 重开后状态=已挂
+PASS  R6-11 顶部 chip=轮次未记
+PASS  R6-12 概览补录入口文案
+-- R-6 概览补录「第 2 轮」→「HR 面」
+PASS  R6-13 点「第 2 轮」落库 = 2
+PASS  R6-14 顶部 chip=第 2 轮
+PASS  R6-15 概览标签=第 2 轮
+PASS  R6-16 点「HR 面」落库 = 4
+PASS  R6-17 HR 面展示为「HR 面」不裸「第 4 轮」
+PASS  R6-18 概览标签=第 4 轮（HR 面）
+PASS  R6-19 列表状态列=已挂 + HR 面
+-- 撤销联动：已挂 → Ctrl+Z → 状态与 rejectedAtRound 一起回滚
+PASS  R6-20 第二条也变已挂
+PASS  R6-21 撤销后回到 applied / round=null
+-- R-7 导出文件名用本地日期
+PASS  R7-1 设置抽屉打开
+PASS  R7-2 文件名模板
+-- R-10 列表第 5 列 = 简历版本，可排序
+PASS  R10-1 表头 9 列
+PASS  R10-2 第 5 列是简历版本
+PASS  R10-3 前后列位置
+PASS  R10-4 点表头出现排序箭头 ↓
+PASS  R10-5 再点变 ↑
+PASS  R10-6 降序有序
+PASS  R10-7 升序有序
+PASS  R10-8 版本列有多值
+PASS  R10-9 版本筛选生效
+PASS  R10-10 清除筛选恢复 9 条
+-- R-10 城市多选
+PASS  R10-11 面板展开
+-- 城市选项：[{"label":"北京","count":3},{"label":"东莞","count":1},{"label":"杭州","count":2},{"label":"上海","count":1},{"label":"深圳","count":1},{"label":"未填城市","count":1}]
+PASS  R10-12 含「未填城市」
+PASS  R10-13 空的归到未填城市（count=1）
+PASS  R10-14 选项条数之和=9
+PASS  R10-15 触发器初始「全部城市」
+PASS  R10-16 单选后触发器显示城市名
+PASS  R10-17 单选后行数=该城市条数
+PASS  R10-17b 探查：改动别的筛选后城市条件才生效
+PASS  R10-18 多选后显示「已选 2 个城市」
+PASS  R10-19 多选后行数=两城之和
+PASS  R10-20 触发器高亮 is-active
+PASS  R10-21 点空白处收起面板
+PASS  R10-22 收起后筛选仍生效
+PASS  R10-23 清除筛选把城市一起清掉
+PASS  R10-24 清除后回到 9 条
+PASS  R10-25 清除后无高亮
+-- Bug-3 修复复验
+PASS  R10-26 勾北京立刻只剩北京行
+PASS  R10-27 筛选态下点表头排序不丢结果集
+PASS  R10-28 筛选态下排序结果=公司降序
+PASS  R10-28b 表头出现 ↓
+PASS  R10-28c 再点变升序且结果集不变
+PASS  R10-28d 表头出现 ↑
+PASS  R10-29 城市+排序叠加=两城之和
+PASS  R10-30 取消勾北京→只剩上海
+PASS  R10-31 城市+状态组合筛选行数
+PASS  R10-32 组合筛选后状态单一且正确
+PASS  R10-33 清除筛选：城市与状态一起归零
+-- 轮次 chip 高亮：未记不高亮、显式点选才高亮
+PASS  R6-22 已记 HR 面时仅该 chip 高亮
+PASS  R6-23 快选区初始无 chip 高亮
+PASS  R6-24 显式点「不记得了」→ 落库 null 且该 chip 高亮
+PASS  R6-25 hint 文案为「轮次未记」
+PASS  S375-1 375px 不横向溢出
+PASS  S375-2 窄屏表格内部滚动
+PASS  S-1 刷新后 9 条仍在
+PASS  S-2 刷新后轮次仍是 4
+
+=== Round 3 定点复验: 72 PASS / 0 FAIL / 共 72 ===

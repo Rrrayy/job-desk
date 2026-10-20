@@ -1,0 +1,25 @@
+{
+  "note": "expected.json 只断言与时间无关的字段。lastContactAt 依赖注入的 now，由测试单独断言。",
+  "chatList": [
+    { "companyName": "字节跳动", "jobTitle": "抖音前端开发实习生", "status": "沟通中" },
+    { "companyName": "美团", "jobTitle": "到店事业群 前端实习生", "status": "沟通中" },
+    { "companyName": "小红书", "jobTitle": "前端开发实习生（社区）", "status": "邀请面试" },
+    { "companyName": "腾讯", "jobTitle": "PCG 前端开发实习生", "status": "已投递" },
+    { "companyName": "快手", "jobTitle": "商业化 前端实习生", "status": "不合适" },
+    { "companyName": "得物", "jobTitle": "前端开发实习生", "status": "待沟通" },
+    { "companyName": "网易", "jobTitle": "前端开发实习生（游戏工具）", "status": "沟通中" },
+    { "companyName": "阿里巴巴", "jobTitle": "淘天集团 前端实习生", "status": "已面试" },
+    { "companyName": "华为", "jobTitle": "终端 BG 前端开发实习生", "status": "已录用" },
+    { "companyName": "百度", "jobTitle": "搜索前端开发实习生", "status": "已投递" },
+    { "companyName": "蔚来", "jobTitle": "车机前端实习生", "status": "沟通中" },
+    { "companyName": "携程", "jobTitle": "酒店前端开发实习生", "status": "沟通中" }
+  ],
+  "applyList": [
+    { "companyName": "字节跳动", "status": "已投递" },
+    { "companyName": "美团", "status": "简历已送达" },
+    { "companyName": "小红书", "status": "邀请面试" },
+    { "companyName": "腾讯", "status": "不合适" },
+    { "companyName": "快手", "status": "已入职" }
+  ],
+  "unparsedReasons": ["这一行没有公司名"]
+}

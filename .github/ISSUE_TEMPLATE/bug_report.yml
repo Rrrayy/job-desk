@@ -1,0 +1,79 @@
+name: Bug 报告
+description: 界面不对、数据丢了、按钮没反应 —— 报个 bug
+title: '[bug] '
+labels: ['bug']
+body:
+  - type: markdown
+    attributes:
+      value: |
+        先说一句最重要的：**如果你的投递数据看不到/被清空了，先别刷新页面**。
+        打开开发者工具的 Console，执行 `copy(localStorage.getItem('jobdesk.v1'))`，
+        把结果贴到别处存起来。数据在 localStorage 里，只要不清浏览器数据就还在。
+
+  - type: textarea
+    id: what-happened
+    attributes:
+      label: 发生了什么
+      description: 你做了什么、期望是什么、实际是什么。三句话能说清就够。
+      placeholder: |
+        我在看板里把「美团」从「沟通中」拖到「面试中」，撤销之后卡片回到了沟通中，
+        但「最后活动时间」没有回退。
+    validations:
+      required: true
+
+  - type: textarea
+    id: steps
+    attributes:
+      label: 复现步骤
+      placeholder: |
+        1. 打开示例数据
+        2. 拖动任意卡片
+        3. 点 toast 里的「撤销」
+        4. 打开详情看「最后活动时间」
+    validations:
+      required: true
+
+  - type: input
+    id: version
+    attributes:
+      label: 版本
+      description: 页脚「关于」里能看到，或者 package.json 里的 version
+      placeholder: '0.2.0'
+    validations:
+      required: true
+
+  - type: dropdown
+    id: where
+    attributes:
+      label: 怎么打开的
+      options:
+        - dist/index.html 双击打开（file://）
+        - 本地 dev server（npm run dev）
+        - 部署在其他地方（请补充说明）
+    validations:
+      required: true
+
+  - type: input
+    id: browser
+    attributes:
+      label: 浏览器与系统
+      placeholder: 'Chrome 132 / Windows 11'
+    validations:
+      required: true
+
+  - type: textarea
+    id: console
+    attributes:
+      label: Console 报错（如果有）
+      description: 直接粘贴文本，不要截图 —— 文字能搜索、能复制。
+      render: text
+    validations:
+      required: false
+
+  - type: checkboxes
+    id: privacy
+    attributes:
+      label: 提交前确认
+      options:
+        - label: 我贴出来的内容里**没有**真实公司名、HR 姓名、手机号、邮箱等私人信息（必要时已替换成「某公司」）
+          required: true

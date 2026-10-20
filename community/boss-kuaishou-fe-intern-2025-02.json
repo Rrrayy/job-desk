@@ -1,0 +1,63 @@
+{
+  "experiences": [
+    {
+      "id": "boss-kuaishou-fe-intern-2025-02",
+      "companyName": "快手",
+      "jobTitle": "商业化 前端实习生",
+      "round": 1,
+      "interviewDate": "2025-02-21",
+      "result": "passed",
+      "overallNote": "一面 40 分钟，最舒服的一场。面试官先让我挑一个项目讲 10 分钟，然后全程顺着项目问。没有为难人的八股，但每个技术点都会问「为什么不用另一种」。TypeScript 泛型那道题我答得最好：现场把组件 props 的泛型约束写出来了。两天后约二面，后因接受美团 offer 终止流程。商业化团队节奏快，但面试体验是这几家里最像「同事聊天」的。",
+      "questions": [
+        {
+          "id": "ks-2025-02-q1-ts-generic",
+          "category": "concept",
+          "difficulty": 2,
+          "text": "写一个泛型组件：一个 List，接收 items 数组和一个 renderItem，要求 renderItem 的参数类型能自动推导出来。",
+          "myAnswer": "`function List<T>(props: { items: T[]; renderItem: (item: T, index: number) => ReactNode })`，调用时 T 会从 items 自动推导，renderItem 的参数不需要手写类型。补充说了「如果 T 推导不出来，可以显式 `<List<Foo> …>` 指定」。",
+          "nextTime": "再补一句「泛型 + keyof 可以做类型安全的字段访问」，比如 `get<T, K extends keyof T>(obj: T, key: K): T[K]`。"
+        },
+        {
+          "id": "ks-2025-02-q2-render-perf",
+          "category": "project",
+          "difficulty": 2,
+          "text": "说说浏览器渲染流水线，以及哪些 CSS 属性改动会触发重排、哪些只触发重绘、哪些可以只走合成。",
+          "myAnswer": "解析 → 样式 → 布局（重排）→ 绘制（重绘）→ 合成。改 width/height/margin 触发重排；改 color/background 只重绘；改 transform/opacity 可以只走合成（前提是提升为独立图层）。",
+          "nextTime": "补「用 will-change 提升图层不是免费的，图层多了显存吃不消，动画结束要撤掉」。"
+        },
+        {
+          "id": "ks-2025-02-q3-error-monitor",
+          "category": "project",
+          "difficulty": 3,
+          "text": "前端怎么做错误监控？JS 报错、资源加载失败、Promise 未捕获，分别怎么捕获？",
+          "myAnswer": "JS 运行时错误用 window.onerror / addEventListener('error')；资源加载失败要在捕获阶段监听 error（它不冒泡）；Promise 未捕获用 unhandledrejection。上报时带 sourcemap 还原堆栈，并且要做采样和去重，否则一条循环报错能刷爆日志。",
+          "nextTime": "这题答得比较完整，可以再补「React 里还要加 ErrorBoundary 兜渲染期错误」。"
+        },
+        {
+          "id": "ks-2025-02-q4-throttle-scroll",
+          "category": "algo",
+          "difficulty": 2,
+          "text": "滚动监听里你会用防抖还是节流？为什么？如果要跟手，还有什么更好的方案？",
+          "myAnswer": "用节流（或 rAF）。防抖会在停止滚动后才执行，滚动过程中界面不更新，等于没效果。更跟手的方案是用 requestAnimationFrame 对齐渲染帧，或者在能用的场景直接上 IntersectionObserver / position: sticky 避免监听。",
+          "nextTime": "把「滚动 → rAF → 计算 → 更新」这条链路写成一个可复用的 hook 讲出来，比口头说更有说服力。"
+        },
+        {
+          "id": "ks-2025-02-q5-project-deep",
+          "category": "project",
+          "difficulty": 2,
+          "text": "你刚讲的这个项目，如果用户量涨 100 倍，哪里会先崩？你会怎么改？",
+          "myAnswer": "答了三个瓶颈：列表接口全量返回（要改分页 + 服务端聚合）、前端一次性渲染所有行（要虚拟列表）、以及埋点同步上报（要改批量 + 空闲时段发送）。说完面试官点头，说这是他今天听到最实在的回答。",
+          "nextTime": "这题是「项目深度」的通用问法，任何项目都可以提前准备「3 个瓶颈 + 3 个改法」。"
+        },
+        {
+          "id": "ks-2025-02-q6-reverse",
+          "category": "reverse",
+          "difficulty": 1,
+          "text": "反问环节。",
+          "myAnswer": "问了「商业化前端和业务前端的差别」以及「实习生有没有机会碰投放侧的核心链路」。面试官把商业化前端的链路讲了一遍，说实习生一般从活动页和投放后台开始。",
+          "nextTime": "「这个岗位的实习生通常从什么活开始」是安全且信息量大的问题，适合放在第一个。"
+        }
+      ]
+    }
+  ]
+}

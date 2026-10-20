@@ -1,0 +1,71 @@
+{
+  "experiences": [
+    {
+      "id": "nowcoder-tencent-pcg-fe-intern-2025-02",
+      "companyName": "腾讯",
+      "jobTitle": "PCG 前端开发实习生",
+      "round": 1,
+      "interviewDate": "2025-02-26",
+      "result": "failed",
+      "overallNote": "一面 60 分钟，电话面，全程手写代码（用在线白板）。前半段计算机基础问得很深，后半段两道算法。挂得很明白：原型链那道题我只会背结论，一追问「prototype 和 __proto__ 到底谁指向谁」就乱了；链表反转写出来了但边界（空链表、单节点）没处理。腾讯的一面基础比重明显高于其他家，准备时不能只刷算法。",
+      "questions": [
+        {
+          "id": "tx-2025-02-q1-prototype",
+          "category": "concept",
+          "difficulty": 3,
+          "text": "讲清 prototype、__proto__、constructor 三者的关系；instanceof 是怎么判断的？",
+          "myAnswer": "每个函数有 prototype，每个对象有 __proto__ 指向它的构造函数的 prototype；constructor 是 prototype 上的一个指回函数的属性。instanceof 沿着左侧对象的 __proto__ 链往上找，看是否能命中右侧函数的 prototype。我卡在「函数的 __proto__ 指向什么」（Function.prototype）这一点上。",
+          "nextTime": "画一张图背下来：obj.__proto__ === Ctor.prototype，Ctor.__proto__ === Function.prototype，Object.prototype.__proto__ === null。"
+        },
+        {
+          "id": "tx-2025-02-q2-closure",
+          "category": "concept",
+          "difficulty": 2,
+          "text": "闭包是什么？它在内存上会带来什么问题？举一个你实际用到闭包的地方。",
+          "myAnswer": "闭包是函数和它定义时所在词法环境的组合。不会自动释放被引用的外部变量，长期持有大对象会导致内存涨。实际用途：防抖节流、模块私有变量、以及 React 里用 useRef 保存跨渲染的值。",
+          "nextTime": "补「循环里用 var 注册回调全都打印同一个值」这个经典例子，几乎每次都会问到。"
+        },
+        {
+          "id": "tx-2025-02-q3-reverse-list",
+          "category": "algo",
+          "difficulty": 2,
+          "text": "反转单链表，写完整代码，并处理空链表和只有一个节点的情况。",
+          "myAnswer": "三指针迭代：prev = null，cur = head，循环里先存 next、再改 cur.next、再整体后移。代码写对了，但没主动说边界，面试官问「head 是 null 呢」，我才补了一句「循环不进去，直接返回 null」。",
+          "nextTime": "手写链表题开场先说三句：空输入返回什么、单节点返回什么、是否允许改原链表结构。"
+        },
+        {
+          "id": "tx-2025-02-q4-diff",
+          "category": "concept",
+          "difficulty": 2,
+          "text": "React 的 diff 和 Vue 的 diff 有什么不同？为什么 React 需要 key 而某些场景下 index 也能用？",
+          "myAnswer": "React 是同层比较 + 双端不完全的双指针（旧版是递归 + key 匹配），Vue2 是双端比较，Vue3 是「先掐头去尾 + 最长递增子序列」。index 能用的场景是「列表只追加、不重排、不插入」。",
+          "nextTime": "这题答得太术语化，下次先讲「两者都想把 O(n³) 降到 O(n)，区别在怎么找可复用的节点」。"
+        },
+        {
+          "id": "tx-2025-02-q5-big-upload",
+          "category": "project",
+          "difficulty": 3,
+          "text": "大文件上传怎么做？切片、并发、断点续传分别怎么实现？",
+          "myAnswer": "File.slice 切片 → 每片算 hash（可以用 SparkMD5）→ 并发上传（限制 3~5 个）→ 服务端合并。断点续传靠「上传前先问服务端哪些分片已经有了」。我只答了切片和合并，并发控制和 hash 计算时机（抽样 hash 还是全量）没答上来。",
+          "nextTime": "这道题是前端高频大厂题，按「切片 → 秒传 → 并发 → 续传 → 合并 → 进度」六步背成一条线。"
+        },
+        {
+          "id": "tx-2025-02-q6-array-flatten",
+          "category": "algo",
+          "difficulty": 1,
+          "text": "数组扁平化，写出递归版和迭代版，并说明各自的问题。",
+          "myAnswer": "递归版用 reduce + concat，迭代版用栈或 while + some(Array.isArray)。递归的问题是很深的数组会爆栈，迭代版占内存但不会爆。",
+          "nextTime": "顺口提一句「flat(Infinity) 是原生方案」，但要说清它只拍平数组、不处理类数组。"
+        },
+        {
+          "id": "tx-2025-02-q7-why-tencent",
+          "category": "behavior",
+          "difficulty": 1,
+          "text": "为什么投腾讯？你觉得自己最欠缺的是什么？",
+          "myAnswer": "第二个问题答得还行：说「工程化经验少，没做过从 0 到 1 的项目」，并且提了补救（自己搭过一套脚手架）。第一个问题答得泛。",
+          "nextTime": "「最欠缺什么」这题的标准答法是「具体能力 + 正在怎么补 + 补到什么程度」，只说缺陷等于自曝短板。"
+        }
+      ]
+    }
+  ]
+}

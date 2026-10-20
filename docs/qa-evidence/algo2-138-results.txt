@@ -1,0 +1,142 @@
+
+=== Round 2 算法断言明细 ===
+PASS  R1.1 纯日期按本地零点解析
+PASS  R1.2 daysBetween 3/05→3/08
+PASS  R1.3 23:59→次日 00:00 记 1 天
+PASS  R1.4 startOfDay 归零
+PASS  R1.5 isSameDay
+PASS  R2.1 今天 00:00 → null
+PASS  R2.2 昨天 23:59 → null
+PASS  R2.3 第 2 天 → null
+PASS  R2.4 恰好第 3 天 → warn
+PASS  R2.5 第 6 天 → warn
+PASS  R2.6 恰好第 7 天 → stale
+PASS  R2.7 第 30 天 → stale
+PASS  R2.8 stale 文案
+PASS  R2.9 silenceDays
+PASS  R2.10 未来时间不出现负天数
+PASS  R3.1 referral 系数 3
+PASS  R3.2 official 系数 2
+PASS  R3.3 未填渠道兜底 1
+PASS  R3.4 referral warn/stale 阈值
+PASS  R3.5 official warn/stale 阈值
+PASS  R3.6 boss stale 阈值 7
+PASS  R3.7 referral 沉默 8 天 → null（黄阈值 9）
+PASS  R3.8 referral 沉默 9 天 → warn
+PASS  R3.9 referral 沉默 21 天 → stale
+PASS  R3.10 official 沉默 6 天 → warn
+PASS  R3.11 official 沉默 12 天 → warn（红阈值 14）
+PASS  R3.12 official 沉默 14 天 → stale
+PASS  R4.1 override=10（boss）stale 阈值 = 10
+PASS  R4.2 override=10（referral）stale 阈值仍 = 10（不再 ×3）
+PASS  R4.3 override=10（official）stale 阈值仍 = 10
+PASS  R4.4 override=10 → warn = min(3, 5) = 3
+PASS  R4.5 override=6 → warn = 3
+PASS  R4.6 override=2 → warn = 1
+PASS  R4.7 override=2 → stale = 2
+PASS  R4.8 override=10 + 内推，沉默 12 天 → stale
+PASS  R4.9 override=10 + 内推，沉默 9 天 → warn
+PASS  R4.10 override=10，沉默 10 天 → stale（当天即红）
+PASS  R4.11 override=6，沉默 3 天 → warn
+PASS  R4.12 override=2，沉默 1 天 → warn
+PASS  R4.13 override=2，沉默 2 天 → stale
+PASS  R4.14 override=1 → warn 阈值 1
+PASS  R4.15 override=1 → stale 阈值 1
+PASS  R4.16 override=1，沉默 1 天 → stale（先判红，黄看不到了）
+PASS  R4.17 override=null 的内推仍按 21 天
+PASS  R4.18 override=undefined 的官网仍按 14 天
+PASS  R4.19 warnAfterDays=5 时 override=10 → warn=min(5,5)=5
+PASS  R4.20 warnAfterDays=5 时 override=4 → warn=min(5,2)=2
+PASS  R5.1 interviewing 沉默 5 天 → stale
+PASS  R5.2 interviewing 沉默 4 天 → warn
+PASS  R5.3 interviewing 文案为「等结果」
+PASS  R5.4 interviewing + official 沉默 10 天 → stale（5×2）
+PASS  R5.5 wishlist 8/7/6 天超期
+PASS  R5.6 wishlist 不参与 silence
+PASS  R5.7 scheduled 不参与 silence
+PASS  R5.8 onboarded 沉默 30 天 → null
+PASS  R5.9 rejected 沉默 30 天 → null
+PASS  R5.10 dropped 沉默 30 天 → null
+PASS  R5.11 offer 沉默 30 天 → null
+PASS  R6.1 无 note 时用 statusChangedAt
+PASS  R6.2 取 note 最大值且忽略他人 note
+PASS  R6.3 红卡前置：9 天 → stale
+PASS  R6.4 新增 now 的 note → 立刻 null
+PASS  R7.1 变更后状态为 chatting
+PASS  R7.2 变更后 note 数 = 原始 +2
+PASS  R7.3 撤销后状态回到 applied
+PASS  R7.4 撤销后 statusChangedAt 复原
+PASS  R7.5 撤销后那条 system 记录被精确删除
+PASS  R7.6 撤销后用户手写的备注仍在
+PASS  R7.7 撤销后 note 净增 1 条（只少了 system 那条）
+PASS  R7.8 撤销后 lastActivityAt 用最新真实互动重算
+PASS  R7.9 撤销不碰其他投递（字节状态不变）
+PASS  R7.10 撤销不碰其他投递的 note 数
+PASS  R7.11 撤销 rejected 会把 rejectedAtRound 还原为 null
+PASS  R7.12 撤销一个不存在的记录 id 不抛异常
+PASS  R8.1 09:00（未开始）→ 今日面试 1 / 待记结果 0
+PASS  R8.2 09:00 阶段文案为空
+PASS  R8.3 15:20（进行中）→ 今日面试 1 / 待记结果 0
+PASS  R8.4 进行中文案
+PASS  R8.5 16:00 → 仍在「今日面试」，不进待记结果
+PASS  R8.6 16:00 阶段文案「已结束，稍后记结果」
+PASS  R8.7 19:59 → 仍不催结果（边界内侧）
+PASS  R8.8 20:00 → 翻进「待记结果」
+PASS  R8.9 20:00 阶段文案「已结束，待记结果」
+PASS  R8.10 20:30 → 待记结果 1
+PASS  R8.11 昨天那场 pending → 待记结果 1
+PASS  R8.12 明天那场 → 两边都不进
+PASS  R8.13 已记 passed 的不进待记结果
+PASS  R8.14 resultPromptHour=1 时 16:00 → 待记结果
+PASS  R8.15 终态投递的面试不进待记结果
+PASS  R9.1 8 条投递 / 7 种状态
+PASS  R9.2 漏斗计数 8/7/5/4/2/1
+PASS  R9.3 转化率
+PASS  R9.4 沉默 2 家
+PASS  R9.5 该跟进 2 家
+PASS  R9.6 想投超期 1 家
+PASS  R9.7 09:00 时今天面试 1 场（腾讯）
+PASS  R9.8 待办 6 条
+PASS  R9.9 排序 红>蓝>黄
+PASS  R9.10 BOSS 3 投 2 回复
+PASS  R9.11 内推 100%
+PASS  R9.12 v3 5 投 3 进面
+PASS  R9.13 21:00 时腾讯那场翻进待记结果
+PASS  R10.1 同日重叠 → 1 条
+PASS  R10.2 冲突文案含「另一场面试」
+PASS  R10.3 同日不重叠 → 0
+PASS  R10.4 已取消不算冲突
+PASS  R10.5 不同天不算冲突
+PASS  R10.6 撞课 → 1 条
+PASS  R10.7 撞课文案含课程名
+PASS  R10.8 16:00 不撞课
+PASS  R10.9 15:40 接边不算重叠
+PASS  R10.10 示例数据阿里二面撞《计算机网络》
+PASS  R11.1 导出可导入
+PASS  R11.2 数量一致
+PASS  R11.3 公司名/岗位/状态一致
+PASS  R11.4 设置/课程表一致
+PASS  R11.5 漏斗一致
+PASS  R11.6 resultPromptHour 导出后仍为 20
+PASS  R11.7 无 resultPromptHour 的老备份可导入
+PASS  R11.8 老备份自动补 resultPromptHour=20
+PASS  R11.9 老备份 schemaVersion 仍为 1
+PASS  R11.10 自定义 resultPromptHour=18 被接受
+PASS  R11.11 非法 JSON 报错
+PASS  R11.12 非法 status 报错
+PASS  R11.13 引用不存在公司拦下
+PASS  R11.14 schemaVersion=2 报错
+PASS  R12.1 空存储 → 空库 + 无错
+PASS  R12.2 默认阈值 + resultPromptHour
+PASS  R12.3 坏 JSON → 降级空库
+PASS  R12.4 坏 JSON → 有提示
+PASS  R12.5 结构错误 → 降级
+PASS  R12.6 结构错误 → 有提示
+PASS  R12.7 写满 → 返回可读错误
+PASS  R12.8 读被禁止 → 降级空库
+PASS  R12.9 读被禁止 → 提示
+PASS  R13.1 已挂无面试 → 1
+PASS  R13.2 已挂有面试 → 3
+PASS  R13.3 已放弃无 appliedAt 无面试 → 0
+
+=== 汇总: 138 PASS / 0 FAIL / 共 138 ===

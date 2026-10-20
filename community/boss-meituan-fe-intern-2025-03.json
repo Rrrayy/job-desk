@@ -1,0 +1,63 @@
+{
+  "experiences": [
+    {
+      "id": "boss-meituan-dianping-fe-intern-2025-03",
+      "companyName": "美团",
+      "jobTitle": "到店事业群 前端实习生",
+      "round": 2,
+      "interviewDate": "2025-03-06",
+      "result": "passed",
+      "overallNote": "二面 45 分钟，几乎全程在聊项目，八股只问了两个。面试官很在意「你为什么这么做」，而不是「你会不会」。唯一卡住的地方是 HTTP 缓存那道题，问到了协商缓存和强缓存同时存在时谁优先，我答成了「强缓存优先」，其实是先看强缓存是否命中，未命中才走协商 —— 顺序说反了但结论蒙对了，被点出来。最后反问环节聊了 5 分钟团队在做的活动页体系。三天后收到通过通知。",
+      "questions": [
+        {
+          "id": "mt-2025-03-q1-three-column",
+          "category": "concept",
+          "difficulty": 1,
+          "text": "两栏布局：左边固定 200px、右边自适应，写出至少三种实现，并说各自的坑。",
+          "myAnswer": "flex（`flex: 0 0 200px` + `flex: 1`）、grid（`grid-template-columns: 200px 1fr`）、float + margin-left、绝对定位 + padding-left。坑分别说了：float 需要清浮动；绝对定位会让右侧无法用 min-height 撑开；flex 子项默认 min-width:auto 会导致长内容不换行。",
+          "nextTime": "顺带准备「三栏中间自适应」和「左固定右自适应但右侧要能内部横向滚动」这两个变体，实际业务里更常见。"
+        },
+        {
+          "id": "mt-2025-03-q2-http-cache",
+          "category": "concept",
+          "difficulty": 2,
+          "text": "强缓存和协商缓存分别靠哪些头？两者同时存在时浏览器按什么顺序判断？",
+          "myAnswer": "强缓存：Cache-Control（max-age、immutable、no-cache、no-store）、Expires；协商缓存：ETag/If-None-Match、Last-Modified/If-Modified-Since。顺序是「先判断强缓存是否新鲜 → 不新鲜才带协商头发请求」，我一开始说成了「协商优先」，被纠正。",
+          "nextTime": "把 no-cache 和 no-store 的区别单独背一遍：no-cache 是「可以缓存但每次都要验证」，no-store 是「完全不存」。"
+        },
+        {
+          "id": "mt-2025-03-q3-debounce-throttle",
+          "category": "algo",
+          "difficulty": 2,
+          "text": "手写 debounce，要求带 immediate 选项，并说明它和 throttle 分别用在什么交互上。",
+          "myAnswer": "用闭包保存 timer，immediate 为 true 时首次立即执行、之后等待窗口内不再触发才允许再次执行。场景：debounce 用于搜索框输入、窗口 resize 结束；throttle 用于滚动监听、拖拽、按钮防连点。",
+          "nextTime": "再补一句「debounce 会延迟响应、throttle 会丢中间态，所以滚动位置这种必须用 throttle 或 rAF」。"
+        },
+        {
+          "id": "mt-2025-03-q4-perf",
+          "category": "project",
+          "difficulty": 2,
+          "text": "你项目里做过哪些性能优化？每一项是怎么量出来的？",
+          "myAnswer": "讲了三条：图片懒加载 + 尺寸占位（CLS 从 0.18 降到 0.03）、路由级代码分割（首屏 JS 从 380KB 到 210KB）、长列表虚拟滚动（1 万行滚动从 12fps 到 55fps）。每条都说了测量方式：Lighthouse、Performance 面板、以及埋点里自己算的首屏时间。",
+          "nextTime": "这一套答得不错，固定成模板：指标 → 手段 → 数字 → 副作用（比如虚拟滚动后 Ctrl+F 找不到内容，怎么补偿）。"
+        },
+        {
+          "id": "mt-2025-03-q5-requirement-change",
+          "category": "behavior",
+          "difficulty": 2,
+          "text": "产品在提测前一天改需求，你怎么处理？举个真实例子。",
+          "myAnswer": "举了活动页改文案结构的例子：先确认改动影响面（是否只改展示层）、给对方两个选项（当晚加班做完 vs 下个迭代带上但先上简版），把决定权交回产品，同时把风险写进群公告。面试官认可的点是「没有直接说做不了，也没有直接答应」。",
+          "nextTime": "补一句「最后留了书面记录」，面试官很吃这一套 —— 说明你知道协作靠的是留痕不是口头。"
+        },
+        {
+          "id": "mt-2025-03-q6-reverse",
+          "category": "reverse",
+          "difficulty": 1,
+          "text": "反问环节。",
+          "myAnswer": "问了三个：实习生会不会独立负责一个页面、团队的代码 review 是怎么做的、活动页体系现在有多少个模板。第三个问题让面试官讲了不少，气氛明显放松。",
+          "nextTime": "「代码 review 怎么做」这个问题信息量很大：能听出团队是走过场还是真的在带人。"
+        }
+      ]
+    }
+  ]
+}

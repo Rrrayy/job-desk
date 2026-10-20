@@ -1,0 +1,58 @@
+name: 功能建议
+description: 想要一个新功能，或者觉得某个流程太笨
+title: '[feat] '
+labels: ['enhancement']
+body:
+  - type: markdown
+    attributes:
+      value: |
+        提之前请先看一眼这几条**明确不做**的事（这是产品的定位，不是排期问题）：
+
+        - 不做账号系统 / 云同步 / 多端实时同步 —— 数据只留在你自己的浏览器里
+        - 不引入任何网络请求、统计、埋点、第三方字体和 CDN
+        - 不自动登录招聘平台、不自动投递、不自动发消息
+        - 不把单文件产物拆成需要起服务的多文件应用
+
+        如果建议正好落在上面某一条上，请直接说明你认为这条边界该不该改，我们再聊。
+
+  - type: textarea
+    id: problem
+    attributes:
+      label: 你现在遇到什么问题
+      description: 描述场景，不要直接描述你想要的按钮。场景清楚了，方案可能有更好的。
+      placeholder: |
+        我一周投 20 家，每次面完记面经要点开三层才能到输入框，
+        结果就是面完不想记，过两天全忘了。
+    validations:
+      required: true
+
+  - type: textarea
+    id: idea
+    attributes:
+      label: 你想到的做法
+      placeholder: 面完的那张面试卡上直接有一个「记面经」入口。
+    validations:
+      required: false
+
+  - type: dropdown
+    id: priority
+    attributes:
+      label: 这个问题对你的影响
+      options:
+        - 每天都被卡，影响正常用
+        - 每周会遇到几次
+        - 偶尔，属于锦上添花
+    validations:
+      required: true
+
+  - type: checkboxes
+    id: constraints
+    attributes:
+      label: 请确认你的建议没有违反这些约束
+      options:
+        - label: 不需要联网（不需要请求任何服务器）
+          required: true
+        - label: 不需要用户注册 / 登录
+          required: true
+        - label: 不显著增大单文件产物体积（当前红线 600KB）
+          required: true

@@ -1,0 +1,119 @@
+
+=== 算法断言明细 ===
+PASS  1.1 纯日期按本地零点解析（小时）
+PASS  1.2 纯日期按本地零点解析（日期）
+PASS  1.3 YYYY-MM-DD 不会被 UTC 偏移成前一天
+PASS  1.4 daysBetween 3/05 → 3/08
+PASS  1.5 daysBetween 23:59 → 次日 00:00 记 1 个自然日
+PASS  1.6 startOfDay 归零
+PASS  1.7 isSameDay 跨时刻同一天
+PASS  2.1 今天 00:00 有互动 → 0 天 → null
+PASS  2.2 昨天 00:00 → 1 天 → null
+PASS  2.3 昨天 23:59 → 1 天 → null
+PASS  2.4 恰好 2 天 → null（未到 3 天）
+PASS  2.5 恰好第 3 天当天 → warn（PRD：3 天变黄）
+PASS  2.6 第 6 天 → warn
+PASS  2.7 恰好第 7 天当天 → stale（PRD：7 天变红）
+PASS  2.8 第 30 天 → stale
+PASS  2.9 stale 文案
+PASS  2.10 silenceDays 数值
+PASS  2.11 未来时间不产生负天数
+PASS  3.1 referral 系数
+PASS  3.2 official 系数
+PASS  3.3 未填渠道系数兜底 1
+PASS  3.4 referral warn 阈值 9
+PASS  3.5 referral stale 阈值 21
+PASS  3.6 official warn 阈值 6
+PASS  3.7 official stale 阈值 14
+PASS  3.8 boss stale 阈值 7
+PASS  3.9 referral 沉默 8 天 → 仍 null（黄阈值 3×3=9）
+PASS  3.9b referral 沉默 9 天 → warn
+PASS  3.10 referral 沉默 21 天 → stale
+PASS  3.11 official 沉默 12 天 → warn（阈值 14）
+PASS  3.12 official 沉默 14 天 → stale
+PASS  3.13 official 沉默 6 天 → warn（黄阈值 6）
+PASS  3.14 official 沉默 5 天 → null
+PASS  4.1 override=10 → stale 阈值 10
+PASS  4.2 override=10，沉默 10 天 → stale
+PASS  4.3 override=10，沉默 9 天 → warn
+PASS  4.4 override=10 + referral → 实际 stale 阈值 30（系数仍生效）
+PASS  4.5 override=10 + referral，沉默 10 天 → 实际 warn 而非 stale
+PASS  5.1 interviewing 沉默 5 天 → stale
+PASS  5.2 interviewing 沉默 4 天 → warn
+PASS  5.3 interviewing 沉默 3 天 → warn
+PASS  5.4 interviewing stale 文案为「等结果」
+PASS  6.1 wishlist 8 天 → 超期 8
+PASS  6.2 wishlist 7 天 → 恰好超期
+PASS  6.3 wishlist 6 天 → 未超期
+PASS  6.4 wishlist 不参与 silence
+PASS  6.5 scheduled 不参与 silence
+PASS  6.6 终态 onboarded 沉默 30 天 → null
+PASS  6.7 终态 rejected 沉默 30 天 → null
+PASS  6.8 终态 dropped 沉默 30 天 → null
+PASS  6.9 offer 不参与 silence
+PASS  7.1 无 note 时用 statusChangedAt
+PASS  7.2 取 note 最大值（且忽略他人的 note）
+PASS  7.3 沉默天数按最新 note 算 → 2 天 → null
+PASS  7.4 红卡前置条件：沉默 9 天 → stale
+PASS  7.5 新增 note 后立刻 → null（红色消失）
+PASS  7.6 状态变更后立刻 → null
+PASS  8.1 示例数据 8 条投递
+PASS  8.2 覆盖 7 种状态
+PASS  8.3 漏斗各阶段计数（想投/已投/沟通/约面/面试/Offer）
+PASS  8.4 已投递转化率 7/8
+PASS  8.5 已沟通转化率 5/7
+PASS  8.6 面试中转化率 2/4
+PASS  8.7 Offer 转化率 1/2
+PASS  8.8 沉默超时 2 家（字节/美团）
+PASS  8.9 该跟进 2 家（小红书/阿里）
+PASS  8.10 想投超期 1 家（网易）
+PASS  8.11 今天有 1 场面试（腾讯）
+PASS  8.12 终态不进 todayInterview（快手已挂不算）
+PASS  8.13 待办条目总数 = 2+1+2+1
+PASS  8.14 待办顺序：红 > 蓝 > 黄
+PASS  8.15 stale 按天数降序
+PASS  8.16 BOSS 渠道 3 家投递
+PASS  8.17 BOSS 渠道 2 家有回复（字节已沟通 + 快手已挂但进过面）
+PASS  8.18 内推 1 家 100% 回复
+PASS  8.19 v3 版本 5 条投递
+PASS  8.20 v3 版本 3 条进面（腾讯/快手/华为）
+PASS  9.1 同日重叠 → 1 条冲突
+PASS  9.2 冲突文案含另一场面试
+PASS  9.3 同日但时间不重叠 → 无冲突
+PASS  9.4 已取消的面试不算冲突
+PASS  9.5 不同天不算冲突
+PASS  9.6 撞课 → 1 条提示
+PASS  9.7 撞课文案含课程名
+PASS  9.8 16:00 那场不撞课（课程 15:40 结束）
+PASS  9.9 正好接在课程结束时（15:40）不算重叠
+PASS  9.10 示例数据阿里二面检测到撞课
+PASS  10.1 导出内容可被导入
+PASS  10.2 round-trip 公司数一致
+PASS  10.3 round-trip 投递数一致
+PASS  10.4 round-trip 面试数一致
+PASS  10.5 round-trip note 数一致
+PASS  10.6 round-trip 公司名一致
+PASS  10.7 round-trip 岗位名一致
+PASS  10.8 round-trip 状态一致
+PASS  10.9 round-trip 设置一致（stale 阈值）
+PASS  10.10 round-trip 课程表一致
+PASS  10.11 round-trip 漏斗一致
+PASS  10.12 非法 JSON → 明确报错
+PASS  10.13 非法 status → 明确报错
+PASS  10.14 投递引用不存在的公司 → 拦下
+PASS  10.15 空备份可导入
+PASS  10.16 schemaVersion=2 → 报错
+PASS  11.1 空存储 → 空库 + 无错误
+PASS  11.2 空库默认阈值
+PASS  11.3 损坏 JSON → 不抛异常且降级为空库
+PASS  11.4 损坏 JSON → 有可见错误提示
+PASS  11.5 结构错误 → 降级空库
+PASS  11.6 结构错误 → 有错误提示
+PASS  11.7 写满 → 返回可读错误而不是崩溃
+PASS  11.8 读被禁止 → 降级空库
+PASS  11.9 读被禁止 → 提示隐私设置
+PASS  12.1 已挂但无面试 → 回推到已投递(1)
+PASS  12.2 已挂且有面试 → 回推到已约面(3)
+PASS  12.3 无 appliedAt 且无面试的已放弃 → 0
+
+=== 汇总: 115 PASS / 0 FAIL / 共 115 ===

@@ -1,0 +1,63 @@
+{
+  "experiences": [
+    {
+      "id": "shixiseng-xiaohongshu-fe-intern-2025-03",
+      "companyName": "小红书",
+      "jobTitle": "前端开发实习生（社区）",
+      "round": 1,
+      "interviewDate": "2025-03-08",
+      "result": "pending",
+      "overallNote": "一面 50 分钟，视频面，共享屏幕写代码。题目围绕「信息流」，很贴合业务。两道手写：数组去重并保持顺序（会追问复杂度）、一个简单的虚拟列表。八股问了 CORS 和 key。整体感觉面试官水平很高，问得不刁但很稳，每题都会往深处追一层。目前还没收到消息，按经验一周没动静基本就是备胎了。",
+      "questions": [
+        {
+          "id": "xhs-2025-03-q1-virtual-list",
+          "category": "algo",
+          "difficulty": 3,
+          "text": "写一个最简虚拟列表：给定固定行高的列表，滚动时只渲染可视区域内的行，并说清滚动位置怎么换算。",
+          "myAnswer": "关键是三个量：容器高度、滚动距离 scrollTop、行高 rowHeight。startIndex = floor(scrollTop / rowHeight)，可见行数 = ceil(containerHeight / rowHeight) + buffer，用一个高度为 total * rowHeight 的占位元素撑开滚动条，内部容器用 translateY(startIndex * rowHeight) 定位。",
+          "nextTime": "补两点会被追问的：行高不固定怎么办（用预估 + 实测缓存）、快速滚动时白屏怎么办（加 buffer / 用 content-visibility）。"
+        },
+        {
+          "id": "xhs-2025-03-q2-dedupe",
+          "category": "algo",
+          "difficulty": 1,
+          "text": "数组去重，要求保持原顺序，并说明时间复杂度；如果元素是对象怎么办？",
+          "myAnswer": "基本类型用 Set（O(n)，Set 用 SameValueZero 判断，NaN 也能去掉）。对象的话 Set 只能去引用重复，需要按业务字段做 key（比如 id）再用 Map 保序去重。",
+          "nextTime": "记住 Set 判等的坑：-0 和 +0 视为相同，NaN 视为相同，这是 SameValueZero 不是 Object.is。"
+        },
+        {
+          "id": "xhs-2025-03-q3-cors",
+          "category": "concept",
+          "difficulty": 2,
+          "text": "什么情况下会触发 CORS 预检请求？预检的结果会被缓存吗？",
+          "myAnswer": "非简单请求会预检：方法不是 GET/HEAD/POST、或者 Content-Type 不是三者之一（text/plain、multipart/form-data、application/x-www-form-urlencoded）、或者带了自定义头。预检结果由 Access-Control-Max-Age 决定缓存多久。",
+          "nextTime": "补一句「带 cookie 的请求 Access-Control-Allow-Origin 不能是 *，且必须 Allow-Credentials: true」，这是最常见的线上坑。"
+        },
+        {
+          "id": "xhs-2025-03-q4-react-key",
+          "category": "concept",
+          "difficulty": 2,
+          "text": "React 里 key 有什么用？用 index 当 key 会出什么问题？",
+          "myAnswer": "key 是协调阶段判断「这个节点还是不是原来那个」的依据。用 index 时，列表头部插入会导致所有 key 平移，React 认为是同一个节点但内容变了，于是复用了错误的 DOM 状态（输入框内容、动画、焦点都会错位）。",
+          "nextTime": "举个具体例子：待办列表在最前面插一条，用 index 当 key 时勾选状态会串行 —— 这个例子比讲原理有说服力。"
+        },
+        {
+          "id": "xhs-2025-03-q5-component-wrap",
+          "category": "project",
+          "difficulty": 2,
+          "text": "你封装过组件吗？说一个你封装的组件，它的 API 是怎么设计的，为什么要这么设计。",
+          "myAnswer": "讲了一个带搜索 + 多选 + 分页的下拉选择器。核心设计：受控（value/onChange）+ 请求交给外部（loadOptions），组件只负责交互和状态展示。原因是业务里数据源差异太大，组件内做请求就等于把接口格式写死。",
+          "nextTime": "再补一句「后来发现 90% 的场景只需要默认的远程搜索，于是又加了一个 dataSource 的简写入口」，说明你知道封装要在通用和易用之间找平衡。"
+        },
+        {
+          "id": "xhs-2025-03-q6-infinite-scroll",
+          "category": "project",
+          "difficulty": 2,
+          "text": "信息流的无限滚动怎么判断「该加载下一页」？怎么避免重复请求？",
+          "myAnswer": "用 IntersectionObserver 监听底部哨兵元素，比监听 scroll 更省性能。防重复用三个状态位：loading、hasMore、以及一个游标（下一页的 cursor），请求发起时置 loading，回来再判断是否 hasMore。",
+          "nextTime": "补「快速来回切换 tab 时旧请求回来覆盖新数据」的处理：用请求序号或 AbortController 丢弃过期响应。"
+        }
+      ]
+    }
+  ]
+}

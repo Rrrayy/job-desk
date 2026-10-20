@@ -1,0 +1,30 @@
+# 统一换行符：仓库里只存 LF，检出时也保持 LF。
+# 理由：这个项目的主要交付物是单个 index.html，CI 跑在 ubuntu 上。
+# 如果仓库里混进 CRLF，Windows 用户与 CI 构建出的产物哈希会不一致，
+# 而「可复现构建」是本项目的发布前必验项之一。
+* text=auto eol=lf
+
+# 明确定义为文本的文件（防止 Git 猜错）
+*.ts    text eol=lf
+*.tsx   text eol=lf
+*.js    text eol=lf
+*.mjs   text eol=lf
+*.cjs   text eol=lf
+*.json  text eol=lf
+*.md    text eol=lf
+*.css   text eol=lf
+*.html  text eol=lf
+*.yml   text eol=lf
+*.yaml  text eol=lf
+*.txt   text eol=lf
+
+# 二进制：不许做任何换行符转换
+*.png   binary
+*.jpg   binary
+*.jpeg  binary
+*.gif   binary
+*.ico   binary
+*.webp  binary
+*.zip   binary
+*.woff  binary
+*.woff2 binary

@@ -1,0 +1,118 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="utf-8" />
+    <title>抓取本页</title>
+    <style>
+      :root {
+        --indigo: #4f5bd5;
+        --ink: #1b1f2a;
+        --ink-3: #6b7285;
+        --ink-4: #9aa0b4;
+        --line: #e8eaf0;
+        --green: #1f9d55;
+        --red: #e5484d;
+      }
+
+      * {
+        box-sizing: border-box;
+      }
+
+      body {
+        width: 300px;
+        margin: 0;
+        padding: 12px 14px 14px;
+        font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'PingFang SC', 'Microsoft YaHei', sans-serif;
+        font-size: 13px;
+        line-height: 1.6;
+        color: var(--ink);
+        background: #fff;
+      }
+
+      h1 {
+        margin: 0 0 2px;
+        font-size: 13.5px;
+        font-weight: 600;
+      }
+
+      .sub {
+        margin: 0 0 10px;
+        font-size: 11.5px;
+        color: var(--ink-4);
+      }
+
+      button {
+        width: 100%;
+        border: 0;
+        border-radius: 8px;
+        padding: 8px 10px;
+        font-size: 13px;
+        font-family: inherit;
+        cursor: pointer;
+        background: var(--indigo);
+        color: #fff;
+        font-weight: 600;
+      }
+
+      button:disabled {
+        opacity: 0.55;
+        cursor: default;
+      }
+
+      button.secondary {
+        margin-top: 6px;
+        background: #fff;
+        border: 1px solid var(--line);
+        color: var(--ink);
+        font-weight: 500;
+      }
+
+      .status {
+        margin-top: 9px;
+        font-size: 11.5px;
+        color: var(--ink-3);
+        min-height: 17px;
+      }
+
+      .status.ok {
+        color: var(--green);
+      }
+
+      .status.err {
+        color: var(--red);
+      }
+
+      .privacy {
+        margin-top: 10px;
+        padding-top: 9px;
+        border-top: 1px solid var(--line);
+        font-size: 11px;
+        color: var(--ink-4);
+        line-height: 1.65;
+      }
+
+      code {
+        background: #f4f5f9;
+        border-radius: 4px;
+        padding: 0 3px;
+        font-size: 10.5px;
+      }
+    </style>
+  </head>
+  <body>
+    <h1>抓取本页并复制</h1>
+    <p class="sub">只读当前页面上已经显示出来的内容</p>
+
+    <button id="capture" type="button">抓取本页并复制</button>
+    <button id="copy-visible" class="secondary" type="button">只复制整页可见文本</button>
+
+    <p id="status" class="status"></p>
+
+    <p class="privacy">
+      复制出来的是一段纯文本。回到求职工作台 → 点「⇅ 同步」→ <code>Ctrl+V</code> 粘贴即可。<br />
+      本扩展只申请 <code>activeTab</code> + <code>scripting</code>，不申请任何域名权限，不发起任何网络请求。
+    </p>
+
+    <script src="popup.js"></script>
+  </body>
+</html>

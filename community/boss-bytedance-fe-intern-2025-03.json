@@ -1,0 +1,71 @@
+{
+  "experiences": [
+    {
+      "id": "boss-bytedance-douyin-fe-intern-2025-03",
+      "companyName": "字节跳动",
+      "jobTitle": "抖音前端开发实习生",
+      "round": 1,
+      "interviewDate": "2025-03-04",
+      "result": "failed",
+      "overallNote": "一面 55 分钟，两个部分：手写 20 分钟 + 八股和项目 35 分钟。整体节奏偏快，面试官会顺着你说的话往下追问，答到一半被打断两次，说明铺垫太长。挂点在 Promise.all 的失败策略和事件循环那道题：让我说了输出顺序，又问「如果 await 放在 for 循环里会怎样」，答得含糊。教训是手写题不要只写 happy path，先把边界问清楚再动手。",
+      "questions": [
+        {
+          "id": "bd-2025-03-q1-promise-all",
+          "category": "algo",
+          "difficulty": 2,
+          "text": "手写 Promise.all，要求：任意一个失败立刻 reject，并且要能说清「其他没结束的 Promise 后来 reject 了会怎样」。",
+          "myAnswer": "按序收集结果，用计数器判断是否全部完成；失败时直接 reject。追问「其他 Promise 后 reject」时我答了「不会触发未捕获异常」，面试官说要看有没有挂 catch —— 实际上 Promise.all 内部对每个 Promise 都挂了 then 的两个回调，所以晚到的 reject 会被内部 handler 吃掉，不会 unhandledrejection。这块我当时答错了。",
+          "nextTime": "手写题先问清：空数组返回什么？传入非 Promise 值怎么办？失败后其他 Promise 的 reject 去哪了？"
+        },
+        {
+          "id": "bd-2025-03-q2-event-loop",
+          "category": "concept",
+          "difficulty": 2,
+          "text": "给一段同时有 setTimeout、Promise.then、async/await 的代码，说出输出顺序；再问 await 写在 for 循环里和 Promise.all 的差别。",
+          "myAnswer": "输出顺序说对了（同步 → 微任务 → 宏任务）。但「await 在 for 循环里」只说了「会串行」，没说出「每一轮都会让出一次事件循环，总耗时是各次之和」，也没提到想要并发应该先 map 出 Promise 数组再 Promise.all。",
+          "nextTime": "准备一个具体数字的例子：三个各 100ms 的请求，串行 300ms、并发 100ms，用数字讲比用概念讲清楚。"
+        },
+        {
+          "id": "bd-2025-03-q3-useeffect-deps",
+          "category": "concept",
+          "difficulty": 2,
+          "text": "useEffect 的依赖数组传 [] 和完全不传，行为上有什么区别？分别在什么场景下用？",
+          "myAnswer": "不传 = 每次渲染后都执行（清理函数也在每次执行前跑）；传 [] = 只在挂载后执行一次、卸载时清理一次。补充说了 StrictMode 下开发环境会执行两次，用来暴露没有正确清理的副作用。",
+          "nextTime": "再补一句「依赖数组是拿 Object.is 逐项比较，所以对象/函数每次渲染都是新引用，会导致effect 反复触发」。"
+        },
+        {
+          "id": "bd-2025-03-q4-project-hardest",
+          "category": "project",
+          "difficulty": 2,
+          "text": "讲一个你项目里最难的技术问题：怎么发现的、怎么定位的、最后怎么解决的？",
+          "myAnswer": "讲了列表页滚动卡顿：先看 Performance 面板确认是长任务，再用 React Profiler 发现整表重渲染，最后拆成行级 memo + 稳定 key + 虚拟列表。定位过程说得比较清楚，但没提「改完怎么量化验证」，被追问了一句。",
+          "nextTime": "每个项目准备一个数字：FPS 从多少到多少、首屏从多少 ms 到多少 ms。没有数字的优化等于没做。"
+        },
+        {
+          "id": "bd-2025-03-q5-url-to-render",
+          "category": "concept",
+          "difficulty": 2,
+          "text": "从输入 URL 到页面渲染完成，中间发生了什么？尽量按阶段说。",
+          "myAnswer": "DNS → TCP/TLS → 请求 → 响应 → 解析 HTML 构建 DOM → 遇到 CSS 阻塞渲染、JS 阻塞解析 → 构建 CSSOM → 合并渲染树 → 布局 → 绘制 → 合成。答得比较完整，但漏了「预加载扫描器会提前发现资源」这一层。",
+          "nextTime": "这条八股用「阻塞」两个字串起来讲：什么阻塞解析、什么阻塞渲染、什么阻塞首屏，比背流程更有信息量。"
+        },
+        {
+          "id": "bd-2025-03-q6-why-douyin",
+          "category": "behavior",
+          "difficulty": 1,
+          "text": "为什么想做抖音这个方向？你对这个团队了解多少？",
+          "myAnswer": "答得比较空：说了「用户量大、技术挑战多」。面试官追问「你平时用抖音时注意过哪些技术细节」，我只答了视频预加载，没展开。",
+          "nextTime": "准备一个具体的产品观察：比如「刷到第 3 条时下一条已经预加载好了，切走时首帧几乎无感」，再说这背后可能需要什么。"
+        },
+        {
+          "id": "bd-2025-03-q7-reverse",
+          "category": "reverse",
+          "difficulty": 1,
+          "text": "你有什么想问我的？",
+          "myAnswer": "问了「实习生进来一般做什么」和「团队现在最大的技术债是什么」。第二个问题面试官明显愿意聊，多说了几分钟，可以算加分。",
+          "nextTime": "把「最大技术债」这个问题固定下来，几乎每场都能用，而且能让面试官说真话。"
+        }
+      ]
+    }
+  ]
+}

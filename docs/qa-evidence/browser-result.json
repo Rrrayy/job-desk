@@ -1,0 +1,593 @@
+{
+  "checks": [
+    {
+      "name": "S1-1 首屏出现欢迎层",
+      "ok": true,
+      "detail": "",
+      "shot": null
+    },
+    {
+      "name": "S1-2 欢迎层有两个入口按钮",
+      "ok": true,
+      "detail": "[\"加载示例数据看看\",\"我要自己记第一家\"]",
+      "shot": null
+    },
+    {
+      "name": "S1-3 按钮文案正确",
+      "ok": true,
+      "detail": "[\"加载示例数据看看\",\"我要自己记第一家\"]",
+      "shot": null
+    },
+    {
+      "name": "S1-4 加载示例后 8 条投递",
+      "ok": true,
+      "detail": "实际 8",
+      "shot": null
+    },
+    {
+      "name": "S1-5 8 家公司",
+      "ok": true,
+      "detail": "实际 8",
+      "shot": null
+    },
+    {
+      "name": "S1-6 覆盖 7 种状态",
+      "ok": true,
+      "detail": "实际 7",
+      "shot": null
+    },
+    {
+      "name": "S1-7 欢迎层已关闭",
+      "ok": true,
+      "detail": "",
+      "shot": null
+    },
+    {
+      "name": "S1-8 漏斗有内容 8/7/5/4/2/1",
+      "ok": true,
+      "detail": "[\"8\",\"7\",\"5\",\"4\",\"2\",\"1\"]",
+      "shot": null
+    },
+    {
+      "name": "S1-9 看板 6 列计数 1/2/1/1/1/1",
+      "ok": true,
+      "detail": "[\"1\",\"2\",\"1\",\"1\",\"1\",\"1\"]",
+      "shot": null
+    },
+    {
+      "name": "S1-10 看板卡片数 = 7（进行中 6 列合计）",
+      "ok": true,
+      "detail": "实际 7",
+      "shot": null
+    },
+    {
+      "name": "S1-11 已结束列计数 1（只挂了快手）",
+      "ok": true,
+      "detail": "{\"name\":\"已结束 ▸\",\"count\":\"1\",\"cards\":0}",
+      "shot": null
+    },
+    {
+      "name": "S1-12 展开已结束后能看到快手（终态折叠列可用）",
+      "ok": true,
+      "detail": "{\"cards\":1,\"text\":\"已结束 ▾1快手商业化 前端实习生⋯北京 · BOSS · 220/天已挂3 天\"}",
+      "shot": null
+    },
+    {
+      "name": "S2-1 拖拽落列后出现 3 字段轻面板",
+      "ok": true,
+      "detail": "{\"panel\":true,\"panelText\":\"已改为 已沟通跳过 Esc\",\"toast\":\"已更新 · 已投递 → 已沟通\",\"hasUndo\":true,\"fields\":[\"日期\",\"轮次\",\"备注\"]}",
+      "shot": null
+    },
+    {
+      "name": "S2-2 轻面板提示「已改为 已沟通」",
+      "ok": true,
+      "detail": "已改为 已沟通跳过 Esc",
+      "shot": null
+    },
+    {
+      "name": "S2-3 轻面板就是 3 个字段（日期/轮次/备注）",
+      "ok": true,
+      "detail": "[\"日期\",\"轮次\",\"备注\"]",
+      "shot": null
+    },
+    {
+      "name": "S2-4 状态变更 toast 带撤销按钮",
+      "ok": true,
+      "detail": "已更新 · 已投递 → 已沟通",
+      "shot": null
+    },
+    {
+      "name": "S2-5 Esc 关闭轻面板",
+      "ok": true,
+      "detail": "",
+      "shot": null
+    },
+    {
+      "name": "S2-6 状态已生效 = chatting（Esc 跳过后仍生效）",
+      "ok": true,
+      "detail": "chatting",
+      "shot": null
+    },
+    {
+      "name": "S2-7 列计数随状态变化 已投递 1 / 已沟通 2",
+      "ok": true,
+      "detail": "[\"1\",\"1\",\"2\",\"1\",\"1\",\"1\"]",
+      "shot": null
+    },
+    {
+      "name": "S2-8 自动写入一条 system 时间线",
+      "ok": true,
+      "detail": "[\"状态：已投递 → 已沟通\"]",
+      "shot": null
+    },
+    {
+      "name": "S2-9 note 总数 +1",
+      "ok": true,
+      "detail": "11 → 12",
+      "shot": null
+    },
+    {
+      "name": "S2-10 撤销按钮可点",
+      "ok": true,
+      "detail": "",
+      "shot": null
+    },
+    {
+      "name": "S2-11 撤销后状态回滚到 applied",
+      "ok": true,
+      "detail": "applied",
+      "shot": null
+    },
+    {
+      "name": "S2-12 撤销后 system 时间线被清掉",
+      "ok": true,
+      "detail": "{\"status\":\"applied\",\"notes\":11,\"sysCount\":0,\"toast\":\"已撤销，状态和时间线都回到原样\"}",
+      "shot": null
+    },
+    {
+      "name": "S2-13 撤销后 note 总数复原",
+      "ok": true,
+      "detail": "11 vs 11",
+      "shot": null
+    },
+    {
+      "name": "S3-1 「⋯」菜单可打开",
+      "ok": true,
+      "detail": "{\"menuOpen\":true,\"items\":[\"想投\",\"已投递\",\"已沟通\",\"已约面\",\"面试中\",\"已发 Offer\",\"已入职\",\"已挂\",\"已放弃\"]}",
+      "shot": null
+    },
+    {
+      "name": "S3-2 菜单含全部 9 种状态",
+      "ok": true,
+      "detail": "[\"想投\",\"已投递\",\"已沟通\",\"已约面\",\"面试中\",\"已发 Offer\",\"已入职\",\"已挂\",\"已放弃\"]",
+      "shot": null
+    },
+    {
+      "name": "S3-3 菜单点选后状态变为 rejected",
+      "ok": true,
+      "detail": "rejected",
+      "shot": null
+    },
+    {
+      "name": "S3-4 点选后菜单自动收起",
+      "ok": true,
+      "detail": "",
+      "shot": null
+    },
+    {
+      "name": "S3-5 点选路径同样可撤销（回到 applied）",
+      "ok": true,
+      "detail": "applied",
+      "shot": null
+    },
+    {
+      "name": "S4-1 ＋记一家 浮层打开",
+      "ok": true,
+      "detail": "",
+      "shot": null
+    },
+    {
+      "name": "S4-2 空表单时保存按钮禁用",
+      "ok": true,
+      "detail": "{\"open\":true,\"disabled\":true}",
+      "shot": null
+    },
+    {
+      "name": "S4-3 公司名回车后焦点跳到岗位名",
+      "ok": true,
+      "detail": "",
+      "shot": null
+    },
+    {
+      "name": "S4-4 回车即保存（+1 条）",
+      "ok": true,
+      "detail": "8 → 9",
+      "shot": null
+    },
+    {
+      "name": "S4-5 自动建公司档案",
+      "ok": true,
+      "detail": "",
+      "shot": null
+    },
+    {
+      "name": "S4-6 保存后浮层仍打开（可连续记）",
+      "ok": true,
+      "detail": "\"+1，继续记下一家\"",
+      "shot": null
+    },
+    {
+      "name": "S4-7 新记录默认状态符合 PRD（应为 wishlist）",
+      "ok": false,
+      "detail": "实际落在 applied",
+      "shot": null
+    },
+    {
+      "name": "S4-8 缺公司名时 Enter 不保存",
+      "ok": true,
+      "detail": "9 vs 9",
+      "shot": null
+    },
+    {
+      "name": "S4-9 缺公司名时保存按钮禁用 + 提示",
+      "ok": true,
+      "detail": "{\"count\":9,\"disabled\":true,\"hint\":\"填公司名和岗位名就能保存\"}",
+      "shot": null
+    },
+    {
+      "name": "S5-1 详情抽屉打开",
+      "ok": true,
+      "detail": "",
+      "shot": null
+    },
+    {
+      "name": "S5-2 标题为公司 · 岗位",
+      "ok": true,
+      "detail": "美团 · 到店事业群 前端实习生",
+      "shot": null
+    },
+    {
+      "name": "S5-3 红色沉默标记存在",
+      "ok": true,
+      "detail": "已沉默 10 天",
+      "shot": null
+    },
+    {
+      "name": "S5-4 备注已写入时间线",
+      "ok": true,
+      "detail": "1 → 2",
+      "shot": null
+    },
+    {
+      "name": "S5-5 记一条后红色沉默标记立刻消失",
+      "ok": true,
+      "detail": "(空)",
+      "shot": null
+    },
+    {
+      "name": "S5-5b 催一下自动记一条 followup",
+      "ok": true,
+      "detail": "0 → 1",
+      "shot": null
+    },
+    {
+      "name": "S5-5c 话术生成且含公司名",
+      "ok": true,
+      "detail": "您好，上周投递了美团的「到店事业群 前端实习生」，想再确认下进度～我这边每周可以",
+      "shot": null
+    },
+    {
+      "name": "S5-6 删除需要二次确认（出现确认块）",
+      "ok": true,
+      "detail": "删掉「到店事业群 前端实习生」这条投递？时间线和面试记录会一起消失，不能撤销。确认删除取消",
+      "shot": null
+    },
+    {
+      "name": "S5-7 取消删除后回到初始态且数据未动",
+      "ok": true,
+      "detail": "{\"noticeGone\":true,\"backBtn\":true,\"count\":9}",
+      "shot": null
+    },
+    {
+      "name": "S5-8 确认删除后记录消失（连带时间线/面试）",
+      "ok": true,
+      "detail": "9 → 8",
+      "shot": null
+    },
+    {
+      "name": "S5-9 删除时级联清掉该投递的时间线与面试",
+      "ok": true,
+      "detail": "{\"count\":8,\"drawerGone\":true,\"notesLeft\":0,\"interviewsLeft\":0}",
+      "shot": null
+    },
+    {
+      "name": "S5-10 重新加载示例数据恢复 8 条基线",
+      "ok": true,
+      "detail": "8",
+      "shot": null
+    },
+    {
+      "name": "S5b-1 已挂记录展示了「挂在第几轮」字段",
+      "ok": true,
+      "detail": "{\"title\":\"快手 · 商业化 前端实习生\",\"hasRoundField\":true,\"hasReasonField\":true,\"roundValue\":\"\",\"chip\":\"已挂\"}",
+      "shot": null
+    },
+    {
+      "name": "S5b-2 已挂记录展示了「挂的原因」字段",
+      "ok": true,
+      "detail": "{\"title\":\"快手 · 商业化 前端实习生\",\"hasRoundField\":true,\"hasReasonField\":true,\"roundValue\":\"\",\"chip\":\"已挂\"}",
+      "shot": null
+    },
+    {
+      "name": "S5b-3 已挂记录状态 chip 正确",
+      "ok": true,
+      "detail": "已挂",
+      "shot": null
+    },
+    {
+      "name": "S5c-1 勾掉一条红色待办后待办条数字减 1",
+      "ok": true,
+      "detail": "2 → 1",
+      "shot": null
+    },
+    {
+      "name": "S5c-2 勾掉后该条从「今天要做的」列表消失",
+      "ok": true,
+      "detail": "美团 · 到店事业群 前端实习生 仍在列表里",
+      "shot": null
+    },
+    {
+      "name": "S6-1 待办条沉默家数 = 看板红卡数",
+      "ok": true,
+      "detail": "待办条 2 / 看板 2",
+      "shot": null
+    },
+    {
+      "name": "S6-2 待办条该跟进家数 = 看板黄卡数",
+      "ok": true,
+      "detail": "待办条 2 / 看板 2",
+      "shot": null
+    },
+    {
+      "name": "S6-3 列表红行数 = 待办条沉默家数",
+      "ok": true,
+      "detail": "列表 2 / 待办条 2",
+      "shot": null
+    },
+    {
+      "name": "S6-4 列表黄格数 = 待办条该跟进家数",
+      "ok": true,
+      "detail": "列表 2 / 待办条 2",
+      "shot": null
+    },
+    {
+      "name": "S6-5 列表总行数 = 8",
+      "ok": true,
+      "detail": "实际 8",
+      "shot": null
+    },
+    {
+      "name": "S6-6 今天待办条共 5 个 pill（沉默/面试/待记结果/跟进/想投）",
+      "ok": true,
+      "detail": "[\"2 家已沉默最长 10 天\",\"1 场待记结果\",\"2 家该跟进了\",\"1 家还想投吗？\"]",
+      "shot": null
+    },
+    {
+      "name": "S7-1 点一次「沉默天数」转升序",
+      "ok": true,
+      "detail": "[4,6,9,10]",
+      "shot": null
+    },
+    {
+      "name": "S7-2 再点一次转降序",
+      "ok": true,
+      "detail": "[10,9,6,4]",
+      "shot": null
+    },
+    {
+      "name": "S7-3 状态筛选「已挂」只剩 1 行快手",
+      "ok": true,
+      "detail": "{\"rows\":1,\"companies\":[\"快手\"]}",
+      "shot": null
+    },
+    {
+      "name": "S7-4 渠道筛选「内推」只剩腾讯",
+      "ok": true,
+      "detail": "{\"rows\":1,\"companies\":[\"腾讯\"]}",
+      "shot": null
+    },
+    {
+      "name": "S7-5 关键词搜索「阿里」命中 1 行",
+      "ok": true,
+      "detail": "{\"rows\":1,\"companies\":[\"阿里\"]}",
+      "shot": null
+    },
+    {
+      "name": "S7-6 筛选无结果时给引导而不是空白",
+      "ok": true,
+      "detail": "{\"rows\":0,\"quiet\":true,\"text\":\"这个筛选下没有公司。\",\"btn\":true}",
+      "shot": null
+    },
+    {
+      "name": "S8-1 今天的格子标出腾讯那场面试",
+      "ok": true,
+      "detail": "[\"15:00 腾讯\"]",
+      "shot": null
+    },
+    {
+      "name": "S8-2 月份副标题给出面试场次",
+      "ok": true,
+      "detail": "7 场面试 · ⚠ 1 处时间冲突",
+      "shot": null
+    },
+    {
+      "name": "S8-3 有冲突时显示「N 处时间冲突」",
+      "ok": true,
+      "detail": "7 场面试 · ⚠ 1 处时间冲突",
+      "shot": null
+    },
+    {
+      "name": "S8-4 冲突日当天显示「⚠ 时间冲突」并说明撞的是哪门课",
+      "ok": true,
+      "detail": "\"⚠ 时间冲突与《计算机网络》冲突（周四 14:00-15:40）\"",
+      "shot": null
+    },
+    {
+      "name": "S9-1 复盘漏斗与今日一致 8/7/5/4/2/1",
+      "ok": true,
+      "detail": "[\"8\",\"7\",\"5\",\"4\",\"2\",\"1\"]",
+      "shot": null
+    },
+    {
+      "name": "S9-2 漏斗有转化率文案",
+      "ok": true,
+      "detail": "[\"起点\",\"转化 88%\",\"转化 71%\",\"转化 80%\",\"转化 50%\",\"转化 50%\"]",
+      "shot": null
+    },
+    {
+      "name": "S9-3 渠道表 BOSS 3 家 2 家回复",
+      "ok": true,
+      "detail": "{\"label\":\"BOSS直聘\",\"value\":\"67%2/3\"}",
+      "shot": null
+    },
+    {
+      "name": "S10-1 设置抽屉可打开",
+      "ok": true,
+      "detail": "",
+      "shot": null
+    },
+    {
+      "name": "S10-2 改阈值后设置已落库",
+      "ok": true,
+      "detail": "{\"cards\":3,\"setting\":1} / 输入框索引 1",
+      "shot": null
+    },
+    {
+      "name": "S10-3 阈值调小后看板红卡立刻变多",
+      "ok": true,
+      "detail": "2 → 3",
+      "shot": null
+    },
+    {
+      "name": "S10-4 阈值可改回 7",
+      "ok": true,
+      "detail": "7",
+      "shot": null
+    },
+    {
+      "name": "S10-4 导出 JSON 触发下载",
+      "ok": true,
+      "detail": "[\"求职工作台-备份-2026-10-20.json\"]",
+      "shot": null
+    },
+    {
+      "name": "S10-5 导出内容合法且含 8 条投递",
+      "ok": true,
+      "detail": "8",
+      "shot": null
+    },
+    {
+      "name": "S10-6 导出含 settings / notes / interviews",
+      "ok": true,
+      "detail": "",
+      "shot": null
+    },
+    {
+      "name": "S10-7 非法 JSON 导入有明确报错",
+      "ok": true,
+      "detail": "导入失败第 1 条投递缺少 id知道了",
+      "shot": null
+    },
+    {
+      "name": "S11-1 空数据下 5 个视图都有引导文案（非白屏）",
+      "ok": true,
+      "detail": "[{\"v\":\"今日\",\"guided\":true,\"hasButton\":true,\"text\":\"还没有记录。\"},{\"v\":\"看板\",\"guided\":true,\"hasButton\":true,\"text\":\"看板还是空的。\"},{\"v\":\"列表\",\"guided\":true,\"hasButton\":true,\"text\":\"还没有任何投递记录。\"},{\"v\":\"日历\",\"guided\":true,\"hasButton\":false,\"text\":\"这天没有面试。\"},{\"v\":\"复盘\",\"guided\":true,\"hasButton\":true,\"text\":\"先有数据，才有复盘。\"}]",
+      "shot": null
+    },
+    {
+      "name": "S11-2 空态带「下一步」按钮（除日历外）",
+      "ok": true,
+      "detail": "[\"日历\"]",
+      "shot": null
+    },
+    {
+      "name": "S12-1 375px 下页面无横向溢出",
+      "ok": true,
+      "detail": "{\"scrollWidth\":375,\"clientWidth\":375,\"bodyScroll\":375}",
+      "shot": null
+    },
+    {
+      "name": "S12-2 375px 下浮层不超出视口",
+      "ok": true,
+      "detail": "{\"width\":335,\"win\":375}",
+      "shot": null
+    },
+    {
+      "name": "S12-3 375px 下详情抽屉占满屏宽且不溢出",
+      "ok": true,
+      "detail": "{\"width\":375,\"win\":375,\"scrollWidth\":375}",
+      "shot": null
+    },
+    {
+      "name": "S13-1 刷新后保留当前视图",
+      "ok": true,
+      "detail": "列表 → 列表",
+      "shot": null
+    },
+    {
+      "name": "S13-2 刷新后数据仍在（8 条，列表 8 行）",
+      "ok": true,
+      "detail": "{\"view\":\"列表\",\"rows\":8,\"apps\":8,\"welcome\":false}",
+      "shot": null
+    },
+    {
+      "name": "S13-3 刷新后不再弹欢迎层",
+      "ok": true,
+      "detail": "",
+      "shot": null
+    },
+    {
+      "name": "S15-1 落列面板里记的备注确实写入了",
+      "ok": true,
+      "detail": "11 → 13（system + memo）",
+      "shot": null
+    },
+    {
+      "name": "S15-2 撤销只回滚状态，不应连带删掉撤销后写的备注",
+      "ok": false,
+      "detail": "{\"notes\":11,\"status\":\"applied\",\"keptNote\":false}",
+      "shot": null
+    },
+    {
+      "name": "S16-1 N 键打开「记一家」",
+      "ok": true,
+      "detail": "",
+      "shot": null
+    },
+    {
+      "name": "S16-2 Esc 关闭浮层",
+      "ok": true,
+      "detail": "",
+      "shot": null
+    },
+    {
+      "name": "S16-3 数字键 3 切到列表视图",
+      "ok": true,
+      "detail": "列表",
+      "shot": null
+    },
+    {
+      "name": "S16-4 Esc 关闭详情抽屉",
+      "ok": true,
+      "detail": "{\"drawer\":false}",
+      "shot": null
+    },
+    {
+      "name": "S14-1 全流程无 JS 运行时异常",
+      "ok": true,
+      "detail": "[]",
+      "shot": null
+    }
+  ],
+  "errorTexts": []
+}
