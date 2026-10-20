@@ -485,6 +485,7 @@ export function exportJSON(db: DB): string {
     experiences: db.experiences,
     questions: db.questions,
     staging: db.staging,
+    events: db.events,
   };
   return JSON.stringify(payload, null, 2);
 }

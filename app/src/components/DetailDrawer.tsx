@@ -91,8 +91,8 @@ function DetailBody({ api, app }: { api: AppApi; app: Application }) {
       format: formFormat,
       result: 'pending',
     };
-    return findConflicts(draft, db.interviews, db.applications, db.settings);
-  }, [formOpen, formAt, formRound, formFormat, app.id, db.interviews, db.applications, db.settings]);
+    return findConflicts(draft, db.interviews, db.applications, db.events);
+  }, [formOpen, formAt, formRound, formFormat, app.id, db.interviews, db.applications, db.events]);
 
   const update = (patch: Partial<Application>): void => {
     api.updateApplication(app.id, patch);
@@ -755,8 +755,8 @@ function statusLabelOf(status: Status): string {
 /** 单场面试卡片：结果、准备清单、备注、删除 */function InterviewCard({ api, interview }: { api: AppApi; interview: Interview }) {
   const { db } = api;
   const conflicts = useMemo(
-    () => findConflicts(interview, db.interviews, db.applications, db.settings),
-    [interview, db.interviews, db.applications, db.settings],
+    () => findConflicts(interview, db.interviews, db.applications, db.events),
+    [interview, db.interviews, db.applications, db.events],
   );
   const checklist = interview.prepChecklist || [];
   const doneCount = checklist.filter((item) => item.done).length;

@@ -72,3 +72,9 @@ tmp/
 
 # ---------- 发布资产（可随时用 npm run release:pack 重新生成）----------
 release/
+
+# ---------- 本地验证脚本的一次性产物（截图 profile / 冒烟输出） ----------
+app/shots-readme/
+app/smoke-v04/
+app/shots-tmp/
+app/shots-*/

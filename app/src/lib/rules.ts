@@ -14,6 +14,7 @@
 import type {
   AppSettings,
   Application,
+  CalendarEvent,
   Channel,
   Company,
   DB,
@@ -35,7 +36,6 @@ import {
   timeToMinutes,
   toDateISO,
   weekdayOf,
-  WEEKDAY_CN,
 } from './date';
 
 /* ---------------------------------------------------------------- 常量表 */
@@ -886,14 +886,33 @@ function overlap(a: Interval, b: Interval): boolean {
 }
 
 /**
- * 面试时间冲突检测：同一天的其他面试 + 每周固定课程。
- * 冲突只警告，不阻止保存（日常实习的核心矛盾就是和上课打架）。
+ * 某天落地的日程：weekly 的按周几匹配，非 weekly 的按日期匹配。
+ * 日历月格与侧栏都用它，口径只有这一份。
+ */
+export function eventsOnDate(events: CalendarEvent[], date: Date): CalendarEvent[] {
+  const weekday = weekdayOf(date);
+  const iso = toDateISO(date);
+  return events.filter((event) => (event.weekly ? event.weekday === weekday : event.date === iso));
+}
+
+function eventInterval(event: CalendarEvent): Interval {
+  return { start: timeToMinutes(event.start), end: timeToMinutes(event.end) };
+}
+
+/** 日程是否落在某天（供冲突检测用，与 eventsOnDate 同口径） */
+function eventOnDate(event: CalendarEvent, date: Date): boolean {
+  return event.weekly ? event.weekday === weekdayOf(date) : event.date === toDateISO(date);
+}
+
+/**
+ * 面试时间冲突检测：同一天的其他面试 + 日历日程（课表导入的课、手动记的事）。
+ * 冲突只警告，不阻止保存（日常实习的核心矛盾就是和上课/急事打架）。
  */
 export function findConflicts(
   target: Interview,
   interviews: Interview[],
   applications: Application[],
-  settings: AppSettings,
+  events: CalendarEvent[] = [],
 ): string[] {
   const messages: string[] = [];
   const targetAt = parseFlexible(target.scheduledAt);
@@ -915,17 +934,62 @@ export function findConflicts(
     messages.push(`与 ${fmtTime(other.scheduledAt)} 的另一场面试时间重叠（${name}）`);
   }
 
-  // 2) 与每周固定课程冲突
-  const weekday = weekdayOf(targetAt);
-  for (const slot of settings.courseSlots) {
-    if (slot.weekday !== weekday) continue;
-    const startMin = timeToMinutes(slot.start);
-    const endMin = timeToMinutes(slot.end);
-    if (!Number.isFinite(startMin) || !Number.isFinite(endMin)) continue;
-    if (!overlap(targetInterval, { start: startMin, end: endMin })) continue;
+  // 2) 与日历日程冲突（课 / 任何事）
+  for (const event of events) {
+    if (!eventOnDate(event, targetAt)) continue;
+    if (!overlap(targetInterval, eventInterval(event))) continue;
+    messages.push(`与日程《${event.title || '未命名'}》冲突（${event.start}-${event.end}）`);
+  }
+
+  return messages;
+}
+
+/**
+ * 一条日程的冲突检测：与面试撞、与其他日程撞（同一天 + 时间重叠）。
+ * 日程之间的冲突也要报 —— 现实里「急事撞急事」同样致命。
+ */
+export function findEventConflicts(
+  target: CalendarEvent,
+  events: CalendarEvent[],
+  interviews: Interview[],
+  applications: Application[],
+): string[] {
+  const messages: string[] = [];
+  const appIndex = new Map<string, Application>();
+  for (const app of applications) appIndex.set(app.id, app);
+
+  const targetDates = target.weekly ? null : target.date;
+  const matchesDay = (date: Date): boolean =>
+    target.weekly ? target.weekday === weekdayOf(date) : targetDates === toDateISO(date);
+
+  for (const interview of interviews) {
+    if (interview.result === 'cancelled') continue;
+    const at = parseFlexible(interview.scheduledAt);
+    if (isNaN(at.getTime())) continue;
+    if (!matchesDay(at)) continue;
+    if (!overlap(eventInterval(target), intervalOf(interview))) continue;
+    const app = appIndex.get(interview.applicationId);
     messages.push(
-      `与《${slot.name || '课程'}》冲突（${WEEKDAY_CN[slot.weekday - 1]} ${slot.start}-${slot.end}）`,
+      `与 ${fmtTime(interview.scheduledAt)} 的面试重叠（${app ? app.jobTitle : '某场面试'}）`,
     );
+  }
+
+  for (const other of events) {
+    if (other.id === target.id) continue;
+    if (other.weekly !== target.weekly) {
+      // 一边是「每周固定」一边是「某天」：只有非 weekly 那天的周几匹配才算
+      const fixed = other.weekly ? other : target;
+      const dated = other.weekly ? target : other;
+      if (dated.weekly || !dated.date) continue;
+      const date = parseFlexible(`${dated.date}T12:00:00`);
+      if (isNaN(date.getTime()) || fixed.weekday !== weekdayOf(date)) continue;
+    } else if (target.weekly) {
+      if (other.weekday !== target.weekday) continue;
+    } else {
+      if (!other.date || other.date !== target.date) continue;
+    }
+    if (!overlap(eventInterval(target), eventInterval(other))) continue;
+    messages.push(`与日程《${other.title || '未命名'}》冲突（${other.start}-${other.end}）`);
   }
 
   return messages;

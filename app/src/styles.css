@@ -1797,6 +1797,82 @@ ol {
   margin-top: 8px;
 }
 
+/* ---------------- v0.4：日程（课 / 记一件事）与导入面板 ---------------- */
+
+.cal__chip--event {
+  color: #1c6ea8;
+  background: #e7f2fb;
+}
+
+.cal__event-item {
+  display: flex;
+  align-items: baseline;
+  gap: 6px;
+  flex-wrap: wrap;
+  font-size: 11.5px;
+  color: #1c6ea8;
+  padding: 2px 0;
+}
+
+.cal__event-item .cal__item-conflict {
+  flex-basis: 100%;
+}
+
+.cal__event-tag {
+  flex: none;
+  font-size: 10px;
+  font-weight: 600;
+  color: #1c6ea8;
+  background: #e7f2fb;
+  border-radius: 4px;
+  padding: 1px 5px;
+}
+
+.cal__event-tag--course {
+  color: #5c43b5;
+  background: #f0ecfd;
+}
+
+.cal__event-text {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.cal__event-del {
+  flex: none;
+}
+
+.cal__import {
+  border: 1px dashed var(--line-strong, #d4d8e4);
+  border-radius: var(--radius);
+  padding: 10px 12px;
+  margin-bottom: 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.cal__import-text {
+  resize: vertical;
+  font-family: var(--mono, monospace);
+  font-size: 12px;
+  line-height: 1.6;
+}
+
+.cal__import-times {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.cal__import-skip {
+  font-size: 11px;
+  color: var(--ink-3);
+}
+
 /* ------------------------------------------------------------ 复盘 */
 
 .insight-grid {

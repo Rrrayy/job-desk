@@ -34,6 +34,7 @@ import type {
   Question,
   Status,
 } from './types';
+import type { NewCalendarEventInput, ParsedCourseInput } from './lib/api';
 import {
   emptyDB,
   exportJSON,
@@ -888,14 +889,70 @@ export default function App() {
   }, [showToast]);
 
   const clearAllData = useCallback((): void => {
+    // 「回到初始状态」：回到第一次打开的样子 —— 空库 + 出厂设置 + 欢迎页重现。
+    // 课表/日程也在 settings/events 里，一并清掉；欢迎页重新弹出，用户自己选下一步。
     const base = emptyDB();
-    const keepSettings = dbRef.current.settings;
-    const cleared: DB = { ...base, settings: { ...keepSettings } };
-    dbRef.current = cleared;
-    setDb(cleared);
+    dbRef.current = base;
+    setDb(base);
     setSelectedId(null);
-    showToast('数据已清空（设置和课程表保留）');
+    setWelcomeDismissed(false);
+    setViewState('today');
+    showToast('已回到初始状态：全部数据与设置已清空');
   }, [showToast]);
+
+  /* ------------------------------------------------------------ 日历日程（v0.4） */
+
+  const addCalendarEvent = useCallback(
+    (input: NewCalendarEventInput): void => {
+      mutate((draft) => {
+        draft.events.push({
+          id: uid('ev'),
+          title: input.title.trim() || '日程',
+          kind: input.kind ?? (input.weekly ? 'course' : 'personal'),
+          start: input.start,
+          end: input.end,
+          weekly: Boolean(input.weekly),
+          weekday: input.weekly ? input.weekday : undefined,
+          date: input.weekly ? undefined : input.date,
+        });
+      });
+    },
+    [mutate],
+  );
+
+  const deleteCalendarEvent = useCallback(
+    (id: string): void => {
+      mutate((draft) => {
+        draft.events = draft.events.filter((event) => event.id !== id);
+      });
+    },
+    [mutate],
+  );
+
+  const importCourseEvents = useCallback(
+    (courses: ParsedCourseInput[]): number => {
+      if (courses.length === 0) return 0;
+      let count = 0;
+      mutate((draft) => {
+        // 替换语义：同一份课表重复导入不会翻倍；手动记的事不动
+        draft.events = draft.events.filter((event) => !(event.kind === 'course' && event.weekly));
+        for (const course of courses) {
+          draft.events.push({
+            id: uid('ev'),
+            title: course.name,
+            kind: 'course',
+            start: course.start,
+            end: course.end,
+            weekly: true,
+            weekday: course.weekday,
+          });
+          count += 1;
+        }
+      });
+      return count;
+    },
+    [mutate],
+  );
 
   const exportData = useCallback((): void => {
     try {
@@ -1065,6 +1122,9 @@ export default function App() {
     updateSettings,
     loadSampleData,
     clearAllData,
+    addCalendarEvent,
+    deleteCalendarEvent,
+    importCourseEvents,
     exportData,
     exportCsv,
     exportIcs,

@@ -165,8 +165,27 @@ export interface Interview {
   notes?: string;
 }
 
-/** v2：note 的来源追踪（只有 type==='sync' 才有） */
-export interface NoteSource {
+/**
+ * 日历上的通用日程（v0.4）：课、组会、急事，什么都能标。
+ * - weekly=true  → 每周固定（课表导入的课），配合 weekday（ISO 1-7）
+ * - weekly=false → 某一天的事，配合 date（YYYY-MM-DD）
+ * 冲突检测把面试和日程放在同一个池子里两两比对。
+ */
+export type CalendarEventKind = 'course' | 'personal';
+
+export interface CalendarEvent {
+  id: string;
+  title: string;
+  kind: CalendarEventKind;
+  /** HH:mm（24 小时制） */
+  start: string;
+  end: string;
+  weekly: boolean;
+  weekday?: number;
+  date?: string;
+}
+
+/** v2：note 的来源追踪（只有 type==='sync' 才有） */export interface NoteSource {
   platform: PlatformId;
   externalId?: string;
   /** 本次抓取时刻，仅用于审计，不参与任何派生 */
@@ -226,7 +245,12 @@ export interface AppSettings {
   /** 渠道系数：内推 3 / 官网 2 / 其余 1 */
   channelFactor: Record<Channel, number>;
   weeklyApplyGoal: number;
-  /** 每周固定课程时间段，weekday 遵循 ISO：1=周一 … 7=周日 */
+  /**
+   * 每周固定课程时间段（v0.2 引入，**v0.4 已废弃**）。
+   * 读取旧库时一次性迁移进 `db.events`（kind='course', weekly=true）然后清空。
+   * 保留字段只为老备份导入不炸，代码里不要再往这里写东西。
+   * @deprecated 用 db.events
+   */
   courseSlots: { weekday: number; start: string; end: string; name: string }[];
   defaultResumeVersion?: string;
   /** v2 新增：同步设置 */
@@ -320,4 +344,6 @@ export interface DB {
   experiences: InterviewExperience[];
   questions: Question[];
   staging: StagedSyncItem[];
+  /** v0.4：日历上的通用日程（课表导入的课 + 手动记的事） */
+  events: CalendarEvent[];
 }

@@ -207,6 +207,31 @@ describe('migrateV1ToV2', () => {
     expect(result.db.settings.courseSlots).toHaveLength(1);
   });
 
+  it('v0.4：validateV2 把旧 courseSlots 一次性迁进 events 并清空旧字段', async () => {
+    const raw = buildV1Raw();
+    const migrated = migrateV1ToV2(raw, { now: NOW });
+    if (!migrated.ok) throw new Error('迁移失败');
+    // 迁移产物本身 events 是空的，courseSlots 还在 —— 转换发生在 v2 校验层
+    expect(migrated.db.events).toEqual([]);
+    const { validateV2 } = await import('./validateV2');
+    const verified = validateV2(migrated.db);
+    if (!verified.ok) throw new Error(verified.error);
+    expect(verified.db.settings.courseSlots).toHaveLength(0);
+    expect(verified.db.events).toHaveLength(1);
+    expect(verified.db.events[0]).toMatchObject({
+      title: '数据结构',
+      kind: 'course',
+      weekly: true,
+      weekday: 2,
+      start: '08:00',
+      end: '09:40',
+    });
+    // 幂等：再过一遍校验，课不会复活成两份
+    const again = validateV2(verified.db);
+    if (!again.ok) throw new Error(again.error);
+    expect(again.db.events).toHaveLength(1);
+  });
+
   it('失败时返回说人话的错误，不 throw', () => {
     const raw = buildV1Raw();
     delete (raw.applications as Array<Record<string, unknown>>)[3].jobTitle;

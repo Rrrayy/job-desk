@@ -52,7 +52,7 @@ export function defaultSettings(): Settings {
   };
 }
 
-/** 空数据库（含 v2 三个新数组） */
+/** 空数据库（含 v2 三个新数组 + v0.4 日程表） */
 export function emptyDB(): DB {
   return {
     settings: defaultSettings(),
@@ -63,6 +63,7 @@ export function emptyDB(): DB {
     experiences: [],
     questions: [],
     staging: [],
+    events: [],
   };
 }
 

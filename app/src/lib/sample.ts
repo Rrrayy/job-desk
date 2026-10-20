@@ -4,7 +4,16 @@
  * 注意：绝不自动灌入，必须用户点「加载示例数据看看」。
  */
 
-import type { Application, Company, DB, Interview, InterviewExperience, Note, Question } from '../types';
+import type {
+  Application,
+  CalendarEvent,
+  Company,
+  DB,
+  Interview,
+  InterviewExperience,
+  Note,
+  Question,
+} from '../types';
 import { defaultSettings } from './storage';
 import { toDateISO, weekdayOf } from './date';
 
@@ -115,7 +124,7 @@ export function buildSampleDB(now: Date = new Date()): DB {
   ];
 
   const resumeVersion = 'v3-前端-项目版';
-  const roundTwoDay = nextWeekday(now, 4, 2); // 下一个周四，和《计算机网络》撞
+  const roundTwoDay = nextWeekday(now, 4, 2); // 下一个周四，和「导师组会」这件急事撞（见 events）
   roundTwoDay.setHours(14, 30, 0, 0);
 
   const applications: Application[] = [
@@ -506,11 +515,23 @@ export function buildSampleDB(now: Date = new Date()): DB {
   ];
 
   const settings = defaultSettings();
-  settings.courseSlots = [
-    { weekday: 2, start: '08:00', end: '09:40', name: '数据结构' },
-    { weekday: 4, start: '14:00', end: '15:40', name: '计算机网络' },
-  ];
   settings.defaultResumeVersion = resumeVersion;
+
+  /* ---------------------- v0.4：日程（演示「急事也能撞面试」） ---------------------- */
+  // 不再内置课表案例 —— 课表应该用「导入课表」录自己的。
+  // 这里只放一件手动记的事：正好和阿里的二面（周四 14:30）撞上，
+  // 日历一打开就能看到冲突是怎么报的。
+  const events: CalendarEvent[] = [
+    {
+      id: 'ev_sample_seminar',
+      title: '导师组会（跑不掉）',
+      kind: 'personal',
+      start: '14:00',
+      end: '15:30',
+      weekly: false,
+      date: toDateISO(roundTwoDay),
+    },
+  ];
 
   /* ---------------------- v2：面经（让面经视图首次进入不空） ---------------------- */
   const experiences: InterviewExperience[] = [
@@ -636,5 +657,6 @@ export function buildSampleDB(now: Date = new Date()): DB {
     experiences,
     questions,
     staging: [],
+    events,
   };
 }

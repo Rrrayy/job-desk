@@ -284,3 +284,114 @@ describe('buildDailyPlan：预算只砍尾巴，不重排', () => {
     expect(buildDailyPlan(items, 2.9).primary).toHaveLength(2);
   });
 });
+
+/* ======================= v0.4：日程冲突（面试 × 课 × 任何事） ======================= */
+
+import type { CalendarEvent, Interview } from '../types';
+import { eventsOnDate, findConflicts, findEventConflicts } from './rules';
+
+function makeInterview(scheduledAt: string, overrides: Partial<Interview> = {}): Interview {
+  return {
+    id: overrides.id ?? 'iv-1',
+    applicationId: 'app-1',
+    round: 1,
+    scheduledAt,
+    format: 'video',
+    result: 'pending',
+    ...overrides,
+  };
+}
+
+function makeEvent(overrides: Partial<CalendarEvent> = {}): CalendarEvent {
+  return {
+    id: overrides.id ?? 'ev-1',
+    title: overrides.title ?? '导师组会',
+    kind: overrides.kind ?? 'personal',
+    start: overrides.start ?? '14:00',
+    end: overrides.end ?? '15:30',
+    weekly: overrides.weekly ?? false,
+    weekday: overrides.weekly ? overrides.weekday ?? 2 : undefined,
+    date: overrides.weekly ? undefined : overrides.date ?? '2026-10-20',
+  };
+}
+
+describe('findConflicts：面试与日程冲突', () => {
+  // 2026-10-20 是周二（weekday 2），14:30 开始 60 分钟
+  const iv = makeInterview('2026-10-20T14:30:00');
+
+  it('与同一天的日程时间段重叠 → 报冲突', () => {
+    const messages = findConflicts(iv, [], [], [makeEvent({ start: '14:00', end: '15:30' })]);
+    expect(messages).toHaveLength(1);
+    expect(messages[0]).toContain('导师组会');
+    expect(messages[0]).toContain('14:00-15:30');
+  });
+
+  it('同一天但不重叠（错开 30 分钟）→ 不报', () => {
+    const messages = findConflicts(iv, [], [], [makeEvent({ start: '12:00', end: '13:30' })]);
+    expect(messages).toHaveLength(0);
+  });
+
+  it('边界：日程 15:30 结束、面试 14:30 开始且持续到 15:30 → 不算重叠', () => {
+    // 面试 14:30 + 60min = 15:30；日程 15:30-16:30，端点相接不算冲突
+    const messages = findConflicts(iv, [], [], [makeEvent({ start: '15:30', end: '16:30' })]);
+    expect(messages).toHaveLength(0);
+  });
+
+  it('每周固定课：只有周几对上才算', () => {
+    const course = makeEvent({ kind: 'course', title: '计算机网络', weekly: true, weekday: 2, start: '14:00', end: '15:40' });
+    expect(findConflicts(iv, [], [], [course])).toHaveLength(1);
+    // 同样的课挪到周三，与周二的面试无关
+    const otherDay = makeEvent({ kind: 'course', title: '计算机网络', weekly: true, weekday: 3, start: '14:00', end: '15:40' });
+    expect(findConflicts(iv, [], [], [otherDay])).toHaveLength(0);
+  });
+
+  it('与其他面试的冲突依然生效（老语义不回归）', () => {
+    const other = makeInterview('2026-10-20T15:00:00', { id: 'iv-2' });
+    const messages = findConflicts(iv, [other], [], []);
+    expect(messages).toHaveLength(1);
+    expect(messages[0]).toContain('另一场面试');
+  });
+});
+
+describe('findEventConflicts：日程的冲突也要报', () => {
+  const event = makeEvent({ start: '14:00', end: '15:30', date: '2026-10-20' });
+
+  it('与同一天的面试重叠 → 报冲突', () => {
+    const iv = makeInterview('2026-10-20T14:30:00');
+    const messages = findEventConflicts(event, [event], [iv], []);
+    expect(messages).toHaveLength(1);
+    expect(messages[0]).toContain('面试');
+  });
+
+  it('与另一条日程重叠 → 报冲突（急事撞急事也算）', () => {
+    const other = makeEvent({ id: 'ev-2', title: '体检', start: '15:00', end: '16:00', date: '2026-10-20' });
+    const messages = findEventConflicts(event, [event, other], [], []);
+    expect(messages).toHaveLength(1);
+    expect(messages[0]).toContain('体检');
+  });
+
+  it('不同日期的同名日程不算冲突', () => {
+    const other = makeEvent({ id: 'ev-2', title: '体检', start: '14:00', end: '15:30', date: '2026-10-21' });
+    expect(findEventConflicts(event, [event, other], [], [])).toHaveLength(0);
+  });
+});
+
+describe('eventsOnDate', () => {
+  const events: CalendarEvent[] = [
+    makeEvent({ id: 'ev-fixed', title: '课', kind: 'course', weekly: true, weekday: 2, start: '08:00', end: '09:40' }),
+    makeEvent({ id: 'ev-tue', title: '周二的事', date: '2026-10-20' }),
+    makeEvent({ id: 'ev-wed', title: '周三的事', date: '2026-10-21' }),
+  ];
+
+  it('2026-10-20（周二）：命中年二的周课 + 当天的事，不含周三', () => {
+    const tuesday = new Date(2026, 9, 20);
+    const ids = eventsOnDate(events, tuesday).map((e) => e.id);
+    expect(ids).toEqual(['ev-fixed', 'ev-tue']);
+  });
+
+  it('2026-10-27（也是周二）：周课复现，单日的事不跟', () => {
+    const nextTuesday = new Date(2026, 9, 27);
+    const ids = eventsOnDate(events, nextTuesday).map((e) => e.id);
+    expect(ids).toEqual(['ev-fixed']);
+  });
+});

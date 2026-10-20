@@ -9,6 +9,7 @@
 
 import type {
   AppSettings,
+  CalendarEvent,
   DB,
   ExperienceResult,
   ExperienceSource,
@@ -253,6 +254,39 @@ function normalizeStaged(raw: unknown, index: number): { ok: true; value: Staged
   };
 }
 
+const HHMM_RE = /^\d{2}:\d{2}$/;
+
+/** 归一化一条日程：id/title/时间必填，weekly 决定看 weekday 还是 date */
+function normalizeEvent(raw: unknown, index: number): { ok: true; value: CalendarEvent } | { ok: false; error: string } {
+  if (!isRecord(raw)) return { ok: false, error: `第 ${index + 1} 条日程不是对象` };
+  const id = asString(raw.id);
+  const title = asString(raw.title);
+  const start = asString(raw.start);
+  const end = asString(raw.end);
+  if (!id) return { ok: false, error: `第 ${index + 1} 条日程缺少 id` };
+  if (!title) return { ok: false, error: `第 ${index + 1} 条日程缺少 title` };
+  if (!HHMM_RE.test(start) || !HHMM_RE.test(end)) {
+    return { ok: false, error: `第 ${index + 1} 条日程「${title}」的时间必须是 HH:mm` };
+  }
+  if (start >= end) {
+    return { ok: false, error: `第 ${index + 1} 条日程「${title}」的结束时间不晚于开始时间` };
+  }
+  const weekly = raw.weekly === true;
+  const kind: CalendarEvent['kind'] = raw.kind === 'course' ? 'course' : 'personal';
+  if (weekly) {
+    const weekday = typeof raw.weekday === 'number' ? Math.round(raw.weekday) : 0;
+    if (weekday < 1 || weekday > 7) {
+      return { ok: false, error: `每周日程「${title}」的 weekday 必须是 1-7` };
+    }
+    return { ok: true, value: { id, title, kind, start, end, weekly: true, weekday } };
+  }
+  const date = asString(raw.date);
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(date)) {
+    return { ok: false, error: `日程「${title}」的 date 必须是 YYYY-MM-DD` };
+  }
+  return { ok: true, value: { id, title, kind, start, end, weekly: false, date } };
+}
+
 /** v2 校验器：字段级错误 + 新三表的引用完整性 */
 export function validateV2(raw: unknown): ImportResult {
   if (!isRecord(raw)) return { ok: false, error: '顶层不是一个对象' };
@@ -287,6 +321,33 @@ export function validateV2(raw: unknown): ImportResult {
     staging.push(result.value);
   }
 
+  /* ---------- 日程表（v0.4 新增；缺失补 []，与 experiences 同口径） ---------- */
+  const rawEvents = Array.isArray(raw.events) ? raw.events : [];
+  let events: CalendarEvent[] = [];
+  for (let i = 0; i < rawEvents.length; i += 1) {
+    const result = normalizeEvent(rawEvents[i], i);
+    if (!result.ok) return { ok: false, error: result.error };
+    events.push(result.value);
+  }
+
+  const settings = normalizeV2Settings(raw.settings);
+
+  /* ---------- 旧 courseSlots 一次性迁移进 events ---------- */
+  // 只在 events 为空、且旧字段里真有课的时候发生；迁移完把旧字段清空，
+  // 这样「用户删光所有日程」之后课不会再从旧字段里复活。
+  if (events.length === 0 && settings.courseSlots.length > 0) {
+    events = settings.courseSlots.map((slot) => ({
+      id: `ev_migrated_${slot.weekday}_${slot.start.replace(':', '')}_${slot.name}`,
+      title: slot.name || '课程',
+      kind: 'course' as const,
+      start: /^\d{2}:\d{2}$/.test(slot.start) ? slot.start : '00:00',
+      end: /^\d{2}:\d{2}$/.test(slot.end) ? slot.end : '00:00',
+      weekly: true,
+      weekday: slot.weekday,
+    }));
+    settings.courseSlots = [];
+  }
+
   /* ---------- 引用完整性 ---------- */
   const appIds = new Set(core.data.applications.map((app) => app.id));
   for (const experience of experiences) {
@@ -305,7 +366,7 @@ export function validateV2(raw: unknown): ImportResult {
   }
 
   const db: DB = {
-    settings: normalizeV2Settings(raw.settings),
+    settings,
     companies: core.data.companies,
     applications: core.data.applications,
     interviews: core.data.interviews,
@@ -314,6 +375,7 @@ export function validateV2(raw: unknown): ImportResult {
     questions,
     // 超上限时保留最新的 200 条（与引擎的丢弃策略一致：丢最旧）
     staging: staging.length > STAGING_LIMIT ? staging.slice(staging.length - STAGING_LIMIT) : staging,
+    events,
   };
 
   return { ok: true, db };

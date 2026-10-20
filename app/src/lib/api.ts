@@ -6,6 +6,7 @@
 import type {
   AppSettings,
   Application,
+  CalendarEvent,
   Company,
   DB,
   ExperienceResult,
@@ -39,8 +40,27 @@ export interface UIViewState {
   insightsTab: InsightsTab;
 }
 
-/** 新增投递：只要求公司名 + 岗位名 */
-export interface NewApplicationInput {
+/** 新增日程（日历「记一件事」/ 课表导入共用） */
+export interface NewCalendarEventInput {
+  title: string;
+  start: string;
+  end: string;
+  /** true = 每周固定（课），看 weekday；false = 某一天的事，看 date */
+  weekly?: boolean;
+  weekday?: number;
+  date?: string;
+  kind?: CalendarEvent['kind'];
+}
+
+/** 课表导入的一节课（courseImport.ts 的解析产物） */
+export interface ParsedCourseInput {
+  weekday: number;
+  start: string;
+  end: string;
+  name: string;
+}
+
+/** 新增投递：只要求公司名 + 岗位名 */export interface NewApplicationInput {
   companyName: string;
   jobTitle: string;
   status?: Status;
@@ -137,6 +157,13 @@ export interface AppApi {
 
   loadSampleData: () => void;
   clearAllData: () => void;
+
+  /* ---------------- 日历日程（v0.4） ---------------- */
+  /** 手动记一件事 */
+  addCalendarEvent: (input: NewCalendarEventInput) => void;
+  deleteCalendarEvent: (id: string) => void;
+  /** 导入课表：替换全部「每周固定的课」，保留手动记的事。返回导入节数 */
+  importCourseEvents: (courses: ParsedCourseInput[]) => number;
   /** 完整备份（JSON，可无损往返 —— 这是唯一能「搬回本应用」的格式） */
   exportData: () => void;
   /** 投递表 CSV（单向导出，给 Excel / Numbers 看） */

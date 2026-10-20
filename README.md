@@ -11,8 +11,8 @@
 **把投递当管线管 —— 今日待办 · 看板 · 沉默提醒 · 截止倒计时 · 面经复盘**
 
 [![CI](https://img.shields.io/github/actions/workflow/status/Rrrayy/job-desk/ci.yml?branch=main&style=flat-square&label=CI)](https://github.com/Rrrayy/job-desk/actions/workflows/ci.yml)
-![tests](https://img.shields.io/badge/tests-201%20passed-2ea44f?style=flat-square)
-![bundle](https://img.shields.io/badge/bundle-432%20KB-4c6ef5?style=flat-square)
+![tests](https://img.shields.io/badge/tests-226%20passed-2ea44f?style=flat-square)
+![bundle](https://img.shields.io/badge/bundle-441%20KB-4c6ef5?style=flat-square)
 ![network](https://img.shields.io/badge/network-0%20requests-2ea44f?style=flat-square)
 ![schema](https://img.shields.io/badge/schema-v2-845ef7?style=flat-square)
 [![release](https://img.shields.io/github/v/release/Rrrayy/job-desk?style=flat-square)](https://github.com/Rrrayy/job-desk/releases/latest)
@@ -40,7 +40,7 @@
 | 📋 **今日** | 今天有几场面试？谁该催了？哪家明天截止？ |
 | 🗂️ **看板** | 50 家分别卡在哪个阶段（想投 → 已投 → 沟通中 → 面试中 → 结果） |
 | 📃 **列表** | 按沉默天数排序，一眼看出「最凉的那几家」 |
-| 📅 **日历** | 这周的面试和课程/其他安排撞不撞 |
+| 📅 **日历** | 面试、课表、任何急事都标在同一天上 —— 具体几点撞没撞 |
 | 📊 **复盘** | 漏斗转化、简历版本命中率、每周投递量；二级 tab 是**面经** |
 
 **在视图之下，这些事它在替你做：**
@@ -49,6 +49,8 @@
 - ⏰ **截止倒计时**：已过期 / 今天 / 3 天内三级紧急度，静音压得住「该催了」，**压不住外部期限**
 - 💬 **催进话术**一键生成；3 秒记一家（公司 + 岗位就够），拖拽换阶段，`⌘Z` 按次撤销
 - 🎤 **面试多轮次建模**：每轮一张卡片，带准备清单、形式、结果；挂了记在第几轮
+- 📥 **课表导入**：从教务系统 / 课表 App 复制粘贴，一行一节课，识别不了的行告诉你原因；重复导入按替换处理，手动记的事不受影响
+- ⚠️ **日程冲突检测**：面试 × 面试 × 课 × 任何急事，同一时间段精确重叠比对（分钟级），撞了谁、几点到几点直接告诉你
 - 🔄 **平台状态同步**：BOSS / 实习僧 / 牛客的列表粘进来，自动比对差异、逐条确认、可撤销
 - 📚 **面经**：一行一题快记 → 题库按「不会的先复习」排序 → 间隔复习 → 统计「哪类题最容易挂」
 - 💾 JSON 备份 + CSV 投递表 + ICS 日历导出，schema 自动迁移（带回滚点，失败不上锁不覆盖）
@@ -90,6 +92,17 @@ cd app && npm install && npm run dev   # http://localhost:5173
 
 ![详情抽屉](docs/screenshots-v0.3/04-drawer.png)
 
+## 📅 v0.4：日历是一张通用日程表
+
+日历不该只会显示面试。这一版把它升级成了**任何事都能标的日程表**：
+
+| | 之前 | 现在 |
+| :--- | :--- | :--- |
+| 课程表 | 写死在设置里的「案例数据」 | 「导入课表」按钮：从教务系统复制粘贴，一行一节课，坏行给原因不悄悄丢 |
+| 其他事 | 没法记 | 「＋ 记一件事」：组会、体检、急事，选中哪天记哪天 |
+| 冲突 | 只查面试 × 面试 | 面试 × 课 × 任何事两两比对，**同一天按 HH:mm 精确重叠**（急事撞急事也报） |
+| 回到初始 | 清空后设置还残留 | 设置 → **「回到初始状态」**：数据、设置、日程全清，欢迎页重现，跟第一次打开一样 |
+
 ## 🎯 v0.3 的三个关键设计
 
 不是「加了几个字段」，是修三处**会让人误判**的地方：
@@ -107,7 +120,7 @@ cd app && npm install && npm run dev   # http://localhost:5173
 
 | localStorage key | 内容 |
 | :--- | :--- |
-| `jobdesk.v1` | 全量数据：设置、公司、投递、面试、时间线、面经、题目、暂存区 |
+| `jobdesk.v1` | 全量数据：设置、公司、投递、面试、时间线、面经、题目、暂存区、日程 |
 | `jobdesk.v1.ui` | 上次的视图位置（刷新后还原） |
 | `jobdesk.v1.listFilters` | 列表视图的筛选条件（刷新后还原） |
 | `jobdesk.v1.preMigrate.<时间>` | 迁移前的原始数据（回滚点，保留 30 天） |
@@ -203,8 +216,8 @@ silenceDays    = 今天（自然日零点）− lastActivityAt 的自然日差
 
 | 指标 | 数值 |
 | :--- | :--- |
-| 单元测试 | **201 个 / 14 个文件**，全绿 |
-| 产物体积 | **442,872 B**（红线 470KB 警告 / 540KB 失败） |
+| 单元测试 | **226 个 / 15 个文件**，全绿 |
+| 产物体积 | **451,646 B（441 KB）**（红线 470KB 警告 / 540KB 失败） |
 | 零网络扫描 | 通过，白名单为空 |
 | 独立 QA | 478 断言 0 失败（[`docs/QA-REPORT-v0.2.md`](docs/QA-REPORT-v0.2.md)） |
 | 可复现构建 | 干净目录 `npm ci && npm run build` 产物 sha256 一致 |

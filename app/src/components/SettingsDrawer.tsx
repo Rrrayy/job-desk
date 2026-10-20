@@ -5,7 +5,6 @@
 import { useMemo, useRef, useState } from 'react';
 import type { AppApi } from '../lib/api';
 import type { AppSettings, PlatformId } from '../types';
-import { WEEKDAY_CN } from '../lib/date';
 import { BUDGET, budgetLevelOf, formatBytes, measureDB } from '../lib/budget';
 import { PLATFORM_LABEL } from '../adapters/registry';
 import { CommunityImport } from './interview/CommunityImport';
@@ -58,24 +57,6 @@ export function SettingsDrawer({ api, onClose, importError, onDismissError }: Se
         break;
     }
     api.updateSettings(next);
-  };
-
-  const updateSlot = (
-    index: number,
-    patch: Partial<{ weekday: number; start: string; end: string; name: string }>,
-  ): void => {
-    const next = settings.courseSlots.map((slot, i) => (i === index ? { ...slot, ...patch } : slot));
-    api.updateSettings({ courseSlots: next });
-  };
-
-  const addSlot = (): void => {
-    api.updateSettings({
-      courseSlots: [...settings.courseSlots, { weekday: 1, start: '08:00', end: '09:40', name: '' }],
-    });
-  };
-
-  const removeSlot = (index: number): void => {
-    api.updateSettings({ courseSlots: settings.courseSlots.filter((_, i) => i !== index) });
   };
 
   const numberFields: Array<{ key: NumberKey; label: string }> = [
@@ -139,60 +120,26 @@ export function SettingsDrawer({ api, onClose, importError, onDismissError }: Se
           </section>
 
           <section className="drawer__section">
-            <div className="drawer__section-head">
-              <h3 className="drawer__section-title">每周固定课程</h3>
-              <button type="button" className="link-btn" onClick={addSlot}>
-                ＋ 加一节
+            <h3 className="drawer__section-title">课表与日程</h3>
+            <p className="field__hint">
+              日历上可以标注任何事：课、组会、急事。面试和日程在同一天的具体时间段撞上了，会自动提醒冲突。
+            </p>
+            <div className="btn-row">
+              <button
+                type="button"
+                className="btn btn--small"
+                onClick={() => {
+                  api.setView('calendar');
+                  onClose();
+                }}
+              >
+                去日历导入课表 / 记事情
               </button>
             </div>
-            <p className="field__hint">约面试时用来检测撞课。1=周一 … 7=周日。</p>
-            {settings.courseSlots.length === 0 ? (
-              <p className="muted">还没录课程。录了之后，约面试撞课会提醒你。</p>
-            ) : (
-              <ul className="course-list">
-                {settings.courseSlots.map((slot, index) => (
-                  <li key={`slot-${index}`} className="course-item">
-                    <select
-                      className="select select--compact"
-                      value={slot.weekday}
-                      onChange={(event) => updateSlot(index, { weekday: Number(event.target.value) })}
-                    >
-                      {WEEKDAY_CN.map((label, i) => (
-                        <option key={label} value={i + 1}>
-                          {label}
-                        </option>
-                      ))}
-                    </select>
-                    <input
-                      className="input input--compact"
-                      type="time"
-                      value={slot.start}
-                      onChange={(event) => updateSlot(index, { start: event.target.value })}
-                    />
-                    <span className="muted">至</span>
-                    <input
-                      className="input input--compact"
-                      type="time"
-                      value={slot.end}
-                      onChange={(event) => updateSlot(index, { end: event.target.value })}
-                    />
-                    <input
-                      className="input input--compact"
-                      value={slot.name}
-                      placeholder="课程名"
-                      onChange={(event) => updateSlot(index, { name: event.target.value })}
-                    />
-                    <button
-                      type="button"
-                      className="link-btn link-btn--danger"
-                      onClick={() => removeSlot(index)}
-                    >
-                      删掉
-                    </button>
-                  </li>
-                ))}
-              </ul>
-            )}
+            <p className="field__hint">
+              当前共 {db.events.length} 条日程（{db.events.filter((event) => event.kind === 'course').length} 节课 ·{' '}
+              {db.events.filter((event) => event.kind !== 'course').length} 件事）。
+            </p>
           </section>
 
           <section className="drawer__section">
@@ -273,11 +220,11 @@ export function SettingsDrawer({ api, onClose, importError, onDismissError }: Se
 
             <div className="data-card data-card--danger">
               <div>
-                <div className="data-card__title">清空全部数据</div>
+                <div className="data-card__title">回到初始状态</div>
                 <div className="data-card__text">
                   {confirmClear
-                    ? '这一步不可撤销，确定要清空吗？建议先导出备份。'
-                    : `当前共 ${db.applications.length} 条投递。`}
+                    ? '这一步不可撤销：清空全部投递、面经、课表日程，设置恢复出厂。建议先导出备份。'
+                    : `当前共 ${db.applications.length} 条投递 · ${db.events.length} 条日程。`}
                 </div>
               </div>
               {confirmClear ? (
@@ -290,7 +237,7 @@ export function SettingsDrawer({ api, onClose, importError, onDismissError }: Se
                       setConfirmClear(false);
                     }}
                   >
-                    确认清空
+                    确认回到初始状态
                   </button>
                   <button type="button" className="btn btn--small" onClick={() => setConfirmClear(false)}>
                     取消
@@ -302,7 +249,7 @@ export function SettingsDrawer({ api, onClose, importError, onDismissError }: Se
                   className="btn btn--small btn--danger-ghost"
                   onClick={() => setConfirmClear(true)}
                 >
-                  清空全部数据
+                  回到初始状态
                 </button>
               )}
             </div>

@@ -89,6 +89,8 @@ export function migrateV1ToV2(input: unknown, ctx: MigrateContext): MigrateResul
       experiences: [],
       questions: [],
       staging: [],
+      // v0.4 日程表：空表起步；v1 的 courseSlots 由 validateV2 的一次性迁移接走
+      events: [],
     },
     changed: true,
   };
