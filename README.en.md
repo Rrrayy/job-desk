@@ -85,7 +85,7 @@ An honest support table — anything not marked ✅ is not done yet:
 ## Getting started
 
 ```bash
-git clone <this-repo>
+git clone https://github.com/Rrrayy/job-desk
 cd job-desk/app
 npm install && npm run build
 # double-click app/dist/index.html — one self-contained file, works anywhere
@@ -93,9 +93,9 @@ npm install && npm run build
 
 `dist/index.html` inlines all JS/CSS and opens directly from `file://`, no server needed.
 
-> **`<this-repo>` is a placeholder.** This repo is published as a template — `repository.url` and
-> `homepage` in `app/package.json` still point at `github.com/OWNER/...`. If you fork and release
-> your own build, run through [`docs/RELEASE-CHECKLIST.md`](docs/RELEASE-CHECKLIST.md) first.
+> Repo home: `https://github.com/Rrrayy/job-desk`. If you fork and release your own build,
+> run through [`docs/RELEASE-CHECKLIST.md`](docs/RELEASE-CHECKLIST.md) first and swap the badge
+> and the `repository` / `homepage` fields in `app/package.json` to your own address.
 
 Development mode:
 
@@ -245,7 +245,7 @@ npm run verify             # all of the above
 ```
 
 Release: walk through [`docs/RELEASE-CHECKLIST.md`](docs/RELEASE-CHECKLIST.md)
-(step 1 is replacing the `OWNER` placeholder).
+(step 1 is replacing the `OWNER` placeholder — already done for this repo at `Rrrayy/job-desk`; swap in your own username if you fork).
 
 ## Layout
 

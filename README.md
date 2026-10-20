@@ -1,8 +1,7 @@
 # 求职工作台 · Job Desk
 
-<!-- 徽章：仓库地址替换 OWNER 后自动生效（见 docs/RELEASE-CHECKLIST.md 第 1 条） -->
-<!-- ![CI](https://github.com/OWNER/job-desk/actions/workflows/ci.yml/badge.svg)
-![license](https://img.shields.io/badge/license-MIT-blue) -->
+![CI](https://github.com/Rrrayy/job-desk/actions/workflows/ci.yml/badge.svg)
+![license](https://img.shields.io/badge/license-MIT-blue)
 
 ### 本地优先的招聘工作台：日常实习 / 暑期实习 / 秋招 / 春招 / 提前批 / 社招
 
@@ -89,7 +88,7 @@ Job Desk 不绑定「日常实习」这一个场景。数据模型里 `jobType` 
 **方式一：直接用（推荐）**
 
 ```bash
-git clone <this-repo>
+git clone https://github.com/Rrrayy/job-desk
 cd job-desk/app
 npm install && npm run build
 # 然后双击 app/dist/index.html —— 就这一个文件，拷到哪都能用
@@ -97,9 +96,9 @@ npm install && npm run build
 
 `dist/index.html` 已经把 JS/CSS 全部内联，`file://` 直接打开，不需要起服务。
 
-> **`<this-repo>` 是占位符** —— 这个仓库是作为模板发布的（`app/package.json` 里的
-> `repository.url` / `homepage` 也还是 `github.com/OWNER/...`）。如果你 fork 出去自己发布，
-> 先照 [`docs/RELEASE-CHECKLIST.md`](docs/RELEASE-CHECKLIST.md) 第 1 条把它们替换掉。
+> 本仓库地址：`https://github.com/Rrrayy/job-desk`。如果你 fork 出去自己发布，
+> 记得照 [`docs/RELEASE-CHECKLIST.md`](docs/RELEASE-CHECKLIST.md) 第 1 条
+> 把徽章、`package.json` 的 `repository` / `homepage` 换成你自己的地址。
 
 **方式二：开发模式**
 
@@ -260,7 +259,7 @@ npm run verify         # 以上全套，交付前跑这一条
 ```
 
 发布前请走一遍 [`docs/RELEASE-CHECKLIST.md`](docs/RELEASE-CHECKLIST.md)
-（第一条是「替换 `OWNER` 占位符」，脚本测不出来但会让 clone 地址指向不存在的仓库）。
+（第一条是「替换 `OWNER` 占位符」—— 本仓库已替换为 `Rrrayy/job-desk`；fork 发布时记得换成你的用户名，脚本测不出来但会让 clone 地址指向不存在的仓库）。
 
 ## 目录结构
 
