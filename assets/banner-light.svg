@@ -1,0 +1,60 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1200" height="260" viewBox="0 0 1200 260" role="img" aria-label="求职工作台 Job Desk">
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#f7f9fd"/>
+      <stop offset="1" stop-color="#eaeffa"/>
+    </linearGradient>
+    <linearGradient id="accent" x1="0" y1="0" x2="1" y2="0">
+      <stop offset="0" stop-color="#4c6ef5"/>
+      <stop offset="1" stop-color="#748ffc"/>
+    </linearGradient>
+  </defs>
+
+  <rect width="1200" height="260" fill="url(#bg)"/>
+  <rect x="0" y="0" width="1200" height="6" fill="url(#accent)"/>
+
+  <!-- 左侧：迷你看板插画 -->
+  <g transform="translate(96,42)">
+    <!-- 三列看板 -->
+    <rect x="0" y="0" width="118" height="176" rx="10" fill="#ffffff" stroke="#dfe4ef"/>
+    <rect x="132" y="0" width="118" height="176" rx="10" fill="#ffffff" stroke="#dfe4ef"/>
+    <rect x="264" y="0" width="118" height="176" rx="10" fill="#ffffff" stroke="#dfe4ef"/>
+    <!-- 列标题 -->
+    <circle cx="18" cy="22" r="5" fill="#adb5bd"/>
+    <rect x="30" y="17" width="52" height="10" rx="5" fill="#dee2e6"/>
+    <circle cx="150" cy="22" r="5" fill="#4c6ef5"/>
+    <rect x="162" y="17" width="52" height="10" rx="5" fill="#dee2e6"/>
+    <circle cx="282" cy="22" r="5" fill="#40c057"/>
+    <rect x="294" y="17" width="52" height="10" rx="5" fill="#dee2e6"/>
+    <!-- 第一列卡片 -->
+    <rect x="12" y="40" width="94" height="34" rx="7" fill="#f1f3f9"/>
+    <rect x="22" y="50" width="58" height="7" rx="3.5" fill="#c3cad8"/>
+    <rect x="22" y="61" width="40" height="6" rx="3" fill="#dfe3ec"/>
+    <rect x="12" y="82" width="94" height="34" rx="7" fill="#f1f3f9"/>
+    <rect x="22" y="92" width="64" height="7" rx="3.5" fill="#c3cad8"/>
+    <rect x="22" y="103" width="36" height="6" rx="3" fill="#dfe3ec"/>
+    <!-- 第二列卡片：红色「今天截止」 -->
+    <rect x="144" y="40" width="94" height="46" rx="7" fill="#fff5f5" stroke="#fa5252" stroke-width="1.5"/>
+    <rect x="154" y="50" width="62" height="8" rx="4" fill="#f03e3e"/>
+    <rect x="154" y="64" width="70" height="7" rx="3.5" fill="#ffc9c9"/>
+    <rect x="154" y="75" width="44" height="6" rx="3" fill="#ffc9c9"/>
+    <rect x="144" y="94" width="94" height="34" rx="7" fill="#f1f3f9"/>
+    <rect x="154" y="104" width="56" height="7" rx="3.5" fill="#c3cad8"/>
+    <rect x="154" y="115" width="38" height="6" rx="3" fill="#dfe3ec"/>
+    <!-- 第三列卡片：绿色 Offer -->
+    <rect x="276" y="40" width="94" height="34" rx="7" fill="#ebfbee" stroke="#40c057" stroke-width="1.5"/>
+    <rect x="286" y="50" width="60" height="8" rx="4" fill="#37b24d"/>
+    <rect x="286" y="62" width="42" height="6" rx="3" fill="#b2f2bb"/>
+    <rect x="276" y="82" width="94" height="34" rx="7" fill="#f1f3f9"/>
+    <rect x="286" y="92" width="66" height="7" rx="3.5" fill="#c3cad8"/>
+    <rect x="286" y="103" width="40" height="6" rx="3" fill="#dfe3ec"/>
+  </g>
+
+  <!-- 右侧：标题区 -->
+  <g>
+    <text x="520" y="106" font-family="-apple-system, 'Segoe UI', 'PingFang SC', 'Microsoft YaHei', sans-serif" font-size="46" font-weight="700" fill="#1c2333">求职工作台</text>
+    <text x="520" y="150" font-family="-apple-system, 'Segoe UI', 'Helvetica Neue', sans-serif" font-size="27" font-weight="600" fill="#4c6ef5">Job Desk</text>
+    <text x="520" y="192" font-family="-apple-system, 'Segoe UI', 'PingFang SC', 'Microsoft YaHei', sans-serif" font-size="17" fill="#5c637a">今日待办 · 看板 · 沉默提醒 · 截止倒计时 · 面经复盘</text>
+    <text x="520" y="220" font-family="-apple-system, 'Segoe UI', 'PingFang SC', 'Microsoft YaHei', sans-serif" font-size="15" fill="#8a91a5">单个 HTML 文件 · 零账号 · 零网络请求 · 数据只在你自己的浏览器里</text>
+  </g>
+</svg>
