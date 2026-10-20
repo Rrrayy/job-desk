@@ -1,6 +1,10 @@
 <div align="center">
 
-<img src="assets/banner-light.svg" alt="求职工作台 Job Desk" width="100%">
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="assets/banner-dark.svg">
+  <source media="(prefers-color-scheme: light)" srcset="assets/banner-light.svg">
+  <img src="assets/banner-light.svg" alt="求职工作台 Job Desk" width="100%">
+</picture>
 
 # 求职工作台 · Job Desk
 
