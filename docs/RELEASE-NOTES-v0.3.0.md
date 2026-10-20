@@ -100,6 +100,7 @@ v0.3 加了**每日行动预算**（默认 5 件）：默认只显示最靠前�
 | 网络请求 | **0**（CI 扫 82 个文件 / 11 条规则，含 CSS `url()`、`@import`、`<link href>`） |
 | 运行依赖 | **0**（不加载任何字体、图标、CDN） |
 | 数据格式 | `schemaVersion` 2，localStorage 键 `jobdesk.v1` |
+| 实机冒烟 | **18/18 通过**（Edge headless 真渲染 `file://` 产物：欢迎层 → 示例数据 → 今日视图的截止/静音/预算 → 详情抽屉 → 设置导出，截图见 `docs/screenshots/v0.3-smoke-*.png`） |
 
 也可以自己验：
 

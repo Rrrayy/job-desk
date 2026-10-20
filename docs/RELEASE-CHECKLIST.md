@@ -104,12 +104,18 @@ npm run verify
 ## 7. 打 tag 与发布
 
 ```bash
-git tag -a v0.2.0 -m "v0.2.0"
-git push origin v0.2.0
+cd app
+npm run release:prep     # 六关卡全绿 + 生成 release/v<版本>/ 发布资产
+git tag -a v0.3.0 -m "v0.3.0"
+git push origin v0.3.0
 ```
 
-- [ ] GitHub Release 里附上 `app/dist/index.html`（单文件，双击即用）
-- [ ] Release 说明直接复用 `CHANGELOG.md` 对应小节
+- [ ] 发布资产由 `npm run release:pack` 生成（`index.html` + 扩展 zip + `SHA256SUMS` + `manifest.json`），
+      **不要手工替换文件** —— 手工替换会让 SHA256SUMS 和实际文件对不上
+- [ ] 重复跑一次 `release:pack`，SHA256SUMS 不变（固定时间戳 + 固定顺序，哈希必须可复现）
+- [ ] GitHub Release 附上 `release/v<版本>/` 下全部文件：`index.html` 双击即用（主要用法），
+      扩展 zip 解压后走「加载已解压」
+- [ ] Release 说明复用 `docs/RELEASE-NOTES-v<版本>.md`（内容与 CHANGELOG 对应小节保持一致）
 - [ ] Release 说明里写明「数据只存在浏览器 localStorage，换浏览器/清缓存 = 数据没了，请导出备份」
 
 ## 8. 发布后 24 小时内

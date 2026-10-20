@@ -69,3 +69,6 @@ docs/screenshots/*-local*.png
 *.orig
 *.rej
 tmp/
+
+# ---------- 发布资产（可随时用 npm run release:pack 重新生成）----------
+release/

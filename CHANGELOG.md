@@ -95,6 +95,10 @@
   为什么不是评审时提的 440/460，见 [`docs/ROADMAP.md`](docs/ROADMAP.md) 第 8 节的说明。
 - **零网络扫描补了 CSS 的三个口子**：之前只扫 JS/TS，`@import`、`url(http…)`、
   `@font-face` 里的远程地址、`<link href="https://…">` 都能绕过。规则从 8 条加到 11 条。
+- **发布资产可复现打包**：`npm run release:pack` 用 Node 内置 zlib 直接产出
+  `index.html` + 扩展 zip + `SHA256SUMS`（固定时间戳与固定条目顺序，同一份产物重复打包哈希一致）。
+  不装压缩工具、不调系统命令 —— Windows 默认没有 `zip`，而校验和如果每次都不一样，
+  就退化成了「参考值」。
 - **测试从 156 → 201**：新增 `rules.test.ts`（29 例，沉默/截止/静音/预算）与
   `tableExport.test.ts`（16 例，含 ICS 每行 ≤75 八位组、公式注入、`-200` 不误伤）。
 
