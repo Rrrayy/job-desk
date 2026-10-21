@@ -9,6 +9,7 @@
 
 import { beforeEach, describe, expect, it } from 'vitest';
 import { emptyDB } from './defaults';
+import { SCHEMA_VERSION_CURRENT } from './migrate';
 import { apply, plan } from './sync/engine';
 import {
   DEFAULT_LIST_FILTERS,
@@ -69,8 +70,15 @@ beforeEach(() => {
 });
 
 /** 造一份「看起来像 v2、其实缺字段」的坏数据（QA 验的 v2-invalid 场景） */
+/**
+ * 「结构坏到读不回来」的样本。
+ *
+ * v0.6 起必须用**当前版本号**：如果这里还写 schemaVersion:2，这份数据会被当成
+ * 「合法的 v2 老库」走迁移（applications 是字符串 → 迁移后校验失败 → 走回滚点路径），
+ * 那是另一条代码分支，测不到「当前版本校验失败 → 另存 failedAt 副本」这条主线。
+ */
 const BROKEN_V2 = JSON.stringify({
-  settings: { schemaVersion: 2 },
+  settings: { schemaVersion: SCHEMA_VERSION_CURRENT },
   applications: 'not-an-array',
   companies: [],
 });

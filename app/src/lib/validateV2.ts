@@ -25,6 +25,7 @@ import type {
 } from '../types';
 import type { NormalizedRecord } from '../adapters/types';
 import { DEFAULT_SYNC_SETTINGS, defaultSettings } from './defaults';
+import { normalizeBackupReminderDays, normalizeEncryptionSettings, normalizeFileLinkSettings } from './migrate';
 import { STAGING_LIMIT } from './sync/engine';
 import { V2_NOTE_TYPES, asOptionalString, asString, isRecord, normalizeCoreArrays } from './validateV1';
 
@@ -104,7 +105,7 @@ export function normalizeV2Settings(raw: unknown): AppSettings {
     : undefined;
 
   return {
-    schemaVersion: 2,
+    schemaVersion: 3,
     warnAfterDays: positiveInt(source.warnAfterDays, base.warnAfterDays),
     staleAfterDays: positiveInt(source.staleAfterDays, base.staleAfterDays),
     interviewResultWaitDays: positiveInt(source.interviewResultWaitDays, base.interviewResultWaitDays),
@@ -122,6 +123,9 @@ export function normalizeV2Settings(raw: unknown): AppSettings {
     courseSlots,
     defaultResumeVersion: asOptionalString(source.defaultResumeVersion) ?? '',
     sync: normalizeSyncSettings(source.sync),
+    backupReminderDays: normalizeBackupReminderDays(source.backupReminderDays),
+    fileLink: normalizeFileLinkSettings(source.fileLink),
+    encryption: normalizeEncryptionSettings(source.encryption),
     lastMigration,
   };
 }
@@ -272,19 +276,29 @@ function normalizeEvent(raw: unknown, index: number): { ok: true; value: Calenda
     return { ok: false, error: `第 ${index + 1} 条日程「${title}」的结束时间不晚于开始时间` };
   }
   const weekly = raw.weekly === true;
-  const kind: CalendarEvent['kind'] = raw.kind === 'course' ? 'course' : 'personal';
+  // v0.6 additive：kind 扩到四种；未知值一律回落 personal（向后兼容老导出）
+  const kind: CalendarEvent['kind'] =
+    raw.kind === 'course' || raw.kind === 'interview' || raw.kind === 'deadline' ? raw.kind : 'personal';
+  // v0.6 三个可选字段：类型不对就丢掉，不阻断导入（additive 字段不拦老备份）
+  const applicationId = asOptionalString(raw.applicationId);
+  const color = typeof raw.color === 'string' && /^#[0-9a-fA-F]{6}$/.test(raw.color) ? raw.color : undefined;
+  const notes = asOptionalString(raw.notes);
+  const extra: Pick<CalendarEvent, 'applicationId' | 'color' | 'notes'> = {};
+  if (applicationId) extra.applicationId = applicationId;
+  if (color) extra.color = color;
+  if (notes) extra.notes = notes;
   if (weekly) {
     const weekday = typeof raw.weekday === 'number' ? Math.round(raw.weekday) : 0;
     if (weekday < 1 || weekday > 7) {
       return { ok: false, error: `每周日程「${title}」的 weekday 必须是 1-7` };
     }
-    return { ok: true, value: { id, title, kind, start, end, weekly: true, weekday } };
+    return { ok: true, value: { id, title, kind, start, end, weekly: true, weekday, ...extra } };
   }
   const date = asString(raw.date);
   if (!/^\d{4}-\d{2}-\d{2}$/.test(date)) {
     return { ok: false, error: `日程「${title}」的 date 必须是 YYYY-MM-DD` };
   }
-  return { ok: true, value: { id, title, kind, start, end, weekly: false, date } };
+  return { ok: true, value: { id, title, kind, start, end, weekly: false, date, ...extra } };
 }
 
 /** v2 校验器：字段级错误 + 新三表的引用完整性 */

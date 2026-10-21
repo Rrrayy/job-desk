@@ -7,6 +7,7 @@
 
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { emptyDB } from './defaults';
+import { SCHEMA_VERSION_CURRENT } from './migrate';
 import { buildSampleDB } from './sample';
 import {
   exportJSON,
@@ -231,7 +232,7 @@ describe('D7-6 同一份 v1 备份连续导入两次：第二次结果与第一�
 
       expect(second.db.applications).toHaveLength(first.db.applications.length);
       expect(second.db.companies).toHaveLength(first.db.companies.length);
-      expect(second.db.settings.schemaVersion).toBe(2);
+      expect(second.db.settings.schemaVersion).toBe(SCHEMA_VERSION_CURRENT);
       // 幂等的真正含义：结果序列化后完全一致
       expect(exportJSON(second.db)).toBe(exportJSON(first.db));
     } finally {

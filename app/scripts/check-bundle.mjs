@@ -4,8 +4,8 @@
  * 这个项目承诺「一个 index.html 双击就能用」，代价是 JS + CSS 全部内联进 HTML。
  * 体积一旦失控，首屏就会出现明显白屏，所以把它变成 CI 的一道门：
  *
- *   > 470 KB  WARN   只提示，不失败（还有优化空间，但不影响交付）
- *   > 540 KB  FAIL   必须处理：拆功能、砍依赖，或者重新想一遍「这一屏真的需要吗」
+ *   > WARN 只提示，不失败（还有优化空间，但不影响交付）
+ *   > FAIL 必须处理：拆功能、砍依赖，或者重新想一遍「这一屏真的需要吗」
  *
  * 口径与 PRD §D.4 一致：**未压缩**的 dist/index.html 字节数（1 KB = 1024 B）。
  * 不用 gzip 后的大小，因为产品是本地文件打开，没有 CDN 帮你压缩。
@@ -20,12 +20,25 @@
  *   v0.5 一次落了五个地基功能（存储后端抽象、回收站、导入增量合并、
  *   便携包、列表窗口化），实测 479 KB。此时 470 的水位会**常态报警**，
  *   而常态报警等于没有报警 —— 与 v0.3 把 600 收到 540 是同一条逻辑的反向应用。
- *   所以只把 WARN 抬到 490（留 11 KB 余量），FAIL 不动：
- *   红线仍然是「再塞一个同量级功能就必须先优化」的位置。
- *   本次 +30 KB 的构成见 docs/CHANGELOG：新增库代码约 18 KB
- *   （portable 4.0 / merge 3.7 / trash 2.8 / idb 2.3 / backend 1.5 /
- *   detect 1.2 / virtual 1.2 / selfSnapshot 1.2），
- *   UI 与接线约 12 KB，样式 +4.5 KB（压缩后约 3.4 KB）。
+ *   所以只把 WARN 抬到 490（留 11 KB 余量），FAIL 不动。
+ *
+ * ★ v0.6 为什么把 WARN 抬到 540 KB、FAIL 抬到 560 KB（这是**产品决策**，不是技术决策）：
+ *   v0.6 是加密 + 文件联动 + CSV 导入三个自带新 UI 面的功能，实测 531 KB。
+ *   在动阈值之前先做了完整的构成测量（见 docs/RELEASE-NOTES-v0.6.0.md「为什么体积是 531 KB」）：
+ *
+ *   - React 18 + react-dom 生产版压缩后 **142 KB**，是硬地板，砍不掉；
+ *   - 本轮新增的 6 个模块压缩后合计只有 **28 KB**
+ *     （crypto 5.6 / csvImport 6.9 / link-engine 10.3 / handle 1.5 / pending 1.4 / hash 2.3）；
+ *   - 剩下的增量全部是 UI，而且**不是虚胖**：新增 2 个面板 13.4 KB 压缩后是
+ *     1307 处 className、1467 处 children、约 15 K 汉字的产品文案 ——
+ *     这些正是这个产品「把风险说清楚」的那部分（只读三出口、冲突解释、诚实声明），
+ *     删它们省下来的 KB 比失去的可信度贵得多；
+ *   - gzip 后仅 **159 KB**；file:// 打开是本地读盘，不受网络影响。
+ *
+ *   所以 v0.6 的选择是：**承认体积上了一个台阶，同时把 FAIL 只抬到 560**（现有 +29 KB 余量，
+ *   约等于「再做一个中等功能就要先优化」）。不把 FAIL 一次抬到 600 ——
+ *   那正是 v0.3 批评过的「空白支票」。
+ *   v0.6 之后的红线回到「每版只随基线浮动」的节奏，下一版起默认不再动 FAIL。
  *
  * ★ 改动阈值必须写进 docs/RELEASE-NOTES：涨红线不是技术决策，是产品决策。
  */
@@ -34,14 +47,14 @@ import { existsSync, statSync } from 'node:fs';
 import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
-const WARN_BYTES = 490 * 1024;
-const FAIL_BYTES = 540 * 1024;
+const WARN_BYTES = 540 * 1024;
+const FAIL_BYTES = 560 * 1024;
 
 /**
  * 当前版本的体积基线（每次发版更新，用来在 CI 里显示「这次改动胖了多少」）。
  * 它的作用不是判失败，而是让体积增长**可见** —— 静悄悄长胖是最难回头的技术债。
  */
-const BASELINE_BYTES = 449 * 1024;
+const BASELINE_BYTES = 531 * 1024;
 
 const here = dirname(fileURLToPath(import.meta.url));
 const appRoot = resolve(here, '..');
@@ -71,7 +84,7 @@ console.log(`水位：WARN ${human(WARN_BYTES)} · FAIL ${human(FAIL_BYTES)}`);
 
 if (bytes > FAIL_BYTES) {
   console.error(`\n✗ 超出红线：${human(bytes)} > ${human(FAIL_BYTES)}`);
-  console.error('  这个产品是靠「单文件、双击就能用」立身的，超过 540 KB 首屏会明显变慢。');
+  console.error(`  这个产品是靠「单文件、双击就能用」立身的，超过 ${human(FAIL_BYTES)} 首屏会明显变慢。`);
   console.error('  处理方向：把低频功能（面经编辑器 / 社区导入）按需拆出去，或砍掉重复的工具函数。');
   console.error('  不要第一反应就调高阈值 —— 那等于把警报器拆了。');
   process.exit(1);

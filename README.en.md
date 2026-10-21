@@ -138,12 +138,16 @@ silence long   │ time to nudge        │ one-click msg        │
 
 ### Data
 
+- **File linking** — bind the workbench to a `data.json` you choose; every change is written to it automatically (one write at a time, consecutive changes collapse to the last version). Before writing it re-reads the file and compares digests — **if the file changed underneath, it does not overwrite**, it saves `data.conflict-YYYYMMDD-HHMMSS.json` and leaves the call to you
 - **Recycle bin** — deleted applications stay 30 days with a reminder on day 27; interviews and notes come back with them
 - **Incremental import** — fills gaps only, never overwrites what you recorded this week; differing values are listed row by row for you to decide, and résumé version / priority always keep the local value
+- **CSV / JSON auto-mapping** — recognizable headers map to fields automatically; unrecognized columns are listed in the preview one by one (never silently dropped); nothing is written until you confirm
 - **Backups** — JSON (the only lossless format), a portable zip (app + data + checksums, openable by the recipient with a double-click), CSV for spreadsheets, ICS for calendars
+- **Optional encryption** — AES-256-GCM + PBKDF2-SHA256 at 600k rounds; off by default, you turn it on and set a passphrase in settings
 - **Platform sync** — BOSS Zhipin / Shixiseng / Nowcoder / Liepin / generic tables: paste a listing or a job-detail page, review a diff, confirm row by row, undo the whole merge
 - **Timetable import** — one class per line, bad lines reported with a reason; only course rows are replaced, manual entries never are
 - **Storage upgrade** — `file://` uses localStorage; over `http(s)` IndexedDB is detected and preferred, lifting the 5 MB ceiling
+- **Configurable backup reminder** — 3 / 7 / 14 days, or off (with file linking on, it softens to "export a snapshot now and then")
 
 ## Design trade-offs
 
@@ -201,7 +205,23 @@ The price of a single file is a size ceiling; the payoff is that every promise c
 | Sync never fakes silence | `touchedAt` only from platform `lastContactAt`; `lastActivityAt` only via `max()` | 31 sync-engine tests |
 | Migrations are idempotent | Pure functions, additive only, snapshot first | 11 migration tests + failure page |
 
-**Cost**: a hard 540 KB ceiling. Features cannot grow without bound. That is deliberate.
+**Cost**: a hard 560 KB ceiling (WARN at 540 KB). Features cannot grow without bound. That is deliberate.
+
+### File linking: write a conflict copy rather than overwrite
+
+"Let the data land in my own file whenever the browser is open" sounds like skipping a download, but it has six failure layers to handle:
+
+> **How**　a per-filename write queue (depth 1, consecutive changes collapse to the last version) → re-read the file and compute SHA-256 → compare with "the digest we left after our last write" → on mismatch **write the conflict copy first, then leave the main file alone** → drop a write-ahead record before writing (replayable after a power cut) → identify handles only via `isSameEntry`, re-request permission every time
+>
+> **Cost**　the first connection never reports a conflict (with no baseline, forcing a decision is meaningless); when the conflict copy cannot be written the main file is **not touched at all**, which means "this save did not happen"; handles live in a separate IDB, so clearing site data loses them and you re-pick the file. Browsers without the capability (Safari / Firefox / mobile) are told "unsupported" and keep manual import/export — no dead button that does nothing
+
+When the browser revokes write permission the app enters a **read-only lock** and always offers three exits: download the raw file / retry / save as a new file. Your original data is never modified or deleted automatically.
+
+### Encryption is optional, and does not pretend to do more than it can
+
+> **How**　AES-256-GCM + PBKDF2-SHA256 at 600,000 rounds (the OWASP 2023 figure); a fresh 12-byte IV and 16-byte salt on every encryption; `extractable: false`; the envelope is plain JSON so the app can tell "this is an encrypted backup" without the passphrase; a GCM authentication failure raises an error and never returns half a plaintext; off by default, you turn it on
+>
+> **Cost**　front-end encryption **cannot** defend against XSS or a malicious extension reading process memory — decrypted plaintext is necessarily in memory. Its boundary is "a backup that lands on cloud storage, a USB stick, or someone else's machine cannot be read without the passphrase". That sentence is printed verbatim in settings. PBKDF2 also resists GPU cracking less well than Argon2id (chosen because Argon2id needs a third-party library, which conflicts with the zero-dependency promise), hence 600k rounds — and on low-end devices key derivation takes a fraction of a second **on purpose**. Forget the passphrase and that backup is gone; there is no recovery channel
 
 ### Where the "no dependencies" line sits
 
@@ -231,7 +251,7 @@ localStorage / IndexedDB
    Derived in views (pure functions, never persisted)
         │  silence days · todo aggregation · funnel stats · collisions · window range
         ▼
-    17 components, no UI kit, one styles.css with CSS-variable design tokens
+    33 components, no UI kit, one styles.css with CSS-variable design tokens
 ```
 
 **Structural decisions**:
@@ -240,6 +260,7 @@ localStorage / IndexedDB
 - **A single filter point** — soft deletion is not checked at 40+ consumption sites but where `api.db` is built. Checking at every site guarantees a miss, and the miss is the one that shows a deleted application
 - **Storage backend abstraction** — a `StorageBackend` interface plus runtime detection. `file://` uses localStorage and does not probe IDB (the primary path — an extra retry only slows the first paint); `http(s)` probes IDB
 - **Parsing separated from merging** — adapters are pure functions (text → records) and the merge algorithm is maintainer-owned. Adding a platform means a new adapter + fixture + tests, never a branch in the engine
+- **File handles are stored apart from app data** — the `jobdesk.fs` IDB holds handles only. A main-backend failure must trigger the read-only lock; a handle failure only means "pick the file again". Different severity, so they never share a failure path
 
 Full data model, merge algorithm, and field-ownership rules: [`docs/ARCHITECTURE-v0.2.md`](docs/ARCHITECTURE-v0.2.md).
 
@@ -251,23 +272,26 @@ job-desk/
 ├── app/
 │   ├── src/
 │   │   ├── App.tsx            # state hub; every write goes through mutate()
-│   │   ├── types.ts           # data model (schema v2)
+│   │   ├── types.ts           # data model (schema v3)
 │   │   ├── adapters/          # boss / shixiseng / nowcoder / custom (each with fixtures + tests)
 │   │   ├── lib/
 │   │   │   ├── rules.ts       # silence, deadlines, todo aggregation, funnel, templates, collisions
 │   │   │   ├── storage/       # backend abstraction: backend / idb / detect
 │   │   │   ├── storage.ts     # read/write, validation, migration entry, corruption lock, quota
 │   │   │   ├── sync/          # sync engine: normalize / statusMap / engine / capture
+│   │   │   ├── fileLink/      # file linking: hash / handle / pending / engine
+│   │   │   ├── crypto.ts      # optional encryption: AES-256-GCM + PBKDF2
+│   │   │   ├── csvImport.ts   # CSV / JSON field auto-mapping with preview
 │   │   │   ├── trash.ts       # recycle bin: soft delete, expiry sweep, single filter point
 │   │   │   ├── merge.ts       # incremental import, field ownership, conflict computation
 │   │   │   ├── portable.ts    # portable ZIP (store mode, reproducible)
 │   │   │   ├── virtual.ts     # list virtualisation: range math + hook
-│   │   │   ├── migrate.ts     # v1 → v2 (pure, idempotent, additive)
+│   │   │   ├── migrate.ts     # v1 → v2 → v3 (pure, idempotent, additive)
 │   │   │   ├── rollback.ts    # rollback points and 30-day cleanup
 │   │   │   ├── courseImport.ts# timetable text parser (bad lines get a reason)
 │   │   │   ├── tableExport.ts # CSV / ICS export (formula-injection safe, RFC 5545 folding)
 │   │   │   └── interview.ts   # note stats and spaced review
-│   │   └── components/        # views + drawers + notes + sync panel + ErrorBoundary
+│   │   └── components/        # views + drawers + notes + sync + file-link + CSV preview + ErrorBoundary
 │   ├── scripts/               # typecheck / test / bundle / no-network / versions / pack / bench
 │   └── smoke-v05.mjs          # CDP end-to-end smoke
 ├── extension/                 # optional MV3 extension (activeTab + scripting only)
@@ -304,13 +328,16 @@ silenceDays    = calendar-day difference between today(00:00) and lastActivityAt
 | `jobdesk.v1.listFilters` | Last list filters |
 | `jobdesk.v1.preMigrate.<ts>` | Pre-migration snapshot (rollback point, kept 30 days) |
 | `jobdesk.v1.failedAt.<ts>` | Raw copy after a read failure (max 3, never modified) |
+| `jobdesk.v1.fsBaseline` | Digest of the file as of our last write (the conflict baseline) |
+| `jobdesk.v1.fsPending` | One interrupted write (sent but unconfirmed; replayable on next launch) |
 
-When served over HTTP, the same data lives in the `jobdesk` / `kv` IndexedDB store under the same keys.
+When served over HTTP, the same data lives in the `jobdesk` / `kv` IndexedDB store under the same keys. File handles live in a separate `jobdesk.fs` / `handles` store — a main-backend failure must trigger the read-only lock, while a handle failure only means "pick the file again". Different severity, so they never share a failure path.
 
 - Data lives in this browser only: closing, refreshing, rebooting are fine; clearing site data, private windows, or another browser/device lose it
 - **Export before switching machines**: Settings → Data → Export JSON (the only lossless format)
+- **Want the data to land in a file by itself**: Settings → File linking → Connect, pick a `data.json`. Every change is written to it; conflicts never overwrite
 - **Want the app to travel too**: export the portable zip — `index.html` + `data.json` + readme + checksums
-- Settings shows "last backup: N days ago" and turns red past 7 days. It reminds, it never blocks
+- Settings shows "last backup: N days ago" and turns red past the threshold. The threshold is configurable (3 / 7 / 14 days, or off). It reminds, it never blocks
 
 </details>
 
@@ -355,26 +382,27 @@ Out of scope by design, not by schedule:
 
 ## Engineering
 
-`npm run verify` runs seven gates; any red blocks the merge.
+`npm run verify` runs eight gates; any red blocks the merge.
 
 | # | Gate | Command | Guards |
 | :--- | :--- | :--- | :--- |
 | 1 | Typecheck | `typecheck` | TS strict + `noUncheckedIndexedAccess`; exhaustive `Ownership` checks on new fields |
 | 2 | Unit tests | `test` | Full coverage of pure functions |
-| 3 | Network scan | `check:no-network` | 11 rules, empty allowlist |
-| 4 | Build | `build` | Single-file artifact still builds |
-| 5 | Bundle red line | `check:bundle` | >490 KB warn / >540 KB fail; single-commit growth >20 KB also blocked |
-| 6 | Version agreement | `check:versions` | `package.json` / extension `manifest.json` / artifact must agree |
-| 7 | Community content | `validate:community` | Format, uniqueness, length, anonymisation |
+| 3 | Lint | `lint` | Correctness + React hooks + architectural boundaries (adapters may not import React/storage/sync, read the DOM, or fetch) |
+| 4 | Network scan | `check:no-network` | 11 rules, empty allowlist |
+| 5 | Build | `build` | Single-file artifact still builds |
+| 6 | Bundle red line | `check:bundle` | >540 KB warn / >560 KB fail; single-commit growth >20 KB also blocked |
+| 7 | Version agreement | `check:versions` | `package.json` / extension `manifest.json` / artifact must agree |
+| 8 | Community content | `validate:community` | Format, uniqueness, length, anonymisation |
 
 **Current baseline** (reproducible in CI):
 
 | Metric | Value |
 | :--- | :--- |
-| Unit tests | 320 across 22 files, all green (incl. 9 disaster-recovery cases) |
+| Unit tests | 391 across 27 files, all green (incl. 9 disaster-recovery cases) |
 | End-to-end smoke | 21 checks via CDP against real Edge, including ZIP central-directory parsing |
 | Performance bench | `npm run bench`: 50 / 200 / 500 / 1000 rows; 1000 rows renders 15, sort 21 ms, first paint 60–88 ms |
-| Bundle | 491,558 B (480 KiB); red line 490 KB warn / 540 KB fail |
+| Bundle | 543,377 B (531 KiB); red line 540 KB warn / 560 KB fail ([why 560](docs/RELEASE-NOTES-v0.6.0.md)) |
 | Network scan | Passing, empty allowlist |
 | Independent QA | 478 assertions, 0 failures ([`docs/QA-REPORT-v0.2.md`](docs/QA-REPORT-v0.2.md)) |
 | Reproducible build | Clean `npm ci && npm run build` yields identical sha256 |
@@ -399,7 +427,7 @@ npm run validate:community
 npm run bench            # CDP performance bench
 node smoke-v05.mjs       # CDP end-to-end smoke
 
-npm run verify           # all seven gates
+npm run verify           # all eight gates
 npm run release:pack     # reproducible release assets
 ```
 
@@ -424,19 +452,24 @@ Nothing hidden. Each item is a real boundary of the current release, not a "comi
 
 - **Each of the three exits has a gap**: the undo stack is memory-only (cleared on reload — by design, since persisting it raises "undo to which version?"); the recycle bin covers applications only, so deleting a company / interview / event can only be rescued by the undo stack
 - **IndexedDB is preferred, not required** — when disabled or in private mode it quietly falls back to localStorage with its 5 MB ceiling
+- **File linking is Chromium-desktop only** — Safari / Firefox / mobile have no File System Access, so they show "unsupported" and keep manual import/export. Pages served over plain `http://` also lack the capability (not a secure context); use https or open the file directly
+- **File handles get lost** — clearing site data, private windows, or switching browsers drops the handle and you re-pick the file. That is the browser's design, not a defect
+- **Encryption does not stop a local attacker** — it protects a backup file *after it leaves this machine*; XSS and malicious extensions can read the decrypted plaintext in memory. A forgotten passphrase has no recovery channel
+- **When the conflict copy cannot be written, the save does not happen** — without access to the containing directory the app cannot create `data.conflict-*.json`, so the main file is left untouched and the conflict is only reported in the UI
+- **CSV mapping reads headers, never guesses content** — unrecognized columns are listed in the preview and ignored; a file with no header row falls back to "column 1 = company, column 2 = role" and says so explicitly
 - **Sync is text parsing, not an API** — platform redesigns break it; it says "could not parse" and never silently drops data. BOSS's record page, all four platforms' job-detail pages and Liepin's delivery list are calibrated against real device text; Shixiseng / Nowcoder lists currently hold no data on the maintainer's account and await their first real sample
 - **Bare personal names are not anonymised** — title anchors (interviewer / teacher / manager) are handled; pure names need NER, which regex cannot do
 - **Large libraries have a ceiling** — 1000 applications works (virtualised list), but derived views such as insights and the calendar still scale linearly with row count and are not yet sharded
 - **Mobile is usable, not designed** — narrow screens are responsive, but drag-and-drop and keyboard shortcuts are desktop-first
 - **Clipboard may be unavailable** over `file://` in some browsers; message templates then expand into a textarea
 - **Deadlines are per-application** — there is no season-wide deadline
-- **Single-file size has a hard ceiling** — over 540 KB fails CI. Deliberate, not a bug
+- **Single-file size has a hard ceiling** — over 560 KB fails CI. Deliberate, not a bug
 
 ## Contributing
 
 See [`CONTRIBUTING.md`](CONTRIBUTING.md). For a platform adapter, start at [`docs/adapters/README.md`](docs/adapters/README.md); for interview notes, see [`community/SCHEMA.md`](community/SCHEMA.md) — **anonymisation is a hard red line**. What changed in each release is in [`CHANGELOG.md`](CHANGELOG.md).
 
-Run `npm run verify` before opening a PR; seven green gates are the price of admission. For security issues, **do not open a public issue** — use the private channel in [`SECURITY.md`](SECURITY.md).
+Run `npm run verify` before opening a PR; eight green gates are the price of admission. For security issues, **do not open a public issue** — use the private channel in [`SECURITY.md`](SECURITY.md).
 
 ## License
 

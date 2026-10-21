@@ -11,6 +11,7 @@ import { trashDaysLeft } from '../lib/trash';
 import { cx, companyLabel } from '../lib/util';
 import { PLATFORM_LABEL } from '../adapters/registry';
 import { CommunityImport } from './interview/CommunityImport';
+import { FileLinkPanel } from './FileLinkPanel';
 
 const PLATFORMS: PlatformId[] = ['boss', 'shixiseng', 'nowcoder', 'liepin', 'custom'];
 
@@ -66,13 +67,19 @@ export function SettingsDrawer({ api, onClose, importError, onDismissError, tras
   const [trashNow] = useState(() => new Date());
 
   /**
-   * 备份提醒的口径：从未导出 = 提醒；超过 7 天 = 提醒。
+   * 备份提醒的口径（v0.6 / P1）：天数由 `settings.backupReminderDays` 决定（3 / 7 / 14）。
+   *
+   * `0` 是合法值，表示「不提醒」—— 这不是偷懒，而是尊重那些已经用文件联动
+   * 或自己的网盘同步在做备份的用户：对着一份每 30 秒就自动落盘的文件
+   * 天天提示「该导出了」，只会让提示本身失去意义。
+   *
    * 只做「温和提示」，不弹窗、不拦截操作 —— 工具不该在用户忙的时候挡路。
    */
+  const reminderDays = settings.backupReminderDays;
   const backupDays = lastExportAt
     ? Math.max(0, Math.floor((Date.now() - new Date(lastExportAt).getTime()) / 86400000))
     : null;
-  const staleBackup = backupDays === null || backupDays >= 7;
+  const staleBackup = reminderDays > 0 && (backupDays === null || backupDays >= reminderDays);
   const backupText =
     backupDays === null ? '从未导出' : backupDays === 0 ? '今天' : `${backupDays} 天前`;
 
@@ -190,7 +197,7 @@ export function SettingsDrawer({ api, onClose, importError, onDismissError, tras
             <h3 className="drawer__section-title">数据</h3>
             <div className="btn-row">
               <button type="button" className="btn btn--small" onClick={() => fileRef.current?.click()}>
-                导入 JSON
+                导入 JSON / CSV
               </button>
               <button type="button" className="btn btn--small" onClick={api.exportData}>
                 导出 JSON
@@ -207,7 +214,7 @@ export function SettingsDrawer({ api, onClose, importError, onDismissError, tras
               <input
                 ref={fileRef}
                 type="file"
-                accept="application/json,.json"
+                accept="application/json,.json,.csv,text/csv"
                 className="hidden-file"
                 onChange={(event) => {
                   const file = event.target.files && event.target.files[0];
@@ -238,8 +245,10 @@ export function SettingsDrawer({ api, onClose, importError, onDismissError, tras
               </p>
             ) : null}
             <p className="field__hint">
-              <strong>只有 JSON 能导入回来</strong>。CSV 给 Excel 看、日历给系统日历看，两个都是单向的，
-              别拿它们当备份。
+              <strong>备份只认 JSON</strong>（加密备份也是 JSON，会先要口令）。CSV 可以导入 ——
+              从表格软件、别的求职工具导出的清单都能读，导入前会让你确认每一列对应哪个字段，
+              认不出来的列会明确列出来，不会悄悄丢掉。但 CSV <strong>不是</strong>完整备份：
+              时间线、面经、面试场次都不在里面。
             </p>
             <p className="field__hint">
               <strong>导出便携包</strong>
@@ -480,6 +489,30 @@ export function SettingsDrawer({ api, onClose, importError, onDismissError, tras
 
           <section className="drawer__section">
             <div className="drawer__section-head">
+              <h3 className="drawer__section-title">文件联动与加密</h3>
+              <span className="muted">v0.6 可选</span>
+            </div>
+            <FileLinkPanel
+              api={api}
+              capability={api.fileLink.capability}
+              fileName={api.fileLink.fileName}
+              lastSyncedAt={settings.fileLink.lastSyncedAt}
+              lastConflictFile={settings.fileLink.lastConflictFile}
+              readOnlyMessage={api.fileLink.readOnlyMessage}
+              hasPending={api.fileLink.hasPending}
+              busy={api.fileLink.busy}
+              onConnect={() => void api.fileLink.connect()}
+              onDisconnect={api.fileLink.disconnect}
+              onRetryPermission={() => void api.fileLink.retryPermission()}
+              onDownloadRaw={api.fileLink.downloadRaw}
+              onSaveAs={() => void api.fileLink.saveAs()}
+              onReplay={() => void api.fileLink.replayPending()}
+              onToggleEncryption={api.fileLink.toggleEncryption}
+            />
+          </section>
+
+          <section className="drawer__section">
+            <div className="drawer__section-head">
               <h3 className="drawer__section-title">存储占用</h3>
               <span className="muted">
                 {budgetLevel === 'ok' ? '正常' : budgetLevel === 'warn' ? '接近上限' : '已超上限'}
@@ -525,10 +558,31 @@ export function SettingsDrawer({ api, onClose, importError, onDismissError, tras
             </div>
             {staleBackup ? (
               <p className="field__hint">
-                距离上次导出已经超过一周（或从未导出）。清缓存、换浏览器、无痕模式都会让本地数据消失，
+                距离上次导出已经超过 {reminderDays} 天（或从未导出）。清缓存、换浏览器、无痕模式都会让本地数据消失，
                 点上面的「导出 JSON」存一份，十秒的事。
               </p>
             ) : null}
+            <div className="drawer__row">
+              <label className="field field--narrow">
+                <span className="field__label">备份提醒</span>
+                <select
+                  className="input"
+                  value={settings.backupReminderDays}
+                  onChange={(event) =>
+                    api.updateSettings({ backupReminderDays: Number(event.target.value) })
+                  }
+                >
+                  <option value={0}>不提醒</option>
+                  <option value={3}>3 天</option>
+                  <option value={7}>7 天</option>
+                  <option value={14}>14 天</option>
+                </select>
+              </label>
+              <p className="field__hint field__hint--inline">
+                到点后在「关于」里标黄，不弹窗、不拦操作。
+                {settings.fileLink.enabled ? ' 文件联动开启后，建议改成「不提醒」—— 数据已经在自动落盘。' : ''}
+              </p>
+            </div>
             {rollbackSize > 0 ? (
               <div className="btn-row">
                 <button

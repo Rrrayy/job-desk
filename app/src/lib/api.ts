@@ -20,6 +20,7 @@ import type {
   Status,
 } from '../types';
 import type { MergePlan, PlannedRow } from './sync/types';
+import type { FileLinkCapability } from './fileLink/handle';
 
 export type ViewKey = 'today' | 'board' | 'list' | 'calendar' | 'insights';
 
@@ -191,6 +192,29 @@ export interface AppApi {
   checkStorage: () => Promise<{ usage: number; quota: number; ratio: number } | null>;
   /** 当前存储后端名（localStorage / IndexedDB），用于设置页如实告知 */
   storageBackend: () => string;
+
+  /* ---------------- 文件联动（v0.6 / D8） ---------------- */
+  fileLink: {
+    /** 能力探测结果；`full` 之外的一切都走手动导入导出 */
+    capability: FileLinkCapability;
+    /** 已连接的文件名（null = 没连） */
+    fileName: string | null;
+    /** 只读原因（null = 可写） */
+    readOnlyMessage: string | null;
+    /** 有没有一条中断的写入等着重放 */
+    hasPending: boolean;
+    busy: boolean;
+    connect: () => Promise<void>;
+    disconnect: () => void;
+    retryPermission: () => Promise<void>;
+    replayPending: () => Promise<void>;
+    /** 只读三出口之一：下载当前库原文（不碰联动文件） */
+    downloadRaw: () => void;
+    /** 只读三出口之三：另存为新文件（并切换联动目标） */
+    saveAs: () => Promise<void>;
+    /** 开启 / 关闭导出加密；返回错误文案或 null */
+    toggleEncryption: (enabled: boolean, password: string) => Promise<string | null>;
+  };
 
   /* ---------------- 复盘二级 tab（v2） ---------------- */
   insightsTab: InsightsTab;

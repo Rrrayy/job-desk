@@ -5027,3 +5027,147 @@ button.chip:hover {
   color: #a83236;
   font-weight: 500;
 }
+
+/* ==================================================================
+   v0.6：文件联动与加密面板
+   ------------------------------------------------------------------
+   这一块刻意不用卡片 / 阴影：它是设置页里的一个「状态陈述」，
+   靠一条分割线 + 一个状态圆点表达「连没连、能不能写」就够了。
+   ================================================================== */
+
+.filelink {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.filelink__status {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+  font-size: 13px;
+  color: var(--ink-2);
+}
+
+.filelink__status strong {
+  color: var(--ink);
+  font-weight: 600;
+}
+
+/* 状态圆点：灰 = 未连接，绿 = 可写，琥珀 = 只读 */
+.filelink__dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--ink-4);
+  flex: 0 0 auto;
+}
+
+.filelink__dot--ok {
+  background: var(--green);
+  box-shadow: 0 0 0 3px var(--green-soft);
+}
+
+.filelink__dot--warn {
+  background: var(--amber);
+  box-shadow: 0 0 0 3px var(--amber-soft);
+}
+
+.filelink__crypto {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin-top: 4px;
+  padding-top: 12px;
+  border-top: 1px dashed var(--line);
+}
+
+/* 说明紧跟在输入框右侧时不换行挤成一条 */
+.field__hint--inline {
+  margin: 0;
+  flex: 1 1 200px;
+  min-width: 0;
+}
+
+/* ---------------------- v0.6 / P1：CSV 字段映射预览 ---------------------- */
+
+.modal--csv {
+  max-width: 720px;
+}
+
+/* 列 → 字段的对照：用 chip 而不是表格，因为它表达的是「映射关系」不是「数据」 */
+.mapping-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin: 6px 0 10px;
+}
+
+.mapping-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 3px 8px;
+  border-radius: 999px;
+  background: var(--indigo-soft);
+  color: var(--indigo-dark);
+  font-size: 12px;
+  max-width: 100%;
+}
+
+.mapping-chip__from {
+  font-weight: 600;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  max-width: 140px;
+}
+
+.mapping-chip__arrow {
+  opacity: 0.55;
+}
+
+/* 被忽略的列：灰掉，但**保留在列表里** —— 消失等于悄悄丢弃 */
+.mapping-chip--off {
+  background: var(--line-soft);
+  color: var(--ink-4);
+  cursor: help;
+}
+
+.preview-table-wrap {
+  max-height: 260px;
+  overflow: auto;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-sm);
+}
+
+.preview-table {
+  width: 100%;
+  font-size: 12px;
+}
+
+.preview-table td,
+.preview-table th {
+  padding: 6px 8px;
+  white-space: nowrap;
+}
+
+.preview-table__note {
+  max-width: 180px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.issue-list {
+  margin: 6px 0 0;
+  padding-left: 18px;
+  font-size: 12px;
+  color: var(--ink-2);
+  max-height: 180px;
+  overflow-y: auto;
+}
+
+.issue-list li {
+  margin-bottom: 3px;
+}

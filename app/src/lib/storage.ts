@@ -4,15 +4,16 @@
  * 铁律：读失败绝不允许白屏 —— 降级为空数据 + 提示「数据已损坏，可导出修复」。
  *
  * ★ 语义提醒（架构 D-05）：`validateImport` 的名字是「校验」，但它同时负责**迁移**：
- *   v1 → migrateV1ToV2，v2 → validateV2。启动与导入共用这一个入口，
- *   所以「v1 备份导入 v0.2」与「启动时自动迁移」物理上是同一份实现，不可能漂移。
+ *   v1 / v2 → migrateV2ToV3（内部级联 v1→v2→v3），v3 → validateV2。启动与导入共用这一个入口，
+ *   所以「v1 备份导入」与「启动时自动迁移」物理上是同一份实现，不可能漂移。
+ *   版本分发上限统一由 `SCHEMA_VERSION_CURRENT` 决定，禁止再写死数字。
  */
 
 import type { DB, PlatformId, Status } from '../types';
 import type { InsightsTab } from './api';
 import { BUDGET } from './budget';
 import { defaultSettings, emptyDB } from './defaults';
-import { migrateV1ToV2, resolveSchemaVersion } from './migrate';
+import { FORMAT_VERSION_CURRENT, SCHEMA_VERSION_CURRENT, SCHEMA_VERSION_V1, migrateV2ToV3, resolveSchemaVersion } from './migrate';
 import {
   BACKUP_KEY_PREFIX,
   readPointer,
@@ -223,6 +224,10 @@ function isRecord(value: unknown): value is Record<string, unknown> {
 /**
  * 版本分发（替代 v0.1 的 `version !== 1` 判定）。
  * 老手工文件没有版本号 → 当 v1 处理，走同一条迁移。
+ *
+ * ★ v0.6：分发上限改由 `SCHEMA_VERSION_CURRENT` 决定，不再写死 2。
+ *   v1 / v2 都走 `migrateV2ToV3`（内部级联 v1→v2→v3），
+ *   保证「启动迁移」与「导入备份」物理上是同一份实现，不可能漂移。
  */
 export function validateImport(raw: unknown): ImportResult {
   if (!isRecord(raw)) return { ok: false, error: '顶层不是一个对象' };
@@ -231,19 +236,19 @@ export function validateImport(raw: unknown): ImportResult {
   }
 
   const version = resolveSchemaVersion(raw);
-  if (version === 2) return validateV2(raw);
-  if (version === 1 || version === 'unknown') {
-    // §D.3：v1 备份导入必须成功，且走同一条迁移
-    const migrated = migrateV1ToV2(raw, { now: new Date().toISOString() });
+  if (version === SCHEMA_VERSION_CURRENT) return validateV2(raw);
+  if (version === 1 || version === 2 || version === 'unknown') {
+    // §D.3：v1 / v2 备份导入必须成功，且走同一条迁移
+    const migrated = migrateV2ToV3(raw, { now: new Date().toISOString() });
     if (!migrated.ok) return { ok: false, error: migrated.error };
-    // 迁移产物过一遍 v2 校验，避免「迁移写出一个自己都读不回来的库」
+    // 迁移产物过一遍校验，避免「迁移写出一个自己都读不回来的库」
     return validateV2(migrated.db);
   }
   return {
     ok: false,
     error:
-      version > 2
-        ? `这份备份来自 v${version} 数据格式的新版本，请先升级工具再导入（当前支持到 2）`
+      version > SCHEMA_VERSION_CURRENT
+        ? `这份备份来自 v${version} 数据格式的新版本，请先升级工具再导入（当前支持到 ${SCHEMA_VERSION_CURRENT}）`
         : `无法识别的数据格式版本：${String(version)}`,
   };
 }
@@ -344,8 +349,8 @@ function readDBFromRaw(raw: string): LoadResult {
 
   const version = resolveSchemaVersion(parsed);
 
-  // 已经是 v2：直接校验
-  if (version === 2) {
+  // 已经是当前版本：直接校验
+  if (version === SCHEMA_VERSION_CURRENT) {
     const result = validateV2(parsed);
     if (result.ok) return { db: result.db, error: null };
     const failedAtKey = preserveFailedRaw(raw, new Date().toISOString());
@@ -354,7 +359,7 @@ function readDBFromRaw(raw: string): LoadResult {
       error: `数据已损坏（${result.error}），可下载原始数据后修复。已临时降级为空数据。`,
       migration: {
         failed: true,
-        from: 2,
+        from: SCHEMA_VERSION_CURRENT,
         backupKey: null,
         failedAtKey,
         raw,
@@ -363,11 +368,11 @@ function readDBFromRaw(raw: string): LoadResult {
     };
   }
 
-  if (typeof version === 'number' && version > 2) {
+  if (typeof version === 'number' && version > SCHEMA_VERSION_CURRENT) {
     const failedAtKey = preserveFailedRaw(raw, new Date().toISOString());
     return {
       db: emptyDB(),
-      error: `数据来自更新版本（v${version}），当前工具最高支持 v2。`,
+      error: `数据来自更新版本（v${version}），当前工具最高支持 v${SCHEMA_VERSION_CURRENT}。`,
       migration: {
         failed: true,
         from: version,
@@ -379,7 +384,8 @@ function readDBFromRaw(raw: string): LoadResult {
     };
   }
 
-  /* ---------- v1 / unknown：先备份，再迁移 ---------- */
+  /* ---------- v1 / v2 / unknown：先备份，再逐级迁移到当前版本 ---------- */
+  const fromVersion = version === 'unknown' ? SCHEMA_VERSION_V1 : version;
   const nowIso = new Date().toISOString();
   const backup = writeRollbackPoint(raw, nowIso);
   if (!backup.ok) {
@@ -390,7 +396,7 @@ function readDBFromRaw(raw: string): LoadResult {
       error: `迁移已中止：${backup.error}。原数据没有被改动。`,
       migration: {
         failed: true,
-        from: 1,
+        from: fromVersion,
         backupKey: null,
         failedAtKey,
         raw,
@@ -399,28 +405,28 @@ function readDBFromRaw(raw: string): LoadResult {
     };
   }
 
-  const migrated = migrateV1ToV2(parsed, { now: nowIso });
+  const migrated = migrateV2ToV3(parsed, { now: nowIso });
   if (!migrated.ok) {
-    writePointer({ from: 1, to: 2, at: nowIso, backupKey: backup.key, status: 'failed', reason: migrated.error });
+    writePointer({ from: fromVersion, to: SCHEMA_VERSION_CURRENT, at: nowIso, backupKey: backup.key, status: 'failed', reason: migrated.error });
     return {
       db: emptyDB(),
       error: `迁移失败：${migrated.error}。原数据没有被改动，回滚点已保留。`,
-      migration: { failed: true, from: 1, backupKey: backup.key, failedAtKey: backup.key, raw, reason: migrated.error },
+      migration: { failed: true, from: fromVersion, backupKey: backup.key, failedAtKey: backup.key, raw, reason: migrated.error },
     };
   }
 
   const verified = validateV2(migrated.db);
   if (!verified.ok) {
-    writePointer({ from: 1, to: 2, at: nowIso, backupKey: backup.key, status: 'failed', reason: verified.error });
+    writePointer({ from: fromVersion, to: SCHEMA_VERSION_CURRENT, at: nowIso, backupKey: backup.key, status: 'failed', reason: verified.error });
     return {
       db: emptyDB(),
       error: `迁移结果校验失败：${verified.error}。原数据没有被改动，回滚点已保留。`,
-      migration: { failed: true, from: 1, backupKey: backup.key, failedAtKey: backup.key, raw, reason: verified.error },
+      migration: { failed: true, from: fromVersion, backupKey: backup.key, failedAtKey: backup.key, raw, reason: verified.error },
     };
   }
 
   const db = verified.db;
-  db.settings.lastMigration = { from: 1, to: 2, at: nowIso, backupKey: backup.key };
+  db.settings.lastMigration = { from: fromVersion, to: SCHEMA_VERSION_CURRENT, at: nowIso, backupKey: backup.key };
   const writeError = writeDB(db);
   if (writeError) {
     // 写不进去也不能白屏：把数据交出去，让用户先导出
@@ -429,7 +435,7 @@ function readDBFromRaw(raw: string): LoadResult {
       error: `${writeError} 迁移结果已在内存中，请立刻导出备份。`,
     };
   }
-  writePointer({ from: 1, to: 2, at: nowIso, backupKey: backup.key, status: 'done' });
+  writePointer({ from: fromVersion, to: SCHEMA_VERSION_CURRENT, at: nowIso, backupKey: backup.key, status: 'done' });
   return { db, error: null };
 }
 
@@ -686,15 +692,19 @@ export function saveListFilters(state: ListFilterState): void {
 
 /* ------------------------------ 导出导入 ------------------------------ */
 
-/** 导出为格式化 JSON（version 2，保留 settings.schemaVersion） */
+/**
+ * 导出为格式化 JSON（formatVersion 2，settings.schemaVersion 原样保留）。
+ *
+ * v0.6：`formatVersion` 改用常量 `FORMAT_VERSION_CURRENT`，与内部 schemaVersion
+ * 彻底解耦 —— 内部结构升到 v3，导出格式仍是 2（v0.5 的备份能被 v0.6 读，
+ * v0.6 的备份带 schemaVersion:3，v0.5 会按「更新版本」拒绝而不是读坏）。
+ */
 export function exportJSON(db: DB): string {
   const payload = {
     exportedAt: new Date().toISOString(),
     app: 'jobdesk',
-    // formatVersion 是给 v0.6+ 的承诺：以后格式演进靠它做前向判断，
-    // 与 settings.schemaVersion 解耦（schemaVersion 只描述库内结构，不随导出格式走）
-    formatVersion: 2,
-    version: 2,
+    formatVersion: FORMAT_VERSION_CURRENT,
+    version: db.settings.schemaVersion,
     settings: db.settings,
     companies: db.companies,
     applications: db.applications,

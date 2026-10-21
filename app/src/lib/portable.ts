@@ -135,38 +135,51 @@ export function buildZip(entries: readonly ZipEntry[]): Uint8Array {
   return out;
 }
 
-/** 便携包里的说明文件 —— 用户解压后第一眼要看的东西 */
-export function portableReadme(version: string, exportedAt: string, counts: {
-  applications: number;
-  companies: number;
-  interviews: number;
-}): string {
-  return [
-    '求职工作台 · 便携包',
-    '==================',
-    '',
-    `应用版本：${version}`,
-    `导出时间：${exportedAt}`,
-    `内含数据：${counts.applications} 条投递 / ${counts.companies} 家公司 / ${counts.interviews} 场面试`,
-    '',
-    '怎么用',
-    '------',
-    '1. 解压到任意文件夹（不要放在压缩包里直接双击）。',
-    '2. 双击 index.html，浏览器会打开你的工作台，数据已经在了。',
-    '3. 数据存在「那个文件夹对应的浏览器」里：',
-    '   - 双击打开（file://）→ 存在浏览器的 localStorage',
-    '   - 想换一台电脑 / 换一个浏览器 → 在新环境里双击 index.html，',
-    '     再用「设置 → 导入 JSON 备份」把 data.json 导进去。',
-    '',
-    '注意',
-    '----',
-    '· 这是一个静态网页，不联网、不上传任何东西。',
-    '· 清理浏览器数据 / 换浏览器 / 换文件夹，都会看不到这份数据。',
-    '· data.json 是唯一可导回的备份格式，请和 index.html 一起保存。',
-    '',
-    `文件校验：SHA256SUMS 里的哈希可用 certutil -hashfile <文件名> SHA256 核对。`,
-    '',
-  ].join('\n');
+/**
+ * 便携包里的说明文件 —— 用户解压后第一眼要看的东西。
+ *
+ * 排版是「标题 + 下划线 + 正文段」的纯文本，刻意不用 markdown：
+ * .txt 用记事本打开时 ## 只会让人更困惑。
+ */
+const README_HEAD = [
+  '求职工作台 · 便携包',
+  '==================',
+  '',
+] as const;
+
+const README_BODY = [
+  '',
+  '怎么用',
+  '------',
+  '1. 解压到任意文件夹（不要放在压缩包里直接双击）。',
+  '2. 双击 index.html，浏览器会打开你的工作台，数据已经在了。',
+  '3. 数据存在「那个文件夹对应的浏览器」里：',
+  '   · 双击打开（file://）→ 存在浏览器的 localStorage',
+  '   · 换电脑 / 换浏览器 → 在新环境里双击 index.html，',
+  '     再用「设置 → 导入备份」把 data.json 导进去。',
+  '',
+  '注意',
+  '----',
+  '· 这是一个静态网页，不联网、不上传任何东西。',
+  '· 清理浏览器数据 / 换浏览器 / 换文件夹，都会看不到这份数据。',
+  '· data.json 是唯一可导回的备份格式，请和 index.html 一起保存。',
+  '· 设置里开了「备份加密」的话，data.json 需要口令才能导入。',
+  '',
+  '文件校验：SHA256SUMS 里的哈希可用 certutil -hashfile <文件名> SHA256 核对。',
+  '',
+].join('\n');
+
+export function portableReadme(
+  version: string,
+  exportedAt: string,
+  counts: { applications: number; companies: number; interviews: number },
+): string {
+  return (
+    README_HEAD.join('\n') +
+    `应用版本：${version}\n导出时间：${exportedAt}\n` +
+    `内含数据：${counts.applications} 条投递 / ${counts.companies} 家公司 / ${counts.interviews} 场面试\n` +
+    README_BODY
+  );
 }
 
 /** 便携包文件名：带本地日期与时分，同一天导多次不会互相覆盖 */

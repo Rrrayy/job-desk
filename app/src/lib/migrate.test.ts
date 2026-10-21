@@ -2,7 +2,7 @@ import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { describe, expect, it } from 'vitest';
 import type { DB } from '../types';
-import { migrateV1ToV2, resolveSchemaVersion } from './migrate';
+import { SCHEMA_VERSION_CURRENT, migrateV1ToV2, migrateV2ToV3, resolveSchemaVersion } from './migrate';
 
 /** 造一份「v0.1 真实导出」形状的数据（26 条投递 + 多条 note + 面试） */
 function buildV1Raw(): Record<string, unknown> {
@@ -162,11 +162,11 @@ describe('migrateV1ToV2', () => {
 
   it('★ 幂等：同一份数据迁移两次，结果完全相同', () => {
     const raw = buildV1Raw();
-    const once = migrateV1ToV2(raw, { now: NOW });
+    const once = migrateV2ToV3(raw, { now: NOW });
     expect(once.ok).toBe(true);
     if (!once.ok) return;
 
-    const twice = migrateV1ToV2(once.db, { now: NOW });
+    const twice = migrateV2ToV3(once.db, { now: NOW });
     expect(twice.ok).toBe(true);
     if (!twice.ok) return;
 
@@ -174,14 +174,45 @@ describe('migrateV1ToV2', () => {
     expect(twice.db).toEqual(once.db);
   });
 
-  it('已是 v2 的输入原样返回（连对象引用都不变）', () => {
-    const once = migrateV1ToV2(buildV1Raw(), { now: NOW });
+  it('已是当前版本的输入原样返回（连对象引用都不变）', () => {
+    const once = migrateV2ToV3(buildV1Raw(), { now: NOW });
     if (!once.ok) throw new Error('前置迁移失败');
-    const again = migrateV1ToV2(once.db, { now: '2030-01-01T00:00:00.000Z' });
+    const again = migrateV2ToV3(once.db, { now: '2030-01-01T00:00:00.000Z' });
     expect(again.ok).toBe(true);
     if (!again.ok) return;
     expect(again.db).toBe(once.db);
     expect(again.changed).toBe(false);
+  });
+
+  it('v1 直通 v3：lastMigration 记的是 1 → 3（不是 1 → 2）', () => {
+    const result = migrateV2ToV3(buildV1Raw(), { now: NOW });
+    if (!result.ok) throw new Error('迁移失败');
+    expect(result.db.settings.schemaVersion).toBe(SCHEMA_VERSION_CURRENT);
+    expect(result.db.settings.lastMigration?.from).toBe(1);
+    expect(result.db.settings.lastMigration?.to).toBe(SCHEMA_VERSION_CURRENT);
+  });
+
+  it('v2 备份 → v3：补上 backupReminderDays 与 fileLink 默认值，events 原样透传', () => {
+    const v2 = migrateV1ToV2(buildV1Raw(), { now: NOW });
+    if (!v2.ok) throw new Error('前置迁移失败');
+    const source = {
+      ...v2.db,
+      settings: { ...v2.db.settings, schemaVersion: 2 },
+      events: [{ id: 'ev1', title: '算法课', kind: 'course', start: '08:00', end: '09:40', weekly: true, weekday: 1 }],
+    };
+    const result = migrateV2ToV3(source, { now: NOW });
+    if (!result.ok) throw new Error('迁移失败');
+    expect(result.db.settings.backupReminderDays).toBe(7);
+    expect(result.db.settings.fileLink).toEqual({ enabled: false, readOnly: false });
+    // 不凭空给老事件塞 color / notes
+    expect(result.db.events[0]).toEqual(source.events[0]);
+  });
+
+  it('比当前版本还新的数据 → 明确报错，绝不猜测结构', () => {
+    const raw = buildV1Raw();
+    (raw.settings as Record<string, unknown>).schemaVersion = SCHEMA_VERSION_CURRENT + 1;
+    const result = migrateV2ToV3(raw, { now: NOW });
+    expect(result.ok).toBe(false);
   });
 
   it('只加不减：三个新数组是空数组，settings 补上 sync', () => {
@@ -190,7 +221,8 @@ describe('migrateV1ToV2', () => {
     expect(result.db.experiences).toEqual([]);
     expect(result.db.questions).toEqual([]);
     expect(result.db.staging).toEqual([]);
-    expect(result.db.settings.schemaVersion).toBe(2);
+    // v0.6：AppSettings 的类型就是「当前版本」，v1 直通时一步到位写 v3
+    expect(result.db.settings.schemaVersion).toBe(SCHEMA_VERSION_CURRENT);
     expect(result.db.settings.sync.defaultPlatform).toBe('boss');
     expect(result.db.settings.sync.autoRefreshActivity).toBe(true);
     expect(result.db.settings.lastMigration?.at).toBe(NOW);
@@ -249,10 +281,12 @@ describe('migrateV1ToV2', () => {
   });
 
   it('来自更新版本的备份 → 明确拒绝并给升级提示', () => {
-    const result = migrateV1ToV2({ settings: { schemaVersion: 3 }, applications: [] }, { now: NOW });
+    const result = migrateV1ToV2(
+      { settings: { schemaVersion: SCHEMA_VERSION_CURRENT + 1 }, applications: [] },
+      { now: NOW },
+    );
     expect(result.ok).toBe(false);
     if (result.ok) return;
-    expect(result.error).toContain('v3');
     expect(result.error).toContain('升级');
   });
 

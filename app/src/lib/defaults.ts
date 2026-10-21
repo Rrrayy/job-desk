@@ -26,10 +26,10 @@ export const DEFAULT_NEW_SETTINGS = {
   dailyActionBudget: 5,
 } as const;
 
-/** 默认设置（schemaVersion 2） */
+/** 默认设置（schemaVersion 3） */
 export function defaultSettings(): Settings {
   return {
-    schemaVersion: 2,
+    schemaVersion: 3,
     warnAfterDays: 3,
     staleAfterDays: 7,
     interviewResultWaitDays: 5,
@@ -49,6 +49,9 @@ export function defaultSettings(): Settings {
     courseSlots: [],
     defaultResumeVersion: '',
     sync: { ...DEFAULT_SYNC_SETTINGS, statusMapOverrides: {} },
+    backupReminderDays: 7,
+    fileLink: { enabled: false, readOnly: false },
+    encryption: { enabled: false },
     lastMigration: undefined,
   };
 }

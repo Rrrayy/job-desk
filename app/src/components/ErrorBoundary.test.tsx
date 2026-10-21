@@ -27,7 +27,7 @@ describe('ErrorBoundary（jsdom）', () => {
   beforeEach(() => {
     // 崩溃时会 console.error 堆栈，测试输出不必看这个
     consoleSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
-    vi.stubGlobal('__APP_VERSION__', '0.5.1');
+    vi.stubGlobal('__APP_VERSION__', '0.6.0');
     container = document.createElement('div');
     document.body.appendChild(container);
     localStorage.setItem(KEY, '{"sentinel":true}');

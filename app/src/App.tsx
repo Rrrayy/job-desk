@@ -81,6 +81,29 @@ import {
 import { deriveInitialNextReviewAt, nextReviewAtFor } from './lib/interview';
 import { markdownFileName, renderManyMarkdown } from './lib/interviewMarkdown';
 import { detectCapture, pickAdapter, toAdapterInput } from './lib/sync/capture';
+import {
+  bindHandle,
+  describeReadOnly,
+  peekPendingWrite,
+  replayPending,
+  requestWrite,
+  resetBaseline,
+  retryPermission,
+  whenQueueIdle,
+  type ReadOnlyReason,
+  type WriteOutcome,
+} from './lib/fileLink/engine';
+import {
+  type FileHandleLike,
+  checkPermission,
+  clearHandle,
+  detectFileLinkCapability,
+  loadHandle,
+  saveHandle,
+  type FileLinkCapability,
+} from './lib/fileLink/handle';
+import { encryptText, decryptText, isEncryptedEnvelope } from './lib/crypto';
+import { buildDBFromCSV, previewCSV, type MappingPreview } from './lib/csvImport';
 import { apply as applyMerge, plan as planMerge, revertSync } from './lib/sync/engine';
 import type { MergePlan, PlannedRow, SyncUndo } from './lib/sync/types';
 // 导入合并计划与同步合并计划是两个东西（一个是 DB 级、一个是字段级），故意分名
@@ -101,6 +124,7 @@ import { MigrationFailPage } from './components/MigrationFailPage';
 import { BulkBanner } from './components/BulkBanner';
 import { SyncDrawer, type SyncStep } from './components/sync/SyncDrawer';
 import { ImportConfirm } from './components/ImportConfirm';
+import { CsvImportDialog } from './components/CsvImportDialog';
 import { QuickNote } from './components/interview/QuickNote';
 import { ExperienceEditor } from './components/interview/ExperienceEditor';
 
@@ -176,6 +200,43 @@ export default function App() {
   const [now, setNow] = useState<Date>(() => new Date());
   /** ＋记一家 的初始状态（看板某列里点「＋」时带入该列状态） */
   const [quickAddStatus, setQuickAddStatus] = useState<Status>('applied');
+
+  /* ------------------- v0.6 文件联动（D8） ------------------- */
+  /**
+   * 句柄放 ref：它是个不可序列化的宿主对象，进 state 只会让 React 深度比较
+   * 一个结构化克隆对象，既慢又没有任何意义。UI 需要的「文件名 / 状态」
+   * 单独用 state 表达。
+   */
+  const fileHandleRef = useRef<FileHandleLike | null>(null);
+  const [fileCapability] = useState<FileLinkCapability>(() => detectFileLinkCapability());
+  const [fileName, setFileName] = useState<string | null>(null);
+  const [fileReadOnly, setFileReadOnly] = useState<ReadOnlyReason | null>(null);
+  const [fileBusy, setFileBusy] = useState(false);
+  const [pendingWrite, setPendingWrite] = useState(() => peekPendingWrite());
+
+  /**
+   * 加密口令只活在内存里。
+   * 存 sessionStorage 会在「关掉标签页即失效」上更宽松，但也会让 XSS
+   * 多一个取口令的地方 —— 而这个功能的全部价值就是「口令不在任何存储里」。
+   */
+  const encryptPassRef = useRef<string | null>(null);
+
+  /* ------------------- v0.6 P1：CSV 映射与加密导入 ------------------- */
+  /** 待确认的 CSV 映射（null = 没有） */
+  const [csvPending, setCsvPending] = useState<{ fileName: string; preview: MappingPreview } | null>(null);
+  /** 待输口令的加密备份 */
+  const [encryptedFile, setEncryptedFile] = useState<{ fileName: string; text: string } | null>(null);
+  const [encryptError, setEncryptError] = useState<string | null>(null);
+  const [decrypting, setDecrypting] = useState(false);
+  const [importPassword, setImportPassword] = useState('');
+  /**
+   * 「启动后第一版数据不入队」的标记。
+   *
+   * 打开页面时 db 就是文件里读出来的那一版，如果直接把 effect 跑一遍，
+   * 就会把同一份内容写回文件 —— 内容没变（引擎会 skip），但如果是首次连接，
+   * 会白白生成一次基准 hash 与一次读盘。用一次性标记把这次跳过。
+   */
+  const skipFirstFileSync = useRef(true);
 
   /* ---------------- 同步面板状态（全是 UI 状态，数据只在 commit 时落地） ---------------- */
   const [syncOpen, setSyncOpen] = useState(false);
@@ -293,6 +354,30 @@ export default function App() {
     if (isPersistenceLocked()) return;
     const error = saveDB(db);
     setSaveError(error);
+  }, [db]);
+
+  /**
+   * v0.6 文件联动：数据一变就把最新一版塞进写入队列。
+   *
+   * 为什么放在这里、而不是在 mutate 里直接写：
+   * mutate 有 40 多个调用点，任何一个都可能被连续调用（比如批量改状态），
+   * 在 mutate 里写等于让「写文件」和「改状态」耦合。放在 effect 里，
+   * 队列天然拿到的是「渲染后确定的那一版」。
+   *
+   * 只在真正启用且可写时才入队：
+   * - `enabled=false`：用户没开，一个字节都不碰文件
+   * - `readOnly`：权限丢了 / 冲突没解决 —— 这时候写进去就是覆盖别人的改动
+   */
+  useEffect(() => {
+    if (!db.settings.fileLink.enabled) return;
+    if (!fileHandleRef.current) return;
+    if (db.settings.fileLink.readOnly) return;
+    // 启动后的第一次渲染不入队：那一版就是文件里读出来的内容，写回去只会把 mtime 刷一遍
+    if (skipFirstFileSync.current) {
+      skipFirstFileSync.current = false;
+      return;
+    }
+    requestWrite(JSON.stringify(JSON.parse(exportJSON(db)), null, 2), new Date().toISOString());
   }, [db]);
 
   // 启动提示（v0.5）：先说过期清理，再说即将到期 —— 两件事别抢一个 toast
@@ -1202,19 +1287,267 @@ export default function App() {
     }
   }, [showToast]);
 
-  const exportData = useCallback((): void => {
+  /* ------------------------- v0.6 文件联动动作 ------------------------- */
+
+  /** 把写入结果翻译成用户能理解的一句话，并把冲突/权限丢失反映到设置里 */
+  const absorbWriteOutcome = useCallback(
+    (outcome: WriteOutcome | null): void => {
+      if (!outcome) return;
+      if (outcome.status === 'written') {
+        mutate((draft) => {
+          draft.settings.fileLink.lastSyncedAt = new Date().toISOString();
+          draft.settings.fileLink.readOnly = false;
+        });
+        setFileReadOnly(null);
+        return;
+      }
+      if (outcome.status === 'conflict') {
+        // 冲突**不阻断**后续保存：文件已经安全地写着外部那一版，我们只是另存了一份
+        mutate((draft) => {
+          draft.settings.fileLink.lastConflictFile = outcome.conflictName;
+        });
+        showToast(`检测到文件被外部修改，已另存冲突副本 ${outcome.conflictName}（你的文件没有被覆盖）`);
+        return;
+      }
+      if (outcome.status === 'need-permission') {
+        mutate((draft) => {
+          draft.settings.fileLink.readOnly = true;
+        });
+        setFileReadOnly('permission-lost');
+        return;
+      }
+      if (outcome.status === 'failed') {
+        showToast(outcome.error.slice(0, 80));
+      }
+    },
+    [mutate, showToast],
+  );
+
+  /**
+   * 连接文件（必须在 click 里调 —— 浏览器只认用户手势）。
+   *
+   * 流程刻意是「先选文件 → 再问权限」，而不是反过来：
+   * 反过来的话，用户会在还没决定用哪个文件时就被要求授权，
+   * 而且 showOpenFilePicker 的返回值本身就是权限请求的一部分。
+   */
+  const connectFile = useCallback(async (): Promise<void> => {
+    const picker = (
+      globalThis as unknown as {
+        showSaveFilePicker?: (options?: unknown) => Promise<FileHandleLike & { createWritable?: unknown }>;
+      }
+    ).showSaveFilePicker;
+    if (typeof picker !== 'function') {
+      showToast('这个浏览器不支持文件联动');
+      return;
+    }
+    setFileBusy(true);
     try {
-      const text = exportJSON(dbRef.current);
-      // 文件名带 HHMM：同一天导多次不互相覆盖（与便携包 portableZipName 同一口径）。
-      // 日期按本地时区，不用 toISOString()（UTC，本地 8 点前会早一天）
+      const handle = await picker({
+        suggestedName: 'jobdesk-data.json',
+        types: [{ description: '求职工作台数据', accept: { 'application/json': ['.json'] } }],
+      });
+      bindHandle(handle);
+      await saveHandle(handle);
+      resetBaseline();
+      fileHandleRef.current = handle;
+      setFileName(handle.name);
+      setFileReadOnly(null);
+      skipFirstFileSync.current = true;
+
+      mutate((draft) => {
+        draft.settings.fileLink.enabled = true;
+        draft.settings.fileLink.readOnly = false;
+        delete draft.settings.fileLink.lastConflictFile;
+      });
+
+      // 首次连接：把当前数据写进去（文件是空的 / 新建的，没有冲突风险）
+      const text = JSON.stringify(JSON.parse(exportJSON(dbRef.current)), null, 2);
+      requestWrite(text, new Date().toISOString());
+      absorbWriteOutcome(await whenQueueIdle());
+      showToast(`已连接 ${handle.name}，之后每次改动都会自动写入`);
+    } catch (error) {
+      // 用户点了取消不是错误，不出声
+      const name = error instanceof Error ? error.name : '';
+      if (name !== 'AbortError') showToast('连接文件失败，可以改用「导出 JSON」手动备份');
+    } finally {
+      setFileBusy(false);
+    }
+  }, [absorbWriteOutcome, mutate, showToast]);
+
+  const disconnectFile = useCallback((): void => {
+    bindHandle(null);
+    fileHandleRef.current = null;
+    void clearHandle();
+    resetBaseline();
+    setFileName(null);
+    setFileReadOnly(null);
+    mutate((draft) => {
+      draft.settings.fileLink.enabled = false;
+      draft.settings.fileLink.readOnly = false;
+      delete draft.settings.fileLink.lastSyncedAt;
+    });
+    showToast('已断开文件联动。数据还在浏览器里，原来那个文件没有再被改动');
+  }, [mutate, showToast]);
+
+  /** 页面加载时把上次的句柄接回来。**不主动要权限** —— 那会被直接拒 */
+  useEffect(() => {
+    if (fileCapability !== 'full') return;
+    let alive = true;
+    void (async () => {
+      const saved = await loadHandle();
+      if (!alive || !saved) return;
+      const handle = saved as FileHandleLike;
+      const permission = await checkPermission(handle);
+      fileHandleRef.current = handle;
+      bindHandle(handle);
+      setFileName(handle.name);
+      if (permission !== 'granted') {
+        setFileReadOnly('permission-lost');
+        mutate((draft) => {
+          draft.settings.fileLink.readOnly = true;
+        });
+      }
+    })();
+    return () => {
+      alive = false;
+    };
+    // 只跑一次：能力不会在会话中途变化
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  const retryFilePermission = useCallback(async (): Promise<void> => {
+    const handle = fileHandleRef.current;
+    if (!handle) {
+      showToast('还没有连接文件');
+      return;
+    }
+    setFileBusy(true);
+    try {
+      const outcome = await retryPermission(handle);
+      if (outcome !== 'granted') {
+        showToast('浏览器没有授予写入权限。原始文件没有被改动，可以「另存为新文件」');
+        return;
+      }
+      setFileReadOnly(null);
+      mutate((draft) => {
+        draft.settings.fileLink.readOnly = false;
+      });
+      // 权限回来之后才谈重放：这是规范里写的两个重放时机之一
+      const replay = await replayPending(handle, new Date().toISOString());
+      setPendingWrite(peekPendingWrite());
+      if (replay.status === 'replayed') showToast('权限已恢复，上次中断的写入已补上');
+      else if (replay.status === 'conflict') showToast(`文件被外部改过，已另存 ${replay.conflictName}`);
+      else showToast('权限已恢复');
+    } finally {
+      setFileBusy(false);
+    }
+  }, [mutate, showToast]);
+
+  const replayPendingWrite = useCallback(async (): Promise<void> => {
+    const handle = fileHandleRef.current;
+    if (!handle) return;
+    setFileBusy(true);
+    try {
+      const outcome = await replayPending(handle, new Date().toISOString());
+      setPendingWrite(peekPendingWrite());
+      if (outcome.status === 'replayed') showToast('已补上中断的写入');
+      else if (outcome.status === 'conflict') showToast(`文件被外部改过，已另存 ${outcome.conflictName}`);
+      else if (outcome.status === 'failed') showToast(`重放失败：${outcome.error.slice(0, 60)}`);
+      else if (outcome.status === 'dropped' || outcome.status === 'giveUp') showToast(outcome.reason);
+      else showToast('没有待重放的写入');
+    } finally {
+      setFileBusy(false);
+    }
+  }, [showToast]);
+
+  /** 只读三出口之一：下载当前库的原文（不碰联动文件） */
+  const downloadReadOnlyRaw = useCallback((): void => {
+    const text = exportJSON(dbRef.current);
+    const ok = downloadText(text, 'application/json', `求职工作台-原始数据-${todayISO()}.json`);
+    if (ok) markExported();
+    showToast(ok ? '已下载当前数据' : '下载失败，浏览器可能禁止了下载');
+  }, [showToast]);
+
+  /** 只读三出口之三：另存为一个新文件，并把联动切到新文件上 */
+  const saveAsNewFile = useCallback(async (): Promise<void> => {
+    await connectFile();
+  }, [connectFile]);
+
+  /**
+   * 开关加密（D10）。
+   *
+   * ★ 这里**只改意图**，不碰任何已写出的文件。
+   *   「开启加密」不会立刻把之前的明文备份追认成加密的，
+   *   「关闭加密」也不会去解密别人的文件 —— 它只是让下一次导出走另一条路。
+   *   把「开关」和「文件内容」解耦，是避免「用户以为开了就安全了」的关键。
+   */
+  const toggleEncryption = useCallback(
+    async (enabled: boolean, password: string): Promise<string | null> => {
+      if (enabled) {
+        // 立刻做一次真实加密试试：口令记错 / 环境不支持，现在就该失败
+        const probe = await encryptText('{"probe":true}', password, new Date().toISOString());
+        if (!probe.ok) return probe.error;
+        encryptPassRef.current = password;
+      } else {
+        encryptPassRef.current = null;
+      }
+      mutate((draft) => {
+        draft.settings.encryption = { enabled, changedAt: new Date().toISOString() };
+      });
+      showToast(
+        enabled
+          ? '已开启导出加密。下次「导出 JSON」会让你确认口令 —— 忘记口令这份备份无法恢复'
+          : '已关闭导出加密，之后的导出是明文。之前导出的加密文件仍然需要口令才能打开',
+      );
+      return null;
+    },
+    [mutate, showToast],
+  );
+
+  const exportData = useCallback((): void => {
+    const text = exportJSON(dbRef.current);
+    // 文件名带 HHMM：同一天导多次不互相覆盖（与便携包 portableZipName 同一口径）。
+    // 日期按本地时区，不用 toISOString()（UTC，本地 8 点前会早一天）
+    const buildName = (encrypted: boolean): string => {
       const now = new Date();
       const hhmm = `${String(now.getHours()).padStart(2, '0')}${String(now.getMinutes()).padStart(2, '0')}`;
-      const ok = downloadText(text, 'application/json', `求职工作台-备份-${todayISO()}-${hhmm}.json`);
-      if (ok) markExported();
-      showToast(ok ? '已导出 JSON 备份' : '导出失败，浏览器可能禁止了下载');
-    } catch {
-      showToast('导出失败，浏览器可能禁止了下载');
+      return `求职工作台-备份-${todayISO()}-${hhmm}${encrypted ? '-encrypted' : ''}.json`;
+    };
+
+    const plainDownload = (): void => {
+      try {
+        const ok = downloadText(text, 'application/json', buildName(false));
+        if (ok) markExported();
+        showToast(ok ? '已导出 JSON 备份' : '导出失败，浏览器可能禁止了下载');
+      } catch {
+        showToast('导出失败，浏览器可能禁止了下载');
+      }
+    };
+
+    /**
+     * 加密开关是开着的，但本次会话里没有口令（刷新过页面）——
+     * 这时**必须问一句**，绝不能因为「拿不到口令」就悄悄导出明文。
+     * 那种静默降级正是「我以为备份是加密的」这类事故的来源。
+     */
+    if (dbRef.current.settings.encryption.enabled) {
+      const password = encryptPassRef.current;
+      if (!password) {
+        showToast('导出加密已开启，请到设置里输入口令后再导出');
+        return;
+      }
+      void (async () => {
+        const result = await encryptText(text, password, new Date().toISOString());
+        if (!result.ok) {
+          showToast(`加密失败，未导出明文：${result.error.slice(0, 60)}`);
+          return;
+        }
+        const ok = downloadText(result.value, 'application/json', buildName(true));
+        if (ok) markExported();
+        showToast(ok ? '已导出加密备份（记得口令，忘记无法恢复）' : '导出失败，浏览器可能禁止了下载');
+      })();
+      return;
     }
+    plainDownload();
   }, [showToast]);
 
   /**
@@ -1299,8 +1632,34 @@ export default function App() {
       };
       reader.onload = () => {
         const text = typeof reader.result === 'string' ? reader.result : '';
+
+        /*
+         * v0.6 / P1：先判是不是加密备份。
+         *
+         * 这一步**必须在 JSON 解析之前**，因为加密备份的外层也是合法 JSON，
+         * 但它的内容和本应用的数据结构完全对不上 —— 不先分流，
+         * 用户会看到一句「缺少 settings / applications 字段」，
+         * 完全猜不到「其实只是要输个口令」。
+         */
+        if (isEncryptedEnvelope(text)) {
+          setEncryptedFile({ fileName: file.name, text });
+          setEncryptError(null);
+          return;
+        }
+
         const result = importFromText(text);
         if (!result.ok) {
+          // v0.6 / P1：JSON 走不通时，再试试它是不是一份 CSV / 手抄清单。
+          // 顺序不能反：CSV 永远解析不出 settings 字段，先试 CSV 会让
+          // 「备份文件少了个字」这种真损坏被误当成表格数据。
+          if (/\.csv$/i.test(file.name) || text.includes(',')) {
+            const preview = previewCSV(text, todayISO());
+            if (preview.rows.length > 0) {
+              setCsvPending({ fileName: file.name, preview });
+              setImportError(null);
+              return;
+            }
+          }
           setImportError(result.error);
           showToast(`导入失败：${result.error}`);
           return;
@@ -1364,6 +1723,78 @@ export default function App() {
     setImportOpen(false);
     showToast('已取消导入，数据没有变化');
   }, [showToast]);
+
+  /**
+   * 确认 CSV 导入（v0.6 / P1）。
+   *
+   * 与 JSON 导入共用撤销语义：整库快照进撤销栈。
+   * 为什么不按条撤销：CSV 导入一次可能新增几十条 + 新建公司 + 写备注时间线，
+   * 「撤销」在用户心里就是「把刚才那次导入退回去」，不是逐条点。
+   */
+  const confirmCsvImport = useCallback((): void => {
+    if (!csvPending) return;
+    const before = dbRef.current;
+    const nowIso = new Date().toISOString();
+    const result = buildDBFromCSV(before, csvPending.preview, nowIso);
+    if (result.added === 0) {
+      showToast(
+        result.skippedExisting > 0
+          ? `这 ${result.skippedExisting} 条都已经在库里了，没有新增`
+          : '没有可导入的行',
+      );
+      setCsvPending(null);
+      return;
+    }
+    dbRef.current = result.db;
+    setDb(result.db);
+    setCsvPending(null);
+    setWelcomeDismissed(true);
+    pushUndo({ label: '导入 CSV', undo: { kind: 'import', previous: before } });
+    showToast(
+      `已导入 ${result.added} 条投递${result.skippedExisting > 0 ? `，${result.skippedExisting} 条已存在跳过` : ''}`,
+    );
+  }, [csvPending, pushUndo, showToast]);
+
+  /**
+   * 解密一份加密备份并走正常的导入流程（v0.6 / D10）。
+   *
+   * ★ 解密失败时不保留口令、不重试自动降低强度、不提示「是不是少了几个字符」——
+   *   GCM 认证失败的原因只有两种可能（口令错 / 文件被改），多说一个字都是误导。
+   */
+  const submitDecryptImport = useCallback(async (): Promise<void> => {
+    if (!encryptedFile) return;
+    if (!importPassword) {
+      setEncryptError('请输入口令');
+      return;
+    }
+    setDecrypting(true);
+    try {
+      const plain = await decryptText(encryptedFile.text, importPassword);
+      if (!plain.ok) {
+        setEncryptError(plain.error);
+        return;
+      }
+      const result = importFromText(plain.value);
+      if (!result.ok) {
+        setEncryptError(`解开了，但内容不是本应用的备份：${result.error}`);
+        return;
+      }
+      setEncryptedFile(null);
+      setImportPassword('');
+      setEncryptError(null);
+      const plan = mergeImport(dbRef.current, result.db);
+      if (plan.conflicts.length > 0) {
+        setImportPending({ incoming: result.db, plan });
+        setImportOverwrite(new Set<string>());
+        setImportOpen(true);
+        showToast(`识别到 ${plan.counts.conflicts} 处差异，请逐条确认`);
+        return;
+      }
+      applyImportPlan(plan);
+    } finally {
+      setDecrypting(false);
+    }
+  }, [applyImportPlan, encryptedFile, importPassword, showToast]);
 
   /* ------------------------------------------------------------ 键盘快捷键 */
 
@@ -1453,6 +1884,18 @@ export default function App() {
   const pendingSyncCount = db.staging.length;
   const dbSize = useMemo(() => measureDB(db), [db]);
   const budgetLevel = budgetLevelOf(dbSize);
+  /**
+   * v0.6：只读状态的展示文案。
+   *
+   * 判定源有两个，缺一不可：
+   * - 引擎层的 `fileReadOnly`（本次会话里发现的权限丢失 / 冲突）
+   * - settings 里的 `fileLink.readOnly`（上次会话留下的锁，刷新后依然生效）
+   * 只看其中一个，就会出现「刷新一下横幅就消失、其实还是写不进去」的假象。
+   */
+  const readOnlyState = useMemo(
+    () => describeReadOnly(fileReadOnly ?? (db.settings.fileLink.readOnly ? 'permission-lost' : null)),
+    [fileReadOnly, db.settings.fileLink.readOnly],
+  );
 
   const api: AppApi = {
     // ★ 视图拿到的是**已摘掉回收站**的库；回收站页与设置页直接读 `db`（含已删除）。
@@ -1495,6 +1938,21 @@ export default function App() {
     exportPortable,
     checkStorage: checkQuota,
     storageBackend: activeBackendName,
+
+    fileLink: {
+      capability: fileCapability,
+      fileName,
+      readOnlyMessage: describeReadOnly(fileReadOnly).message,
+      hasPending: pendingWrite !== null,
+      busy: fileBusy,
+      connect: connectFile,
+      disconnect: disconnectFile,
+      retryPermission: retryFilePermission,
+      replayPending: replayPendingWrite,
+      downloadRaw: downloadReadOnlyRaw,
+      saveAs: saveAsNewFile,
+      toggleEncryption,
+    },
 
     insightsTab,
     setInsightsTab,
@@ -1600,6 +2058,43 @@ export default function App() {
         </div>
       ) : null}
       {saveError ? <div className="banner banner--error">{saveError}</div> : null}
+      {/*
+        v0.6 / P1：文件联动状态横幅。
+        只在「出了事」的时候出现（只读 / 有未完成的写入），
+        正常连接不占一行 —— 状态本身在设置页里看，日常界面不该被一行
+        「一切正常」占着，那只会训练用户忽略横幅。
+      */}
+      {readOnlyState.active ? (
+        <div className="banner banner--warn">
+          <strong>文件联动已切换为只读</strong>
+          <span>{readOnlyState.message}</span>
+          <div className="drawer__actions">
+            <button type="button" className="btn btn--small" onClick={() => void api.fileLink.retryPermission()}>
+              重试
+            </button>
+            <button type="button" className="btn btn--small" onClick={api.fileLink.downloadRaw}>
+              下载原始文件
+            </button>
+            <button type="button" className="btn btn--small" onClick={() => void api.fileLink.saveAs()}>
+              另存为新文件
+            </button>
+          </div>
+        </div>
+      ) : null}
+      {pendingWrite ? (
+        <div className="banner banner--warn">
+          <strong>有一次写入没写完</strong>
+          <span>上次保存时浏览器被关掉或进程被结束。这条内容还在，可以现在补写进文件。</span>
+          <div className="drawer__actions">
+            <button type="button" className="btn btn--small" onClick={() => void api.fileLink.replayPending()}>
+              补写
+            </button>
+            <button type="button" className="btn btn--small btn--ghost" onClick={() => setPendingWrite(null)}>
+              稍后
+            </button>
+          </div>
+        </div>
+      ) : null}
       <BulkBanner
         level={budgetLevel}
         size={dbSize}
@@ -1647,6 +2142,73 @@ export default function App() {
         />
       ) : null}
       {quickNoteCtx !== null ? <QuickNote api={api} onClose={closeQuickNote} /> : null}
+      {csvPending ? (
+        <CsvImportDialog
+          fileName={csvPending.fileName}
+          preview={csvPending.preview}
+          existingCount={dbRef.current.applications.length}
+          onCancel={() => {
+            setCsvPending(null);
+            showToast('已取消导入，数据没有变化');
+          }}
+          onConfirm={confirmCsvImport}
+        />
+      ) : null}
+      {encryptedFile ? (
+        <div className="overlay" onClick={() => setEncryptedFile(null)}>
+          <div
+            className="modal"
+            role="dialog"
+            aria-modal="true"
+            aria-label="输入备份口令"
+            onClick={(event) => event.stopPropagation()}
+          >
+            <header className="modal__head">
+              <h2 className="modal__title">这份备份是加密的</h2>
+              <button type="button" className="icon-btn" onClick={() => setEncryptedFile(null)} aria-label="关闭">
+                ×
+              </button>
+            </header>
+            <div className="modal__body">
+              <p className="field__hint">
+                <code>{encryptedFile.fileName}</code> 需要口令才能打开。
+                口令不会被保存在任何地方 —— 如果忘了，这份文件无法恢复。
+              </p>
+              <label className="field">
+                <span className="field__label">口令</span>
+                <input
+                  className="input"
+                  type="password"
+                  autoFocus
+                  autoComplete="current-password"
+                  value={importPassword}
+                  onChange={(event) => {
+                    setImportPassword(event.target.value);
+                    setEncryptError(null);
+                  }}
+                  onKeyDown={(event) => {
+                    if (event.key === 'Enter') void submitDecryptImport();
+                  }}
+                />
+              </label>
+              {encryptError ? <p className="field__hint field__hint--danger">{encryptError}</p> : null}
+            </div>
+            <footer className="modal__foot">
+              <button type="button" className="btn btn--ghost" onClick={() => setEncryptedFile(null)}>
+                取消
+              </button>
+              <button
+                type="button"
+                className="btn btn--primary"
+                onClick={() => void submitDecryptImport()}
+                disabled={decrypting}
+              >
+                {decrypting ? '解密中…' : '解密并导入'}
+              </button>
+            </footer>
+          </div>
+        </div>
+      ) : null}
       {experienceEditorId ? (
         <ExperienceEditor api={api} experienceId={experienceEditorId} onClose={closeExperience} />
       ) : null}

@@ -183,8 +183,13 @@ export interface Interview {
  * - weekly=true  → 每周固定（课表导入的课），配合 weekday（ISO 1-7）
  * - weekly=false → 某一天的事，配合 date（YYYY-MM-DD）
  * 冲突检测把面试和日程放在同一个池子里两两比对。
+ *
+ * v0.6（schemaVersion 3）additive 扩展：kind 加 interview / deadline，
+ * 新增 applicationId / color / notes 三个可选字段。
+ * **没有引入第二套时间表达** —— 仍然是「哪天（weekly+weekday / date）+ 几点（start/end）」，
+ * 因为 findConflicts / findEventConflicts / eventsOnDate 都按这个结构写好了。
  */
-export type CalendarEventKind = 'course' | 'personal';
+export type CalendarEventKind = 'course' | 'personal' | 'interview' | 'deadline';
 
 export interface CalendarEvent {
   id: string;
@@ -196,6 +201,12 @@ export interface CalendarEvent {
   weekly: boolean;
   weekday?: number;
   date?: string;
+  /** v0.6：关联投递（可空 —— 课、私事都不挂投递） */
+  applicationId?: string;
+  /** v0.6：自定义颜色（#rrggbb；缺省按 kind 取默认色） */
+  color?: string;
+  /** v0.6：备注 */
+  notes?: string;
 }
 
 /** v2：note 的来源追踪（只有 type==='sync' 才有） */export interface NoteSource {
@@ -242,7 +253,7 @@ export interface MigrationRecord {
 
 /** 全局设置 */
 export interface AppSettings {
-  schemaVersion: 2;
+  schemaVersion: 3;
   warnAfterDays: number;
   staleAfterDays: number;
   interviewResultWaitDays: number;
@@ -268,8 +279,51 @@ export interface AppSettings {
   defaultResumeVersion?: string;
   /** v2 新增：同步设置 */
   sync: SyncSettings;
+  /** v0.6 新增：备份提醒间隔天数（3 / 7 / 14；0 = 不提醒） */
+  backupReminderDays: number;
+  /** v0.6 新增：本地文件联动（File System Access）设置 */
+  fileLink: FileLinkSettings;
+  /** v0.6 新增：导出加密开关（默认关闭；用户主动开启） */
+  encryption: EncryptionSettings;
   /** v2 新增：上一次迁移审计 */
   lastMigration?: MigrationRecord;
+}
+
+/**
+ * 导出加密设置（v0.6 / D10）。
+ *
+ * ★ **这里永远不会出现口令、密钥、salt 或 IV 中的任何一个。**
+ *   口令只活在内存里（React state），关掉标签页就没有了；
+ *   密钥由 PBKDF2 每次从口令 + 文件里的 salt 现场派生，不落库。
+ *   如果哪天有人想在这里加一个 `keyHash` 之类的东西，那就等于把一个
+ *   离线可爆破的验证器写进了备份文件 —— 明确禁止。
+ *
+ * `enabled` 记录的是「用户希望导出时加密」这个意图。
+ * 真正的开关状态还要配合「本次会话里是否已经输入过口令」，
+ * 二者缺一就退回明文导出（并在导出时明确提示，绝不静默降级）。
+ */
+export interface EncryptionSettings {
+  enabled: boolean;
+  /** 上一次启用 / 关闭的时间（ISO），设置页展示用 */
+  changedAt?: string;
+}
+
+/**
+ * 本地文件联动设置（v0.6 / D8）。
+ *
+ * 刻意**不存**任何文件句柄或密钥 —— 句柄要放 IndexedDB（structured clone），
+ * 这一点由 `lib/fileLink/handleStore.ts` 单独负责；settings 里只放用户层面的开关。
+ * 这样导出的 JSON 里不会混进句柄，也不会把「这台机器连了哪个文件」带到别的设备。
+ */
+export interface FileLinkSettings {
+  /** 用户是否开启了文件联动（默认 false） */
+  enabled: boolean;
+  /** 只读锁定：权限丢失 / 冲突未解决时置 true，UI 顶部横幅提示 */
+  readOnly: boolean;
+  /** 上次成功写入的时间（ISO），用于状态指示器 */
+  lastSyncedAt?: string;
+  /** 上次冲突副本的文件名，用于「去对比」入口 */
+  lastConflictFile?: string;
 }
 
 /* ===================== v2 三个新实体 ===================== */
