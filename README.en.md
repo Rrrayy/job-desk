@@ -6,168 +6,267 @@
   <img src="assets/banner-light.svg" alt="Job Desk" width="100%">
 </picture>
 
-# Job Desk · 求职工作台
+**A local-first workbench for your job search.**
 
-**Local-first job-application workbench — internships, campus hiring, and experienced hires.**
+Run your application pipeline from a single HTML file: today's tasks, a board, silence detection, deadline countdowns, schedule conflicts, and interview notes.
+
+[Download](#install) ｜ [Design](#design-trade-offs) ｜ [Architecture](#architecture) ｜ [Engineering](#engineering) ｜ [中文](README.md)
 
 [![CI](https://img.shields.io/github/actions/workflow/status/Rrrayy/job-desk/ci.yml?branch=main&style=flat-square&label=CI)](https://github.com/Rrrayy/job-desk/actions/workflows/ci.yml)
-![tests](https://img.shields.io/badge/tests-239%20passed-2ea44f?style=flat-square)
-![bundle](https://img.shields.io/badge/bundle-449%20KB-4c6ef5?style=flat-square)
-![network](https://img.shields.io/badge/network-0%20requests-2ea44f?style=flat-square)
-![schema](https://img.shields.io/badge/schema-v2-845ef7?style=flat-square)
 [![release](https://img.shields.io/github/v/release/Rrrayy/job-desk?style=flat-square)](https://github.com/Rrrayy/job-desk/releases/latest)
+![tests](https://img.shields.io/badge/tests-320%20passed-2ea44f?style=flat-square)
+![bundle](https://img.shields.io/badge/bundle-480%20KB-4c6ef5?style=flat-square)
+![requests](https://img.shields.io/badge/runtime%20requests-0-2ea44f?style=flat-square)
+![schema](https://img.shields.io/badge/schema-v2-845ef7?style=flat-square)
 [![license](https://img.shields.io/github/license/Rrrayy/job-desk?style=flat-square)](LICENSE)
-
-**One HTML file. No account. Zero network requests. Your data never leaves your browser.**
-
-[⬇️ Download](https://github.com/Rrrayy/job-desk/releases/latest) ｜ [中文](README.md) ｜ [Changelog](CHANGELOG.md)
-
-<img src="assets/demo.gif" alt="Live demo: sample data → Today → detail drawer & one-click follow-up → Board → Calendar conflict → search-to-detail" width="100%">
-<sub>Real recording: load sample data → open the red to-do's drawer → one-click follow-up (the header's stale badge resets on the spot) → Board → the calendar catching "interview × seminar" both ways → search "小红书" jumping straight to the detail. These 21 seconds are the entire daily loop.</sub>
 
 </div>
 
-> **After 50 applications, do you still remember which one to nudge, whose interview is today,
-> and which one has been silent for two weeks?**
-> That is the only problem this tool solves. One company = one pipeline line, one screen answers
-> "what do I do now". It is not a job aggregator, it does not build résumés, and it never applies on your behalf.
+> **After 50 applications, do you still remember which one to nudge, whose interview is today, and which one has been silent for two weeks?**
+>
+> That is the only problem this tool solves. One company, one pipeline line; one screen answers "what do I do now". It is not a job aggregator, it does not write résumés, and it never applies on your behalf.
+
+<br>
+
+<img src="assets/demo.gif" alt="Demo: sample data → Today → detail drawer and one-click follow-up → Board → calendar conflict → search to detail" width="100%">
+
+<sub>Real recording, 21 seconds: load sample data → open the red to-do → one-click follow-up (the header's silence badge resets on the spot) → Board → the calendar catching an "interview × seminar" collision both ways → search jumps straight to the detail.</sub>
 
 ---
 
-## ✨ What it does
+## Overview
 
-**Five views, all answering "what do I do now"**
+An application has two lines that are easy to lose track of: **how long since they replied**, and **what deadline the outside world gave you**. Mixed onto one axis, they mask each other — the first gets diluted by "I just logged something yesterday", the second by "it's probably fine".
 
-| View | Question it answers |
+Job Desk models them separately: silence is derived from activity timestamps, deadlines are an independent three-state field, and the to-do list merges both in a fixed order (deadlines first, muting second). That is the skeleton; everything else extends it.
+
+| Constraint | How |
 | :--- | :--- |
-| 📋 **Today** | Any interviews today? Who needs a nudge? What closes tomorrow? |
-| 🗂️ **Board** | Where are all 50 stuck (wishlist → applied → chatting → interviewing → result) |
-| 📃 **List** | Sorted by days of silence — the coldest ones first |
-| 📅 **Calendar** | Interviews, classes, and any personal commitment on one grid — with minute-level collision checks |
-| 📊 **Insights** | Funnel, résumé-version hit rate, weekly volume; a second tab holds **interview notes** |
+| Zero runtime network requests | No fetch / XHR / beacon / WebSocket, no CDN, no third-party fonts; CI scans and fails on a hit |
+| Single file, double-click | The build is one `index.html` that runs over `file://` — no Node, no local server |
+| Data never leaves the machine | One primary key in browser storage; import/export through local file downloads |
+| Crashes never lose data | A render error shows a recovery page; a read failure backs up the raw bytes before locking writes |
+| Minimal dependencies | Runtime is `react` + `react-dom` only; no router, state, UI, date, or IDB library |
 
-**Underneath the views:**
+Applies to internships, summer internships, campus and experienced hiring — if you are applying, the model holds.
 
-- ⏱️ **Silence detection** — thresholds scale by channel (referral ×3, official ×2); the offer stage is monitored separately and **never** scaled
-- ⏰ **Deadline countdown** — expired / today / within 3 days; muting silences nudges but **never hides an external deadline**
-- 💬 One-click follow-up messages; add a company in 3 seconds; drag between stages; `⌘Z` undoes up to 10 steps, `⇧⌘Z` redoes
-- 🧯 **Crash without data loss** — a render error shows a "your data is still here" page with a raw-JSON download, not a blank screen
-- 🎤 **Multi-round interview modelling** — one card per round, with prep checklist, format, and outcome
-- 📥 **Timetable import** — paste straight from your school system, one class per line; bad lines are reported, never silently dropped
-- ⚠️ **Schedule collisions** — interviews × classes × personal errands, compared pairwise on the same day with `HH:mm` overlap
-- 🔄 **Platform sync** — paste BOSS / Shixiseng / Nowcoder listings, review a diff, confirm row by row, undo the whole merge
-- 📚 **Interview notes** — quick capture, a question bank sorted by "weakest first", spaced review, and a "what do I fail most" breakdown
-- 💾 JSON backup, CSV of applications, ICS of interviews; schema migrations carry rollback points
+## Install
 
-## 🚀 Quick start
+**Download (recommended)**
 
-**Option 1 — download (recommended)**
+Grab `index.html` from [Releases](https://github.com/Rrrayy/job-desk/releases/latest) and double-click it. No Node, no server.
 
-Grab **`index.html`** from [Releases](https://github.com/Rrrayy/job-desk/releases/latest). One file.
-Double-click it. Works over `file://` — no Node, no server.
-
-**Option 2 — build from source**
+**Build from source**
 
 ```bash
 git clone https://github.com/Rrrayy/job-desk
 cd job-desk/app
 npm install && npm run build
-# open app/dist/index.html
+open dist/index.html        # macOS; on Windows, double-click or `start dist\index.html`
 ```
 
-**Option 3 — dev mode**
+**Dev mode**
 
 ```bash
 cd app && npm install && npm run dev   # http://localhost:5173
 ```
 
-> First launch asks whether to load sample data (8 companies, 7 statuses) or start empty.
-> To wipe everything later: Settings → Data → **Reset to initial state**.
+First launch asks whether to load sample data (8 companies, 7 statuses) or start empty. To wipe everything later: Settings → Data → Reset to initial state.
 
-### Optional browser extension
+**Optional browser extension**
 
-`extension/` is a zero-build MV3 extension that captures the text of the recruiting page you are already looking at,
-saving you the `Ctrl+A / Ctrl+V`. It is not on any store — load it unpacked.
-The extension **does not parse**; it only emits a `{format, url, title, capturedAt, text}` envelope, so the paste
-channel and the extension share exactly one parser.
+`extension/` is a zero-build MV3 extension that captures the text of the recruiting page you are already looking at, saving you the `Ctrl+A / Ctrl+V`. It is not on any store — load it unpacked. The extension **does not parse**; it only emits a `{format, url, title, capturedAt, text}` envelope, so the paste channel and the extension share exactly one parser.
 
-## 📸 Screens
+## Features
 
-The 21-second demo at the top covers the full "Today → Detail → Board → Calendar → Search" loop; static shots below.
+### Five views
 
-| 🗂️ Board | 📃 List |
-| :---: | :---: |
-| ![Board](docs/screenshots-v0.3/02-board.png) | ![List](docs/screenshots-v0.3/03-list.png) |
-| **📅 Calendar** | **📊 Insights** |
-| ![Calendar](docs/screenshots-v0.3/05-calendar.png) | ![Insights](docs/screenshots-v0.3/06-insights.png) |
+| View | Question it answers |
+| :--- | :--- |
+| Today | Any interviews today? Who needs a nudge? What closes tomorrow? |
+| Board | Where all 50 are stuck (wishlist → applied → chatting → interviewing → result) |
+| List | Sorted by days of silence, coldest first |
+| Calendar | Interviews, classes, and personal commitments on one grid, with minute-level collisions |
+| Insights | Funnel, résumé-version hit rate, weekly volume; a second tab holds interview notes |
 
-**Detail drawer — deadline, mute, and silence threshold on one screen**
+Cards surface the latest note you wrote (memo / chat / nudge) — no need to open the detail to recall where you left off.
 
-![Detail drawer](docs/screenshots-v0.3/04-drawer.png)
+### Judgement and reminders
 
-## 🎯 Design trade-offs
+- **Silence detection** — thresholds scale by channel (referral ×3, official ×2); the offer stage is monitored separately and never scaled; an application with an explicit threshold ignores the multiplier
+- **Deadline countdown** — expired / today / within 3 days; deadline items cannot be checked off in one click
+- **Muting** — expires at "day N, 23:59:59", silences nudges but never a hard deadline
+- **Collision detection** — interviews × classes × errands in one pool, reported only on the same day with `HH:mm` interval overlap
+- One-click follow-up messages; a company in 3 seconds with just name and role
 
-This section explains **why**, and what each choice costs. Feature lists are everywhere; the trade-offs are what this project is.
+### Interviews and notes
 
-### ① Deadlines and silence are orthogonal axes
+- **Multi-round modelling** — one card per round, with prep checklist, format, and outcome
+- **Quick capture** — one question per line, `Enter` to keep going, five questions in 90 seconds
+- **Question bank** — filter by company / category / mastery / due / keyword, sorted weakest-first
+- **Spaced review** — grading reschedules automatically
+- **Stats** — which category you fail most (denominator is failed interviews), top-5 questions per company
+- `community/` holds human-written notes (CC BY-SA 4.0), imported offline — the product never fetches them for you
 
-"How long since they replied" and "what the outside world demands of me" are different things. Merged into one axis, they mask each other.
+### Data
 
-- **How**: `deadlineAt` uses **three-state semantics** — unset (inherit) / `null` (explicitly off) / date (override).
-  Severity is expired / today / within 3 days, and deadline items **cannot be checked off in one click** — you must open the detail.
-- **Cost**: one more field and one more validator. `??` is a trap here (it collapses `null` and `undefined`, which mean opposite things), so validation must go through `asTriStateDate()`.
+- **Recycle bin** — deleted applications stay 30 days with a reminder on day 27; interviews and notes come back with them
+- **Incremental import** — fills gaps only, never overwrites what you recorded this week; differing values are listed row by row for you to decide, and résumé version / priority always keep the local value
+- **Backups** — JSON (the only lossless format), a portable zip (app + data + checksums, openable by the recipient with a double-click), CSV for spreadsheets, ICS for calendars
+- **Platform sync** — BOSS Zhipin / Shixiseng / Nowcoder / generic tables: paste a listing, review a diff, confirm row by row, undo the whole merge
+- **Timetable import** — one class per line, bad lines reported with a reason; only course rows are replaced, manual entries never are
+- **Storage upgrade** — `file://` uses localStorage; over `http(s)` IndexedDB is detected and preferred, lifting the 5 MB ceiling
 
-### ② Muting silences nudges, never hard deadlines
+## Design trade-offs
+
+Feature lists are everywhere; the trade-offs are what this project is. Each choice comes with its cost.
+
+### Deadlines and silence are orthogonal axes
+
+"How long since they replied" and "what the outside world demands of me" are different things. Merged, they mask each other.
+
+- **How**: `deadlineAt` uses three-state semantics — unset (inherit) / `null` (explicitly off) / date (override); deadline items are not one-click checkable
+- **Cost**: one more field and one more validator. `??` is a trap here (it collapses `null` and `undefined`, which mean opposite things), so validation must go through `asTriStateDate()`
+
+### Muting silences nudges, never hard deadlines
 
 "Not today" is a legitimate request; "the application closes tomorrow" should never be hidden by an algorithm.
 
-- **How**: a mute expires at "day N, 23:59:59", not `now + N×24h`. In todo generation, **deadlines are computed before the mute check** — reversing that order actively hurts users.
-- **Cost**: a muted item can still appear in Today if it is about to expire. That is deliberate.
+- **How**: a mute expires at "day N, 23:59:59", not `now + N×24h`; in todo generation, **deadlines are computed before the mute check**
+- **Cost**: a muted application can still appear in Today if it is about to expire. That is deliberate
 
-### ③ The calendar is a general schedule, not an interview calendar
+### The calendar is a general schedule, not an interview calendar
 
-In reality, collisions involve more than interviews — lab meetings, medical appointments, urgent errands.
+In reality collisions involve more than interviews — lab meetings, appointments, errands.
 
-- **How**: a single `db.events` table holds everything (`kind` separates classes from personal items; `weekly` by weekday, or a single date).
-  Collision detection puts interviews, classes, and errands in **one pool compared pairwise**, with the condition
-  "same day + `HH:mm` interval overlap" (`a.start < b.end && b.start < a.end`). Touching endpoints do not collide.
-- **Cost**: timetable import is **replace-semantics** (only `course && weekly` rows), and manually recorded items must never be overwritten — asserted in tests, not in comments.
+- **How**: a single `db.events` table holds everything (`kind` separates classes from personal items; `weekly` by weekday, or a single date); a collision is "same day + `HH:mm` interval overlap" (`a.start < b.end && b.start < a.end`), touching endpoints do not collide
+- **Cost**: timetable import is replace-semantics for `course && weekly` rows only; "manual entries are never overwritten" is asserted in tests, not in comments
 
-### ④ Undo is a stack, and deletions must be undoable
+### Undo is a stack, and deletions must be undoable
 
 A single-slot undo is no undo at all: the second slip and you get "nothing to undo".
 
-- **How**: a 10-step stack plus redo; a new action clears the redo stack; a sync merge is undoable but not redoable (its inverse is not a clean inverse).
-  Undo snapshots **one operation**, never the whole database — otherwise it swallows notes you wrote afterwards.
-- **Cost**: deleting an application must also carry the rows it took with it (interviews, timeline, note bindings), and restoring must handle
-  "this note was rebound to another application" — in that case it **does not steal it back**.
+- **How**: a 10-step stack plus redo; a new action clears the redo stack; a sync merge is undoable but not redoable (its inverse is not a clean inverse); undo snapshots one operation, never the whole database
+- **Cost**: deleting an application must carry the rows it took with it (interviews, timeline, note bindings), and restoring must handle "this note was rebound to another application" — in that case it does not steal it back
 
-### ⑤ Failure paths must have exits
+### Failure paths must have exits
 
 A render crash, unreadable data, a failed write — the user must never be trapped.
 
-- **How**: `ErrorBoundary` offers three exits (reload / download raw JSON / copy the error). A read failure first stores the raw bytes under `failedAt.*`, then locks persistence so `saveDB` becomes a no-op.
-- **Cost**: **automatic repair is forbidden**. Auto-repair turns "recoverable" into "unrecoverable", so that page only offers exits — it never guesses, fixes, or deletes.
+- **How**: `ErrorBoundary` offers three exits (reload / download raw JSON / copy the error); a read failure first stores the raw bytes under `failedAt.*`, then locks persistence so `saveDB` becomes a no-op
+- **Cost**: **automatic repair is forbidden**. Auto-repair turns "recoverable" into "unrecoverable", so that page only offers exits — it never guesses, fixes, or deletes
 
-### ⑥ One HTML file is a constraint, not laziness
+### One HTML file is a verifiable constraint, not laziness
 
-Each promise maps to an engineering mechanism that keeps it true:
+The price of a single file is a size ceiling; the payoff is that every promise can be machine-checked.
 
 | Promise | Implementation | Regression guard |
 | :--- | :--- | :--- |
-| Zero network requests | No fetch/XHR/beacon/WebSocket, no CDN | `check:no-network` scans 11 rules; allowlist is empty |
-| Single-file, double-click | `vite-plugin-singlefile` + `base:'./'`, inlined JS/CSS | Bundle check + size red line |
-| Data never leaves the machine | One localStorage key; import/export via download | CI scan + review red line |
-| Corruption never loses data | Lock on read failure, raw copy in `failedAt.*` (max 3) | Three corruption scenarios × reload, verified |
-| Undo never swallows data | Per-operation snapshots (status / sync / delete) | Unit tests |
+| Zero network requests | No fetch / XHR / beacon / WebSocket, no CDN | CI scans 11 rules; allowlist is empty |
+| Single-file, double-click | `vite-plugin-singlefile` + `base:'./'`, inlined JS/CSS | Artifact check + size red line |
+| Data never leaves the machine | One primary key; import/export via download | CI scan + review red line |
+| Corruption never loses data | Back up raw bytes on read failure, then lock writes | Three corruption scenarios × repeated reloads |
+| Undo never swallows data | Per-operation snapshots, pure-function rollback | Unit tests |
 | Sync never fakes silence | `touchedAt` only from platform `lastContactAt`; `lastActivityAt` only via `max()` | 31 sync-engine tests |
 | Migrations are idempotent | Pure functions, additive only, snapshot first | 11 migration tests + failure page |
 
-**Cost**: a hard size ceiling (540 KB FAIL). Features cannot grow without bound. That is deliberate.
+**Cost**: a hard 540 KB ceiling. Features cannot grow without bound. That is deliberate.
 
-## 🔒 Where the data lives
+### Where the "no dependencies" line sits
 
-| localStorage key | Contents |
+| Need | Usual choice | Here | Why |
+| :--- | :--- | :--- | :--- |
+| IndexedDB wrapper | Dexie | ~60 lines of native IDB | One kv store is all that is needed; every runtime dep adds size and supply-chain cost |
+| List virtualisation | react-window | ~80 lines of pure functions + a hook | The need is "compute a range from a row height"; a third-party component's internals cannot be unit-tested |
+| ZIP packaging | jszip | ~90 lines, store mode | The app HTML is already compressed; deflate saves ~5% more; fixed timestamps are what make it reproducible |
+| Date arithmetic | date-fns / dayjs | Hand-written calendar-day diff | Only two semantics are needed: calendar-day difference and "day N, 23:59:59" |
+
+The line is not "never use a library" but **write it yourself only when the dependency costs more than the code**, and whatever you write must have unit tests.
+
+## Architecture
+
+**Stack**: Vite 5 + React 18 + TypeScript 5.6 strict. The only runtime dependencies are `react` and `react-dom`.
+
+```
+localStorage / IndexedDB
+        │  readSync / loadDBAsync
+        ▼
+   validateV2  ──►  migrations (pure, idempotent, with rollback points)
+        │
+        ▼
+    App.tsx   owns the DB; every write goes through mutate() (carries the undo snapshot)
+        │  api.db is the "view database" — recycle-bin rows are removed here, the single filter point
+        ▼
+   Derived in views (pure functions, never persisted)
+        │  silence days · todo aggregation · funnel stats · collisions · window range
+        ▼
+    17 components, no UI kit, one styles.css with CSS-variable design tokens
+```
+
+**Structural decisions**:
+
+- **Derived over stored** — silence days, todos, funnel stats, and collisions are pure functions of `DB`. A persisted derived value always drifts from reality eventually
+- **A single filter point** — soft deletion is not checked at 40+ consumption sites but where `api.db` is built. Checking at every site guarantees a miss, and the miss is the one that shows a deleted application
+- **Storage backend abstraction** — a `StorageBackend` interface plus runtime detection. `file://` uses localStorage and does not probe IDB (the primary path — an extra retry only slows the first paint); `http(s)` probes IDB
+- **Parsing separated from merging** — adapters are pure functions (text → records) and the merge algorithm is maintainer-owned. Adding a platform means a new adapter + fixture + tests, never a branch in the engine
+
+Full data model, merge algorithm, and field-ownership rules: [`docs/ARCHITECTURE-v0.2.md`](docs/ARCHITECTURE-v0.2.md).
+
+<details>
+<summary><b>Repository layout</b></summary>
+
+```
+job-desk/
+├── app/
+│   ├── src/
+│   │   ├── App.tsx            # state hub; every write goes through mutate()
+│   │   ├── types.ts           # data model (schema v2)
+│   │   ├── adapters/          # boss / shixiseng / nowcoder / custom (each with fixtures + tests)
+│   │   ├── lib/
+│   │   │   ├── rules.ts       # silence, deadlines, todo aggregation, funnel, templates, collisions
+│   │   │   ├── storage/       # backend abstraction: backend / idb / detect
+│   │   │   ├── storage.ts     # read/write, validation, migration entry, corruption lock, quota
+│   │   │   ├── sync/          # sync engine: normalize / statusMap / engine / capture
+│   │   │   ├── trash.ts       # recycle bin: soft delete, expiry sweep, single filter point
+│   │   │   ├── merge.ts       # incremental import, field ownership, conflict computation
+│   │   │   ├── portable.ts    # portable ZIP (store mode, reproducible)
+│   │   │   ├── virtual.ts     # list virtualisation: range math + hook
+│   │   │   ├── migrate.ts     # v1 → v2 (pure, idempotent, additive)
+│   │   │   ├── rollback.ts    # rollback points and 30-day cleanup
+│   │   │   ├── courseImport.ts# timetable text parser (bad lines get a reason)
+│   │   │   ├── tableExport.ts # CSV / ICS export (formula-injection safe, RFC 5545 folding)
+│   │   │   └── interview.ts   # note stats and spaced review
+│   │   └── components/        # views + drawers + notes + sync panel + ErrorBoundary
+│   ├── scripts/               # typecheck / test / bundle / no-network / versions / pack / bench
+│   └── smoke-v05.mjs          # CDP end-to-end smoke
+├── extension/                 # optional MV3 extension (activeTab + scripting only)
+├── community/                 # community interview notes (CC BY-SA 4.0, offline import)
+├── docs/                      # PRD / architecture / QA report / adapter guide / release notes
+├── assets/                    # banners and the demo GIF
+└── CHANGELOG.md  CONTRIBUTING.md  SECURITY.md  LICENSE
+```
+
+</details>
+
+<details>
+<summary><b>Core algorithm: silence</b></summary>
+
+```
+lastActivityAt = max(statusChangedAt, all note.touchedAt under this application)
+silenceDays    = calendar-day difference between today(00:00) and lastActivityAt
+```
+
+- Thresholds scale by channel: referral ×3, official ×2, others ×1. **An application with an explicit threshold ignores the multiplier**
+- Silence covers applied / chatting / interviewing / offer. Interviewing uses "waiting for result"; offer uses `offerSilenceDays`
+- **Any timeline entry or status change refreshes `lastActivityAt` immediately** and clears the red flag — no manual "un-silence"
+- Undo rolls back that one status change only; notes, interviews, and settings written afterwards survive
+
+</details>
+
+<details>
+<summary><b>Where the data lives, and how to back it up</b></summary>
+
+| Key | Contents |
 | :--- | :--- |
 | `jobdesk.v1` | Everything: settings, companies, applications, interviews, timeline, notes, questions, staging, schedule |
 | `jobdesk.v1.ui` | Last view position |
@@ -175,28 +274,19 @@ Each promise maps to an engineering mechanism that keeps it true:
 | `jobdesk.v1.preMigrate.<ts>` | Pre-migration snapshot (rollback point, kept 30 days) |
 | `jobdesk.v1.failedAt.<ts>` | Raw copy after a read failure (max 3, never modified) |
 
-- Data lives **in this browser only**. Closing, refreshing, rebooting — all fine. Clearing site data, private windows, another browser or device — gone.
-- **Export before switching machines**: Settings → Data → Export JSON. Only JSON can be imported back (CSV/ICS are for other software).
-- Settings shows "last backup: N days ago" and turns red past 7 days. It reminds, it never blocks.
-- On corruption or a failed migration the app goes read-only with three exits (download raw / retry / continue empty). The original data is **never modified or deleted**.
+When served over HTTP, the same data lives in the `jobdesk` / `kv` IndexedDB store under the same keys.
 
-## 🛡️ Privacy and boundaries
+- Data lives in this browser only: closing, refreshing, rebooting are fine; clearing site data, private windows, or another browser/device lose it
+- **Export before switching machines**: Settings → Data → Export JSON (the only lossless format)
+- **Want the app to travel too**: export the portable zip — `index.html` + `data.json` + readme + checksums
+- Settings shows "last backup: N days ago" and turns red past 7 days. It reminds, it never blocks
 
-The hardest promise: **when you open the page, the browser makes no request on its behalf.**
-
-- No analytics, no telemetry, no third-party fonts, no CDN, no update check.
-- `npm run check:no-network` statically scans `app/src` and `extension/` (11 rules, including CSS `url()` / `@import` / `<link href>`).
-  A hit fails CI. The allowlist is **empty** — empty means zero, not "not filled in yet".
-
-Out of scope by design, not by schedule:
-
-> ❌ Accounts / cloud sync ｜ ❌ Auto-login or auto-apply ｜ ❌ Background daemons, scheduled scraping ｜ ❌ Splitting the single file into a server-backed app
+</details>
 
 <details>
-<summary><b>🔄 Platform sync (details)</b></summary>
+<summary><b>Platform sync boundaries</b></summary>
 
-Recruiting platforms expose no public API (and would not give one to an individual developer). So this is not scraping —
-it reads **what is already on your screen**:
+Recruiting platforms expose no public API (and would not give one to an individual developer). So this is not scraping — it reads **what is already on your screen**:
 
 ```
 ① Capture: select-all + copy, or the extension
@@ -205,154 +295,121 @@ it reads **what is already on your screen**:
 ④ Commit: how many were written, how many went to staging
 ```
 
-Hard rules (implemented literally, see `docs/ARCHITECTURE-v0.2.md`):
+- **Only step ④ writes.** Going back from steps ①–③ has zero side effects
+- Timelines use the platform's **last-contact time**, never the capture time — otherwise every sync silently resets your silence clock
+- A platform "interview invitation" maps to "chatting" plus a todo; it never schedules an interview or creates an interview record
+- Unchanged rows write no timeline entry; unrecognised rows go to staging with a reason and are never dropped
+- Counts must balance: new + updated + unchanged + conflict + staged === detected
 
-- **Only step ④ writes.** Going back from steps ①–③ has zero side effects.
-- Timeline timestamps use the platform's **last-contact time**, never the capture time — otherwise every sync would silently reset your silence clock.
-- Last activity is always recomputed with `max()`, never overwritten by hand.
-- A platform "interview invitation" maps to "chatting" plus a todo. It will **not** schedule an interview or create an interview record — you have not confirmed the time or place.
-- Unchanged rows write **no** timeline entry (otherwise the timeline drowns in sync noise).
-- Unrecognised rows go to **staging**, never dropped, each with a reason.
-- The whole merge is undoable per operation.
-- Counts must balance: new + updated + unchanged + conflict + staged === detected. One missing is a bug.
-
-Platforms: BOSS Zhipin, Shixiseng, Nowcoder, plus a generic table fallback. Adding one means a new adapter file + fixture + tests —
-see [`docs/adapters/README.md`](docs/adapters/README.md).
+See [`docs/adapters/README.md`](docs/adapters/README.md) to add a platform; every adapter ships with fixtures and tests.
 
 </details>
 
 <details>
-<summary><b>📚 Interview notes and spaced review (details)</b></summary>
+<summary><b>Privacy and non-goals</b></summary>
 
-Entry point: **Insights → [Notes]** (not a top-level tab — it is a low-frequency feature used the day you interview).
+The hardest promise: **when you open the page, the browser makes no request on its behalf.**
 
-- **Quick capture**: one question per line, `Enter` to keep going — five questions in 90 seconds.
-- **Question bank**: filter by company / category / mastery / due / keyword, sorted "weakest first".
-- **Review cards**: `←` `→` to navigate, space to flip; grading reschedules (+1/+3/+7 days initially, then +7, or +14 when you nail it).
-- **Stats**: which category you fail most (denominator is **failed interviews**, not question count), top-5 questions per company, failure-reason distribution.
-- **Export**: Markdown, optionally anonymised.
-- **Community bank**: `community/` holds human-written notes (CC BY-SA 4.0), **imported offline** — you download the JSON yourself. The product never fetches it for you.
+- No analytics, no telemetry, no third-party fonts, no CDN, no update check
+- `npm run check:no-network` statically scans `app/src` and `extension/` (11 rules, including CSS `url()` / `@import` / `<link href>`). A hit fails CI. The allowlist is **empty** — empty means zero, not "not filled in yet"
 
-</details>
+Out of scope by design, not by schedule:
 
-<details>
-<summary><b>🧠 Core algorithm: silence (formula)</b></summary>
-
-```
-lastActivityAt = max(statusChangedAt, all note.touchedAt under this application)
-silenceDays    = calendar-day difference between today(00:00) and lastActivityAt
-```
-
-- Thresholds scale by channel: referral ×3, official ×2, others ×1. **An application with an explicit threshold ignores the multiplier.**
-- Silence applies to applied / chatting / interviewing / offer. Interviewing uses "waiting for result", offer uses `offerSilenceDays`.
-- **Any timeline entry or status change refreshes `lastActivityAt` immediately** and clears the red flag — no manual "un-silence".
-- Undo rolls back **that one status change** only; notes, interviews, and settings written afterwards survive.
+- Accounts and cloud sync — the moment there is a server, "zero requests" becomes a lie
+- Auto-login, auto-apply, background daemons, scheduled scraping
+- Splitting the single file into a server-backed app
+- Résumé generation and job aggregation
 
 </details>
 
-## 🏗️ Architecture
+## Engineering
 
-**Stack**: Vite 5 + React 18 + TypeScript 5.6 strict. No router, no state-management library, no UI kit.
+`npm run verify` runs seven gates; any red blocks the merge.
 
-- **State hub** in `App.tsx`: every write goes through `mutate()`, which carries the undo snapshot; `dbRef` (for callbacks) and `db` (for rendering) move in lockstep.
-- **26 components**, no UI library, one `styles.css` with CSS-variable design tokens.
-- **Data flow**: `localStorage` → `validateV2` → held by `App.tsx` → derived in views → written back via `mutate()`.
-- **Derived over stored**: silence days, todo lists, and funnel stats are pure functions of `DB`, never persisted. A persisted derived value always drifts from reality eventually.
+| # | Gate | Command | Guards |
+| :--- | :--- | :--- | :--- |
+| 1 | Typecheck | `typecheck` | TS strict + `noUncheckedIndexedAccess`; exhaustive `Ownership` checks on new fields |
+| 2 | Unit tests | `test` | Full coverage of pure functions |
+| 3 | Network scan | `check:no-network` | 11 rules, empty allowlist |
+| 4 | Build | `build` | Single-file artifact still builds |
+| 5 | Bundle red line | `check:bundle` | >490 KB warn / >540 KB fail; single-commit growth >20 KB also blocked |
+| 6 | Version agreement | `check:versions` | `package.json` / extension `manifest.json` / artifact must agree |
+| 7 | Community content | `validate:community` | Format, uniqueness, length, anonymisation |
 
-Full data model, merge algorithm, and field-ownership rules: [`docs/ARCHITECTURE-v0.2.md`](docs/ARCHITECTURE-v0.2.md).
-
-## 🧪 Engineering quality
-
-`npm run verify` runs seven gates; any red blocks the merge:
-
-| # | Gate | Guards |
-| :--- | :--- | :--- |
-| 1 | `typecheck` | TS strict + exhaustive `Ownership` checks on every new field |
-| 2 | `test` | Unit coverage of pure functions |
-| 3 | `check:no-network` | 11 rules, empty allowlist |
-| 4 | `build` | Single-file artifact still builds |
-| 5 | `check:bundle` | >470 KB warn / >540 KB fail; single-commit growth >20 KB also blocked |
-| 6 | `check:versions` | `package.json` / extension `manifest.json` / artifact must agree |
-| 7 | `validate:community` | Format, uniqueness, length, anonymisation |
-
-**Current baseline (reproducible in CI):**
+**Current baseline** (reproducible in CI):
 
 | Metric | Value |
 | :--- | :--- |
-| Unit tests | **239 across 16 files**, all green (incl. 9 disaster-recovery cases) |
-| Bundle | **460,142 B (449 KB)** — red line 470 KB warn / 540 KB fail |
+| Unit tests | 320 across 22 files, all green (incl. 9 disaster-recovery cases) |
+| End-to-end smoke | 21 checks via CDP against real Edge, including ZIP central-directory parsing |
+| Performance bench | `npm run bench`: 50 / 200 / 500 / 1000 rows; 1000 rows renders 15, sort 21 ms, first paint 60–88 ms |
+| Bundle | 491,558 B (480 KiB); red line 490 KB warn / 540 KB fail |
 | Network scan | Passing, empty allowlist |
 | Independent QA | 478 assertions, 0 failures ([`docs/QA-REPORT-v0.2.md`](docs/QA-REPORT-v0.2.md)) |
 | Reproducible build | Clean `npm ci && npm run build` yields identical sha256 |
 
-## ⌨️ Shortcuts
+Neither the bench nor the smoke runs on jsdom: it has no layout and no compositor, so the most expensive operations (table reflow, scrolling) cannot be measured realistically. The smoke script self-checks — if data never reached the UI (for example it landed on the failure page) it fails outright instead of printing a row of pretty fake numbers.
+
+<details>
+<summary><b>Development and release commands</b></summary>
+
+```bash
+cd app
+npm install
+
+npm run dev              # dev server
+npm run typecheck        # tsc --noEmit
+npm test                 # vitest
+npm run build            # typecheck + single-file dist/index.html
+npm run check:bundle     # bundle red line
+npm run check:no-network # static scan: no network calls
+npm run check:versions   # three-way version agreement
+npm run validate:community
+npm run bench            # CDP performance bench
+node smoke-v05.mjs       # CDP end-to-end smoke
+
+npm run verify           # all seven gates
+npm run release:pack     # reproducible release assets
+```
+
+Before releasing, walk through [`docs/RELEASE-CHECKLIST.md`](docs/RELEASE-CHECKLIST.md).
+
+</details>
+
+## Shortcuts
 
 | Key | Action |
 | :--- | :--- |
 | `N` | New application |
-| `1`–`5` | Today / Board / List / Calendar / Insights |
-| `⌘K` / `Ctrl+K` | Global search |
+| `1` – `5` | Today / Board / List / Calendar / Insights |
+| `⌘K` / `Ctrl+K` | Global search (Enter opens the first hit) |
 | `⌘Z` / `Ctrl+Z` | Undo (up to 10 steps) |
 | `⇧⌘Z` / `Ctrl+Y` | Redo |
 | `Esc` | Close overlay / drawer |
 
-## ❓ FAQ
+## Known limitations
 
-<details>
-<summary><b>Will my data be wiped?</b></summary>
+Nothing hidden. Each item is a real boundary of the current release, not a "coming soon".
 
-Only if you clear site data, use a private window, or switch browser/device. Settings shows the last backup time and turns red past 7 days — export JSON before switching machines.
+- **The recycle bin covers applications only** — deleting a company, interview, or event still goes through the undo stack, which a reload clears
+- **The undo stack is memory-only** — a reload clears it. By design: persisting it raises "undo to which version?" ambiguity
+- **List virtualisation affects select-all** — above 150 rows only the visible window is rendered, so `Ctrl+A` captures rendered rows only and "detected N" can be lower than the total
+- **IndexedDB is preferred, not required** — when disabled or in private mode it quietly falls back to localStorage with its 5 MB ceiling
+- **Sync is text parsing, not an API** — platform redesigns break it; it says "could not parse" and never silently drops data. BOSS / Shixiseng / Nowcoder selectors are not yet calibrated against real logged-in pages
+- **Bare personal names are not anonymised** — title anchors (interviewer / teacher / manager) are handled; pure names need NER, which regex cannot do
+- **Large libraries have a ceiling** — 1000 applications works (virtualised list), but derived views such as insights and the calendar still scale linearly with row count and are not yet sharded
+- **Mobile is usable, not designed** — narrow screens are responsive, but drag-and-drop and keyboard shortcuts are desktop-first
+- **Clipboard may be unavailable** over `file://` in some browsers; message templates then expand into a textarea
+- **Deadlines are per-application** — there is no season-wide deadline
+- **Single-file size has a hard ceiling** — over 540 KB fails CI. Deliberate, not a bug
 
-</details>
+## Contributing
 
-<details>
-<summary><b>Why no cloud sync or accounts?</b></summary>
+See [`CONTRIBUTING.md`](CONTRIBUTING.md). For a platform adapter, start at [`docs/adapters/README.md`](docs/adapters/README.md); for interview notes, see [`community/SCHEMA.md`](community/SCHEMA.md) — **anonymisation is a hard red line**. What changed in each release is in [`CHANGELOG.md`](CHANGELOG.md).
 
-Because the moment there is a server, "zero requests" becomes a lie — and that promise is why this product exists.
-Cross-device today means export → import. The cost is obvious (manual), but it has no privacy price and your data is never deleted for non-payment.
+Run `npm run verify` before opening a PR; seven green gates are the price of admission. For security issues, **do not open a public issue** — use the private channel in [`SECURITY.md`](SECURITY.md).
 
-</details>
-
-<details>
-<summary><b>Will platforms flag me as a scraper?</b></summary>
-
-No. It does not log in, click, or send requests. Everything comes from text you copied yourself. From the platform's side it is a user pasting text.
-
-</details>
-
-<details>
-<summary><b>Does it work on mobile?</b></summary>
-
-It opens, renders, and edits, but drag-and-drop and keyboard shortcuts are desktop-first. The primary surface is a computer, because that is where applying happens.
-
-</details>
-
-<details>
-<summary><b>Can I use it commercially?</b></summary>
-
-Code is MIT — yes. Notes under `community/` are CC BY-SA 4.0, which requires attribution and share-alike.
-
-</details>
-
-## ⚠️ Known limitations
-
-- **No recycle bin**: deleting an application is immediate (with confirmation and undo, but the undo stack is memory-only).
-- **The undo stack is memory-only**: a reload clears it — by design, since persisting it raises "undo to which version?" ambiguity.
-- **Clipboard may be unavailable** over `file://` in some browsers; message templates then expand into a textarea for manual copying.
-- **Sync is text parsing, not an API**: platform redesigns break it. It says "could not parse" — it never silently drops data.
-- **No virtual scrolling yet**: `Ctrl+A` only captures rendered rows, so "detected N" can be lower than the total.
-- **Large libraries unmeasured**: only algorithmic optimisation above 200 applications; no end-to-end benchmark yet.
-- **Bare personal names are not anonymised**: title anchors (interviewer / teacher / manager) are handled; pure names need NER, which regex cannot do.
-
-## 🤝 Contributing
-
-See [`CONTRIBUTING.md`](CONTRIBUTING.md). For a new platform adapter, start at
-[`docs/adapters/README.md`](docs/adapters/README.md). For interview notes, see [`community/SCHEMA.md`](community/SCHEMA.md) —
-**anonymisation is a hard red line**. Please run `npm run verify` before opening a PR.
-
-Security issues: **do not open a public issue**; use the private channel in [`SECURITY.md`](SECURITY.md).
-
-## 📄 License
+## License
 
 - Code: MIT — see [`LICENSE`](LICENSE)
 - Community notes (`community/`): CC BY-SA 4.0 — see [`community/LICENSE`](community/LICENSE)
@@ -361,8 +418,8 @@ Security issues: **do not open a public issue**; use the private channel in [`SE
 
 <div align="center">
 
-**If it helped you land an offer, a ⭐ helps the next person find it**
+If it helped you land an offer, a star helps the next person find it.
 
-<sub>Job Desk · MIT License · Made for Chinese students hunting jobs</sub>
+<sub>Job Desk · MIT License</sub>
 
 </div>
