@@ -12,7 +12,10 @@ export default defineConfig({
   cacheDir: 'node_modules/.vite-test',
   test: {
     environment: 'node',
-    include: ['src/**/*.test.ts'],
+    include: ['src/**/*.test.ts', 'src/**/*.test.tsx'],
+    // v0.5.1 起组件测试破例引入 jsdom（用户拍板）：默认仍是 node（D-04 不变），
+    // 需要组件环境的测试文件在第一行写 `// @vitest-environment jsdom`
+    environmentMatchGlobs: [['src/**/*.test.tsx', 'jsdom']],
     reporters: ['default'],
     // fixtures 是纯文本，测试里用 fs 直接读，不走 vite 的静态资源管线
   },

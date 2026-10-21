@@ -49,10 +49,6 @@ function fail(file, message) {
   errors.push(`${file}: ${message}`);
 }
 
-function warn(file, message) {
-  warnings.push(`${file}: ${message}`);
-}
-
 function isRecord(value) {
   return typeof value === 'object' && value !== null && !Array.isArray(value);
 }
@@ -108,8 +104,6 @@ for (const file of files) {
     fail(file, 'experiences 是空的 —— 空文件不如不提交');
     continue;
   }
-
-  let questionCount = 0;
 
   for (const [index, exp] of list.entries()) {
     const where = `${file}#${index + 1}`;
@@ -174,8 +168,6 @@ for (const file of files) {
             fail(qWhere, '不是对象');
             continue;
           }
-          questionCount += 1;
-
           if (question.id !== undefined) {
             if (typeof question.id !== 'string' || !/^[a-z0-9][a-z0-9-]{3,60}$/.test(question.id)) {
               fail(qWhere, 'id 必须是小写字母/数字/短横线，4–60 字符');

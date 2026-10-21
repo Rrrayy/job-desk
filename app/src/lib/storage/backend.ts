@@ -31,8 +31,8 @@ export interface StorageBackend {
   readonly name: string;
   /** 同步读取。IndexedDB 是异步的，所以这里返回 Promise —— 接口按最慢的那个定 */
   read(key: string): Promise<ReadOutcome>;
-  /** 写成功返回 null，失败返回面向用户的中文原因 */
-  write(key: string, value: string): Promise<string | null>;
+  /** 写成功返回 null，失败返回面向用户的中文原因（quotaExceeded 标记配额类失败，供上层锁只读） */
+  write(key: string, value: string): Promise<WriteFailure | null>;
   remove(key: string): Promise<void>;
   /** 列出以某前缀开头的所有 key（回滚点、坏数据副本都靠它做清理） */
   keys(prefix: string): Promise<string[]>;
@@ -41,6 +41,12 @@ export interface StorageBackend {
 }
 
 /* ------------------------------ localStorage ------------------------------ */
+
+/** 一次写失败：给用户看的原因 + 是否配额类（配额满 → 上层触发只读锁定） */
+export interface WriteFailure {
+  message: string;
+  quotaExceeded?: boolean;
+}
 
 export const localBackend: StorageBackend = {
   name: 'localStorage',
@@ -62,7 +68,6 @@ export const localBackend: StorageBackend = {
       return describeWriteError(error);
     }
   },
-
   async remove(key) {
     try {
       localStorage.removeItem(key);
@@ -100,13 +105,17 @@ export const localBackend: StorageBackend = {
   },
 };
 
-function describeWriteError(error: unknown): string {
+function describeWriteError(error: unknown): WriteFailure {
   const name = error instanceof Error ? error.name : '';
   if (name === 'QuotaExceededError' || name === 'NS_ERROR_DOM_QUOTA_REACHED') {
-    return '浏览器存储空间已满（这个打开方式下约 5 MB）。请先导出备份，再清理一批已结束的投递。';
+    return {
+      quotaExceeded: true,
+      message:
+        '浏览器存储空间已满（这个打开方式下约 5 MB），已暂停写入（只读模式）以防数据丢失。请先导出备份，再清理浏览器里旧数据后刷新页面。',
+    };
   }
   const message = error instanceof Error ? error.message : '未知错误';
-  return `保存失败（${message}）。可能是浏览器存储空间不足或被禁用。请立刻导出备份。`;
+  return { message: `保存失败（${message}）。可能是浏览器存储空间不足或被禁用。请立刻导出备份。` };
 }
 
 export { describeWriteError };

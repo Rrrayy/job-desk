@@ -7,9 +7,9 @@ export const bossAdapter: SyncAdapter = {
   id: 'boss',
   name: 'BOSS 直聘',
   platform: 'boss',
-  version: '1.0.0',
-  /** 用户自行验证页面结构后可以改这一行；超过 6 个月 UI 会标「可能已失效」 */
-  lastVerifiedAt: '2025-03-01',
+  version: '1.1.0',
+  /** 2026-10-21 用真机「求职记录」页文本校准（App 我的 → 求职记录 → 沟通过） */
+  lastVerifiedAt: '2026-10-21',
   matchUrl: (url: string) => /zhipin\.com\/web\/geek\/(chat|apply)/.test(url),
   urlPattern: 'zhipin.com/web/geek/chat',
   inputType: 'paste',

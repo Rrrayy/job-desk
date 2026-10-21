@@ -83,7 +83,7 @@ export function looksLikeJobTitle(line: string): boolean {
 export function looksLikeCompany(line: string): boolean {
   if (line.length < 2 || line.length > 40) return false;
   if (looksLikeJobTitle(line) || looksLikeStatus(line) || looksLikeSalary(line)) return false;
-  return COMPANY_TAIL.test(line) || /^[\u4e00-\u9fa5A-Za-z0-9（）()·.\-]{2,20}$/.test(line);
+  return COMPANY_TAIL.test(line) || /^[\u4e00-\u9fa5A-Za-z0-9（）()·.-]{2,20}$/.test(line);
 }
 
 interface DateHit {

@@ -182,6 +182,35 @@ describe('D4 · 读失败绝不覆盖用户原数据', () => {
     expect(saveDB(emptyDB())).toBeNull();
     expect(localStorage.getItem(STORAGE_KEY)).toBeNull();
   });
+
+  it('写入时配额满 → 触发只读锁定（v0.5.1），导出备份仍是出路', () => {
+    // 模拟浏览器配额满：setItem 一律抛 QuotaExceededError
+    Object.defineProperty(globalThis, 'localStorage', {
+      value: {
+        getItem: () => null,
+        setItem: () => {
+          const error = new Error('quota');
+          error.name = 'QuotaExceededError';
+          throw error;
+        },
+        removeItem: () => {},
+        clear: () => {},
+        key: () => null,
+        get length() {
+          return 0;
+        },
+      },
+      configurable: true,
+      writable: true,
+    });
+    resetPersistenceLock();
+
+    const error = saveDB(emptyDB());
+    expect(error).toContain('存储空间已满');
+    expect(isPersistenceLocked()).toBe(true);
+    // 锁定后再写：一个字节都不动，不再重复报错
+    expect(saveDB(emptyDB())).toBeNull();
+  });
 });
 
 describe('D7 · 列表筛选条件跨刷新保留', () => {

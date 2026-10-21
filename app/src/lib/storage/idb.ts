@@ -102,10 +102,13 @@ export const idbBackend: StorageBackend = {
     } catch (error) {
       const name = error instanceof Error ? error.name : '';
       if (name === 'QuotaExceededError') {
-        return '浏览器存储配额已满。请先导出备份，再清理一批已结束的投递。';
+        return {
+          quotaExceeded: true,
+          message: '浏览器存储配额已满，已暂停写入（只读模式）以防数据丢失。请先导出备份，再清理一批已结束的投递。',
+        };
       }
       const message = error instanceof Error ? error.message : '未知错误';
-      return `保存失败（${message}）。请立刻导出备份。`;
+      return { message: `保存失败（${message}）。请立刻导出备份。` };
     }
   },
 

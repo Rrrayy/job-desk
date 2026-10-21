@@ -10,6 +10,13 @@ const NOW = '2025-03-13T12:00:00.000Z';
 const expected = JSON.parse(fixture('expected.json')) as {
   chatList: Array<{ companyName: string; jobTitle: string; status: string }>;
   applyList: Array<{ companyName: string; status: string }>;
+  recordList: Array<{
+    companyName: string;
+    jobTitle: string;
+    city: string;
+    salaryText: string;
+    day: number;
+  }>;
 };
 
 describe('BOSS 沟通列表解析', () => {
@@ -72,5 +79,47 @@ describe('BOSS 沟通列表解析', () => {
     expect(Array.isArray(result.records)).toBe(true);
     expect(Array.isArray(result.unparsed)).toBe(true);
     expect(result.records.length + result.unparsed.length).toBeGreaterThan(0);
+  });
+});
+
+describe('BOSS 求职记录页解析（2026-10 真机形态）', () => {
+  // 截图拍摄于 2026-10-21；分组日期「10月20日/21日」按注入的 now 补年份
+  const RECORD_NOW = '2026-10-21T14:18:00.000Z';
+
+  it('识别全部 3 条，公司名剥离融资与规模', () => {
+    const result = parseBossText({ text: fixture('record-list.txt'), capturedAt: RECORD_NOW }, { now: RECORD_NOW });
+    expect(result.records.length).toBe(expected.recordList.length);
+    expect(result.unparsed.length).toBe(0);
+
+    expected.recordList.forEach((wanted, index) => {
+      const actual = result.records[index];
+      expect(actual.companyName).toBe(wanted.companyName);
+      expect(actual.jobTitle).toBe(wanted.jobTitle);
+      expect(actual.city).toBe(wanted.city);
+      expect(actual.salaryText).toBe(wanted.salaryText);
+    });
+  });
+
+  it('分组日期下放到时刻行：跨组日期不都是「今天」', () => {
+    const result = parseBossText({ text: fixture('record-list.txt'), capturedAt: RECORD_NOW }, { now: RECORD_NOW });
+    const days = result.records.map((record) => new Date(record.lastContactAt ?? '').getDate());
+    expect(days).toEqual(expected.recordList.map((wanted) => wanted.day));
+    // 带时刻 → 置信度 high
+    result.records.forEach((record) => {
+      expect(record.confidence.lastContactAt).toBe('high');
+    });
+  });
+
+  it('沟通过 tab 没有状态行 → status 为空、置信度诚实降为 low', () => {
+    const result = parseBossText({ text: fixture('record-list.txt'), capturedAt: RECORD_NOW }, { now: RECORD_NOW });
+    result.records.forEach((record) => {
+      expect(record.status).toBeUndefined();
+      expect(record.confidence.status).toBe('low');
+    });
+  });
+
+  it('五类计数守恒：新增 + 待归类 === 识别条数', () => {
+    const result = parseBossText({ text: fixture('record-list.txt'), capturedAt: RECORD_NOW }, { now: RECORD_NOW });
+    expect(result.records.length + result.unparsed.length).toBe(3);
   });
 });

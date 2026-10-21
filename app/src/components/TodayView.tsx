@@ -146,7 +146,7 @@ export function TodayView({ api }: { api: AppApi }) {
               >
                 {showOverflow ? '收起' : `还有 ${plan.overflow.length} 件，展开看`}
               </button>
-              {showOverflow ? null : <span className="card__hint">　今天的预算就 {plan.budget} 件</span>}
+              {showOverflow ? null : <span className="card__hint">{'\u3000'}今天的预算就 {plan.budget} 件</span>}
             </p>
           ) : null}
         </section>

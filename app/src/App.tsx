@@ -371,8 +371,8 @@ export default function App() {
       // 数据模型层的默认值是 wishlist；「记一家」浮层会显式传 applied（真实用法：投完才记）
       const status: Status = input.status || 'wishlist';
       mutate((draft) => {
-        let companyId = '';
         const existed = draft.companies.find((c) => c.name === input.companyName);
+        let companyId: string;
         if (existed) {
           companyId = existed.id;
         } else {
@@ -1200,13 +1200,16 @@ export default function App() {
     } catch {
       showToast('导出失败，浏览器可能禁止了下载');
     }
-  }, [markExported, showToast]);
+  }, [showToast]);
 
   const exportData = useCallback((): void => {
     try {
       const text = exportJSON(dbRef.current);
-      // 按本地日期命名，不用 toISOString()（UTC，本地 8 点前会早一天）
-      const ok = downloadText(text, 'application/json', `求职工作台-备份-${todayISO()}.json`);
+      // 文件名带 HHMM：同一天导多次不互相覆盖（与便携包 portableZipName 同一口径）。
+      // 日期按本地时区，不用 toISOString()（UTC，本地 8 点前会早一天）
+      const now = new Date();
+      const hhmm = `${String(now.getHours()).padStart(2, '0')}${String(now.getMinutes()).padStart(2, '0')}`;
+      const ok = downloadText(text, 'application/json', `求职工作台-备份-${todayISO()}-${hhmm}.json`);
       if (ok) markExported();
       showToast(ok ? '已导出 JSON 备份' : '导出失败，浏览器可能禁止了下载');
     } catch {

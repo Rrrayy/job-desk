@@ -21,5 +21,10 @@
     { "companyName": "腾讯", "status": "不合适" },
     { "companyName": "快手", "status": "已入职" }
   ],
+  "recordList": [
+    { "companyName": "同元软控", "jobTitle": "AI开发工程师实习生", "city": "苏州", "salaryText": "180-220元/天", "day": 21 },
+    { "companyName": "先声药业", "jobTitle": "AI应用开发实习生", "city": "南京", "salaryText": "130-180元/天", "day": 21 },
+    { "companyName": "先声药业", "jobTitle": "AI场景应用开发工程师(实习)", "city": "南京", "salaryText": "100-180元/天", "day": 20 }
+  ],
   "unparsedReasons": ["这一行没有公司名"]
 }

@@ -423,7 +423,6 @@ Before releasing, walk through [`docs/RELEASE-CHECKLIST.md`](docs/RELEASE-CHECKL
 Nothing hidden. Each item is a real boundary of the current release, not a "coming soon".
 
 - **Each of the three exits has a gap**: the undo stack is memory-only (cleared on reload — by design, since persisting it raises "undo to which version?"); the recycle bin covers applications only, so deleting a company / interview / event can only be rescued by the undo stack
-- **List virtualisation affects select-all** — above 150 rows only the visible window is rendered, so `Ctrl+A` captures rendered rows only and "detected N" can be lower than the total
 - **IndexedDB is preferred, not required** — when disabled or in private mode it quietly falls back to localStorage with its 5 MB ceiling
 - **Sync is text parsing, not an API** — platform redesigns break it; it says "could not parse" and never silently drops data. BOSS / Shixiseng / Nowcoder selectors are not yet calibrated against real logged-in pages
 - **Bare personal names are not anonymised** — title anchors (interviewer / teacher / manager) are handled; pure names need NER, which regex cannot do

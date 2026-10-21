@@ -51,7 +51,6 @@ async function usable(dir) {
  */
 let chosenTmp = tmpdir();
 for (const candidate of [tmpdir(), localTmp]) {
-  // eslint-disable-next-line no-await-in-loop
   if (await usable(candidate)) {
     chosenTmp = candidate;
     break;

@@ -47,7 +47,7 @@ async function probeIDB(): Promise<string | null> {
   // 返回 null = 可用；返回字符串 = 不可用的原因
   try {
     const writeError = await idbBackend.write(PROBE_KEY, '1');
-    if (writeError) return writeError;
+    if (writeError) return writeError.message;
     const read = await idbBackend.read(PROBE_KEY);
     await idbBackend.remove(PROBE_KEY);
     if (read.status !== 'ok') return 'IndexedDB 写入后读不回来';

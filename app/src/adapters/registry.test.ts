@@ -30,8 +30,12 @@ describe('适配器注册表', () => {
     const boss = adapterById('boss');
     expect(boss).not.toBeNull();
     if (!boss) return;
-    expect(isAdapterStale(boss, '2025-04-01T00:00:00.000Z')).toBe(false);
-    expect(isAdapterStale(boss, '2025-12-01T00:00:00.000Z')).toBe(true);
+    // 相对 lastVerifiedAt 计算，校准日期更新时测试不需要跟着改
+    const verified = Date.parse(boss.lastVerifiedAt);
+    const plusMonths = (months: number): string =>
+      new Date(verified + months * 30 * 24 * 3600 * 1000).toISOString();
+    expect(isAdapterStale(boss, plusMonths(1))).toBe(false);
+    expect(isAdapterStale(boss, plusMonths(8))).toBe(true);
   });
 
   it('每个适配器都有版本与验证时间', () => {

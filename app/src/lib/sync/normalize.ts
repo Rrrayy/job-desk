@@ -45,7 +45,7 @@ export function toHalfWidth(input: string): string {
 
 /** 去掉所有空白与常见分隔装饰符（括号内容**保留** —— 公司名里括号常是分支名） */
 function stripSpacesAndMarks(input: string): string {
-  return input.replace(/[\s（）()【】\[\]·・\-—_.,，。]/g, '');
+  return input.replace(/[\s（）()【】[\]·・\-—_.,，。]/g, '');
 }
 
 /** 循环剥合法后缀，直到不再变化 */
@@ -83,7 +83,7 @@ export function normalizeCompanyName(input: string): string {
 export function normalizeJobTitle(input: string): string {
   if (!input) return '';
   let text = toHalfWidth(input);
-  text = text.replace(/[（(【\[［][^）)】\]］]*[）)】\]］]/g, '');
+  text = text.replace(/[（(【[［][^）)】\]］]*[）)】\]］]/g, '');
   for (const city of CITY_WORDS) {
     text = text.split(city).join('');
   }

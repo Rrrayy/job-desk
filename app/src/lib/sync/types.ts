@@ -9,6 +9,7 @@ import type {
   NoteSource,
   PlatformId,
   StagedReason,
+  StagedSyncItem,
   Status,
   SyncableField,
 } from '../../types';
@@ -94,7 +95,7 @@ export interface SyncUndo {
   /** 本次新增到暂存区的 id */
   stagedAddedIds: string[];
   /** 本次从暂存区移除的条目（用户处理掉的），撤销时原样放回 */
-  stagedRemoved: { id: string; item: import('../../types').StagedSyncItem }[];
+  stagedRemoved: { id: string; item: StagedSyncItem }[];
   /** 用于生成 note 的上下文 */
   source: NoteSource;
 }

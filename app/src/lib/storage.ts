@@ -20,7 +20,7 @@ import {
   writePointer,
   writeRollbackPoint,
 } from './rollback';
-import { localBackend, type StorageBackend } from './storage/backend';
+import { describeWriteError, localBackend, type StorageBackend } from './storage/backend';
 import { detectBackend } from './storage/detect';
 import { type ImportResult, validateV2 } from './validateV2';
 
@@ -463,8 +463,11 @@ function writeDB(db: DB): string | null {
       localStorage.setItem(STORAGE_KEY, text);
       return null;
     } catch (error) {
-      const message = error instanceof Error ? error.message : '未知错误';
-      return `保存失败（${message}）。可能是浏览器存储空间不足或被禁用。请立刻导出备份。`;
+      const failure = describeWriteError(error);
+      // ★ 配额满 = 继续接受编辑只会造成「改了却没存上」的静默丢失 ——
+      //   这里触发只读锁定（与读失败同一条闸门），出口只有导出备份。
+      if (failure.quotaExceeded) lockPersistence();
+      return failure.message;
     }
   }
 
@@ -505,8 +508,14 @@ function queueIDBWrite(backend: StorageBackend, text: string): void {
     const job = queued;
     if (!job) return;
     queued = null; // 先清再写：写入期间新的写入会重新排队，不会丢
-    const error = await job.backend.write(STORAGE_KEY, job.text);
-    reportWriteError(error);
+    const failure = await job.backend.write(STORAGE_KEY, job.text);
+    if (failure) {
+      // IndexedDB 配额满同样锁只读：静默丢写入比报错更危险
+      if (failure.quotaExceeded) lockPersistence();
+      reportWriteError(failure.message);
+    } else {
+      reportWriteError(null);
+    }
   });
 }
 
@@ -578,7 +587,7 @@ export function saveDB(db: DB): string | null {
  * - v0.2 写入 '{"view":"insights","insightsTab":"interview"}'
  */
 export function loadUIView(): UIViewState | null {
-  let raw: string | null = null;
+  let raw: string | null;
   try {
     raw = localStorage.getItem(UI_KEY);
   } catch {
@@ -682,6 +691,9 @@ export function exportJSON(db: DB): string {
   const payload = {
     exportedAt: new Date().toISOString(),
     app: 'jobdesk',
+    // formatVersion 是给 v0.6+ 的承诺：以后格式演进靠它做前向判断，
+    // 与 settings.schemaVersion 解耦（schemaVersion 只描述库内结构，不随导出格式走）
+    formatVersion: 2,
     version: 2,
     settings: db.settings,
     companies: db.companies,

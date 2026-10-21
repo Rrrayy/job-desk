@@ -1,7 +1,7 @@
 {
   "name": "job-desk",
   "private": false,
-  "version": "0.5.0",
+  "version": "0.5.1",
   "type": "module",
   "description": "求职工作台 · 把投递当管线管，数据只留在你自己的浏览器里",
   "license": "MIT",
@@ -33,10 +33,12 @@
     "check:bundle": "node scripts/check-bundle.mjs",
     "check:no-network": "node scripts/check-no-network.mjs",
     "validate:community": "node scripts/validate-community.mjs",
-    "verify": "npm run typecheck && npm test && npm run check:no-network && npm run build && npm run check:bundle && npm run check:versions && npm run validate:community",
+    "verify": "npm run typecheck && npm test && npm run lint && npm run check:no-network && npm run build && npm run check:bundle && npm run check:versions && npm run validate:community",
     "release:pack": "node scripts/pack-release.mjs",
     "release:prep": "npm run verify && npm run release:pack",
     "check:versions": "node scripts/check-versions.mjs",
+    "lint": "eslint src scripts eslint.config.mjs",
+    "lint:fix": "eslint src scripts eslint.config.mjs --fix",
     "bench": "node scripts/bench-perf.mjs"
   },
   "dependencies": {
@@ -44,10 +46,16 @@
     "react-dom": "^18.3.1"
   },
   "devDependencies": {
+    "@eslint/js": "^10.0.1",
     "@types/react": "^18.3.12",
     "@types/react-dom": "^18.3.1",
     "@vitejs/plugin-react": "^4.3.4",
+    "eslint": "^10.13.0",
+    "eslint-plugin-react-hooks": "^7.1.1",
+    "globals": "^17.13.0",
+    "jsdom": "^30.1.3",
     "typescript": "^5.6.3",
+    "typescript-eslint": "^8.72.0",
     "vite": "^5.4.11",
     "vite-plugin-singlefile": "^2.0.3",
     "vitest": "^2.1.8"
