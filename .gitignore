@@ -79,3 +79,7 @@ app/smoke-v04/
 app/shots-tmp/
 app/shots-*/
 app/smoke-v041/
+
+# ---------- 私有策划：版本设计不进公开仓库（详见 ../job-desk-planning/） ----------
+docs/ROADMAP.md
+docs/ROADMAP-v0.5-plus.md

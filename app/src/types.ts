@@ -122,12 +122,12 @@ export interface Application {
   /**
    * 硬性截止时间（YYYY-MM-DD）。投递截止、Offer 回复截止都记这里。
    *
-   * ★ 三态语义（ROADMAP §6.2）：
+   * ★ 三态语义（v0.3 起的产品约定，git 历史见 CHANGELOG 0.3.0）：
    *   undefined = 没设置 → 继承上层（季节 / 全局默认）
    *   null      = 显式关闭 → 上层就算有截止，这条也不跟
    *   字符串    = 覆盖
    * 为什么不能用 `a ?? b` 收口：`??` 把 null 与 undefined 合并成一支，
-   * 而这两者的业务含义正好相反（「跟随」与「明确不跟」）。
+   * 而这两者的业务含义正好相反（「跟随」与「明确不跟」）。校验必须走 `asTriStateDate()`。
    */
   deadlineAt?: string | null;
   /**
