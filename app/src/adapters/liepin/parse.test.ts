@@ -31,3 +31,23 @@ describe('猎聘详情页解析（2026-10 真机形态）', () => {
     expect(result.records[0].overall).toBe('low');
   });
 });
+
+describe('猎聘投递列表解析（2026-10 真机形态）', () => {
+  const list = readFileSync(`${here}fixtures/delivery-list.txt`, 'utf-8');
+  const NOW2 = '2026-10-21T15:12:00.000Z';
+  const result = parseLiepinText({ text: list, capturedAt: NOW2 }, { now: NOW2 });
+
+  it('恰好一条记录：岗位与薪资从同一行拆开，公司名保留', () => {
+    expect(result.records).toHaveLength(1);
+    expect(result.records[0].companyName).toBe('华为');
+    expect(result.records[0].jobTitle).toBe('【华为实习生招聘】研发工...');
+    expect(result.records[0].salaryText).toBe('300-500元/天');
+  });
+
+  it('城市、平台时间、状态角标都拿到；Tab 行不污染状态', () => {
+    expect(result.records[0].city).toBe('南京');
+    expect(new Date(result.records[0].lastContactAt ?? '').getDate()).toBe(11);
+    expect(result.records[0].status).toBe('已查看');
+    expect(result.records[0].platformStatusText).toBe('已查看');
+  });
+});

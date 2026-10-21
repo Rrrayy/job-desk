@@ -26,7 +26,7 @@ export const STATUS_HINTS: RegExp[] = [
   /已录用|发放\s*offer|已发\s*offer/i,
   /已入职/,
   /不合适|已结束|不符合|暂不匹配/,
-  /已投递|简历已送达|已送达/,
+  /已投递|简历已送达|已送达|已查看/,
   /沟通中/,
   /待沟通|未读|新消息/,
 ];
@@ -50,9 +50,9 @@ export const CITY_WORDS = [
 const JOB_HINTS =
   /实习|工程师|开发|前端|后端|客户端|服务端|算法|测试|产品|运营|设计|数据|架构|全栈|研究员|项目管理|市场|人力/;
 
-/** 薪资形态：200-300/天、15-25K、3000元/月、100-150元/天 */
-const SALARY_RE =
-  /\d+(?:\.\d+)?\s*[-~至]\s*\d+(?:\.\d+)?\s*(?:[kK千万])?(?:\s*元)?(?:\s*\/\s*[天月年])?|\d+\s*元\s*\/\s*[天月]|\d+\s*[kK]\s*[-~]\s*\d+\s*[kK]/;
+/** 薪资形态：200-300/天、15-25K、3000元/月、100-150元/天（含全角/短破折号连接符） */
+export const SALARY_RE =
+  /\d+(?:\.\d+)?\s*[-~至–—]\s*\d+(?:\.\d+)?\s*(?:[kK千万])?(?:\s*元)?(?:\s*\/\s*[天月年])?|\d+\s*元\s*\/\s*[天月]|\d+\s*[kK]\s*[-~至–—]\s*\d+\s*[kK]/;
 
 /** 公司名常见的收尾（用来判断「这一行像公司名」） */
 const COMPANY_TAIL =
@@ -301,7 +301,7 @@ function parseChunk(
       continue;
     }
     if (city === undefined && looksLikeCity(line)) {
-      city = line.split(/[·\s|/]/)[0];
+      city = line.split(/[·\s|/-]/)[0];
       used.add(i);
       continue;
     }

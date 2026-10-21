@@ -31,9 +31,9 @@
 | id | 名称 | `urlPattern` | 输入 | `lastVerifiedAt` | 状态 |
 | --- | --- | --- | --- | --- | --- |
 | `boss` | BOSS 直聘 | `zhipin.com/web/geek/chat` | paste | 2026-10-21 | 稳定（求职记录页真机校准） |
-| `shixiseng` | 实习僧 | `shixiseng.com/my/delivery` | paste | 2026-10-21 | 详情页真机校准；列表页未验证 |
-| `nowcoder` | 牛客 | `nowcoder.com/my/applications` | paste | 2026-10-21 | 详情页真机校准；列表页未验证 |
-| `liepin` | 猎聘 | `liepin.com` | paste | 2026-10-21 | 详情页真机校准；列表页未验证 |
+| `shixiseng` | 实习僧 | `shixiseng.com/my/delivery` | paste | 2026-10-21 | 详情页真机校准；列表页空数据待校准 |
+| `nowcoder` | 牛客 | `nowcoder.com/my/applications` | paste | 2026-10-21 | 详情页真机校准；列表页空数据待校准 |
+| `liepin` | 猎聘 | `liepin.com` | paste | 2026-10-21 | 详情页 + 投递列表页真机校准 |
 | `custom` | 通用表格 / 其他平台 | 任意页面的列表 / 表格 | paste | 2025-03-01 | 兜底 |
 
 **详情页通道**（2026-10-21 新增）：用户从手机 App 整页复制单个职位详情时，
