@@ -173,21 +173,19 @@ In reality collisions involve more than interviews — lab meetings, appointment
 >
 > **Cost**　timetable import is replace-semantics for `course && weekly` rows only; "manual entries are never overwritten" is asserted in tests, not in comments
 
-### Undo is a stack, and deletions must be undoable
+### Three ways out when something goes wrong
 
-A single-slot undo is no undo at all: the second slip and you get "nothing to undo".
+"I slipped", "I regret it", and "it crashed" are three different accidents. Each needs its own mechanism; collapsing any two leaves one of them unhandled.
 
-> **How**　a 10-step stack plus redo; a new action clears the redo stack; a sync merge is undoable but not redoable (its inverse is not a clean inverse); undo snapshots one operation, never the whole database
+| Accident | Mechanism | Boundary |
+| :--- | :--- | :--- |
+| Slipped (deleted, changed status) | Undo stack, 10 steps + redo | Memory-only, cleared on reload; a sync merge is undoable but not redoable |
+| Regret (want it back days later) | Recycle bin, soft delete for 30 days | Applications only |
+| Crashed (render error, unreadable, write failed) | Recovery page + read-only lock | Exits only, never auto-repair |
+
+> **How**　undo snapshots one operation, never the whole database; deleting an application carries the rows it took with it (interviews, timeline, note bindings); `ErrorBoundary` offers three exits (reload / download raw JSON / copy the error), and a read failure first stores the raw bytes under `failedAt.*`, then locks persistence so `saveDB` becomes a no-op
 >
-> **Cost**　deleting an application must carry the rows it took with it (interviews, timeline, note bindings), and restoring must handle "this note was rebound to another application" — in that case it does not steal it back
-
-### Failure paths must have exits
-
-A render crash, unreadable data, a failed write — the user must never be trapped.
-
-> **How**　`ErrorBoundary` offers three exits (reload / download raw JSON / copy the error); a read failure first stores the raw bytes under `failedAt.*`, then locks persistence so `saveDB` becomes a no-op
->
-> **Cost**　**automatic repair is forbidden**. Auto-repair turns "recoverable" into "unrecoverable", so that page only offers exits — it never guesses, fixes, or deletes
+> **Cost**　each mechanism has its own tax: restoring must handle "this note was rebound to another application" — in that case it **does not steal it back**; the undo stack dies on reload (persisting it raises "undo to which version?"); and the recovery page **forbids any automatic repair**, because auto-repair turns "recoverable" into "unrecoverable" — it offers exits only, and never guesses, fixes, or deletes
 
 ### One HTML file is a verifiable constraint, not laziness
 
@@ -424,8 +422,7 @@ Before releasing, walk through [`docs/RELEASE-CHECKLIST.md`](docs/RELEASE-CHECKL
 
 Nothing hidden. Each item is a real boundary of the current release, not a "coming soon".
 
-- **The recycle bin covers applications only** — deleting a company, interview, or event still goes through the undo stack, which a reload clears
-- **The undo stack is memory-only** — a reload clears it. By design: persisting it raises "undo to which version?" ambiguity
+- **Each of the three exits has a gap**: the undo stack is memory-only (cleared on reload — by design, since persisting it raises "undo to which version?"); the recycle bin covers applications only, so deleting a company / interview / event can only be rescued by the undo stack
 - **List virtualisation affects select-all** — above 150 rows only the visible window is rendered, so `Ctrl+A` captures rendered rows only and "detected N" can be lower than the total
 - **IndexedDB is preferred, not required** — when disabled or in private mode it quietly falls back to localStorage with its 5 MB ceiling
 - **Sync is text parsing, not an API** — platform redesigns break it; it says "could not parse" and never silently drops data. BOSS / Shixiseng / Nowcoder selectors are not yet calibrated against real logged-in pages
