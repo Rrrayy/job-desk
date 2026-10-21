@@ -211,7 +211,7 @@ function DetailBody({ api, app }: { api: AppApi; app: Application }) {
             </p>
           ) : null}
         </div>
-        <button type="button" className="icon-btn" onClick={api.closeDetail} title="关闭（Esc）">
+        <button type="button" className="icon-btn" onClick={api.closeDetail} title="关闭（Esc）" aria-label="关闭">
           ✕
         </button>
       </header>

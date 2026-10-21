@@ -332,7 +332,7 @@ export interface AppSettings {
   resultPromptHour: number;
   channelFactor: Record<Channel, number>;
   weeklyApplyGoal: number;
-  courseSlots: { weekday: number; start: string; end: string; name: string }[];
+  courseSlots: { weekday: number; start: string; end: string; name: string }[];  // v0.4 起废弃，见下方注记
   defaultResumeVersion?: string;
   sync: SyncSettings;                     // v2 新增
   lastMigration?: MigrationRecord;        // v2 新增
@@ -1867,3 +1867,27 @@ sequenceDiagram
 - [x] 15 条 PRD 歧义逐条给出解法（不留在「待讨论」）
 - [x] 风险分「技术风险」与「无法验证」两张表，并点名最可能翻车的两处
 - [x] 附录给出 25 条「改动锚点」，把最容易漏的硬编码（`App.tsx:398`、`storage.ts:276`、`sample.ts`）显式列出
+---
+
+## 附注：v0.4 的日程表变更（本文档成文于 v0.2，此节为补记）
+
+上文 `AppSettings.courseSlots` **在 v0.4 已废弃**，替换为顶层表 `DB.events`：
+
+```ts
+CalendarEvent {
+  id: string;
+  title: string;
+  kind: 'course' | 'personal';   // course = 每周循环；personal = 单次
+  start: string;                  // 'HH:mm'
+  end: string;                    // 'HH:mm'
+  weekly: boolean;
+  weekday?: number;               // weekly=true 时必填，ISO 1=周一 … 7=周日
+  date?: string;                  // weekly=false 时必填，'YYYY-MM-DD'
+}
+```
+
+- 迁移：`validateV2` 在加载时把 `settings.courseSlots` 一次性转成 `kind: 'course' && weekly: true` 的 events，
+  然后清空 `courseSlots`（幂等，重复加载不会重复插入）。
+- 冲突判定：`findConflicts` / `findEventConflicts` 在同一池子里两两比对，
+  条件是「同一天 + HH:mm 区间重叠」（`a.start < b.end && b.start < a.end`），端点相接不算冲突。
+- 课表导入（`lib/courseImport.ts`）是**替换语义**：只替换 `course && weekly`，`personal` 永不被覆盖。

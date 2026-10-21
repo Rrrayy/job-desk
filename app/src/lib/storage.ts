@@ -519,6 +519,63 @@ export function downloadRawJSON(raw: string, filename: string): boolean {
   }
 }
 
+/* ------------------------------ 备份时间与回滚点 ------------------------------ */
+
+const LAST_EXPORT_KEY = 'jobdesk.v1.lastExportAt';
+
+/** 记录「刚刚导出过」的时间（只用于设置页提示，不参与任何业务判断） */
+export function markExported(nowIso: string = new Date().toISOString()): void {
+  try {
+    localStorage.setItem(LAST_EXPORT_KEY, nowIso);
+  } catch {
+    // 记不住就算了，不能因为记时间失败而让导出失败
+  }
+}
+
+export function getLastExportAt(): string | null {
+  try {
+    return localStorage.getItem(LAST_EXPORT_KEY);
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * 清理迁移回滚点（`jobdesk.v1.preMigrate.*`），返回释放的 key 数与字节数。
+ *
+ * 只清回滚点，**绝不动** `failedAt.*` —— 那些是读不出来的坏数据的唯一副本，
+ * 用户可能正要靠它救命。清理动作永远由用户在设置页显式触发。
+ */
+export function purgeRollbackPoints(): { keys: number; bytes: number } {
+  let keys = 0;
+  let bytes = 0;
+  for (const key of listKeysWithPrefix(BACKUP_KEY_PREFIX)) {
+    try {
+      const value = localStorage.getItem(key);
+      if (value !== null) bytes += key.length + value.length;
+      localStorage.removeItem(key);
+      keys += 1;
+    } catch {
+      // 单个 key 失败不影响其它 key
+    }
+  }
+  return { keys, bytes };
+}
+
+/** 回滚点占用的总字符数（设置页展示用） */
+export function rollbackPointsSize(): number {
+  let bytes = 0;
+  for (const key of listKeysWithPrefix(BACKUP_KEY_PREFIX)) {
+    try {
+      const value = localStorage.getItem(key);
+      if (value !== null) bytes += key.length + value.length;
+    } catch {
+      // 读不到就不计
+    }
+  }
+  return bytes;
+}
+
 /** 回滚点的 key 前缀（设置页展示用） */
 export const ROLLBACK_PREFIX = BACKUP_KEY_PREFIX;
 

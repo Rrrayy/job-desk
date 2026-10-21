@@ -159,7 +159,7 @@ export function SyncDrawer(props: SyncDrawerProps) {
               ))}
             </div>
           </div>
-          <button type="button" className="icon-btn" onClick={onClose} title="关闭（Esc）">
+          <button type="button" className="icon-btn" onClick={onClose} title="关闭（Esc）" aria-label="关闭">
             ✕
           </button>
         </header>

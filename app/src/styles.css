@@ -4597,3 +4597,137 @@ button.chip:hover {
     padding: 12px 14px 18px;
   }
 }
+
+/* ==========================================================================
+   v0.4.1 新增：崩溃兜底页 / 重复投递提醒 / 关于区 / 键盘焦点可见
+   ========================================================================== */
+
+/* 键盘用户必须看得见焦点；鼠标点击不出现轮廓（:focus-visible 天然区分） */
+:focus-visible {
+  outline: 2px solid var(--indigo);
+  outline-offset: 2px;
+}
+
+/* ---------- 渲染崩溃兜底页（ErrorBoundary） ---------- */
+.crash {
+  min-height: 100vh;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 24px;
+  background: var(--bg);
+}
+
+.crash__card {
+  width: min(560px, 100%);
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow-2);
+  padding: 28px;
+}
+
+.crash__badge {
+  display: inline-block;
+  padding: 3px 10px;
+  border-radius: 999px;
+  background: var(--red-soft);
+  color: #a83236;
+  font-size: 12px;
+  font-weight: 600;
+}
+
+.crash__title {
+  margin: 12px 0 8px;
+  font-size: 22px;
+  color: var(--ink);
+}
+
+.crash__text {
+  margin: 0 0 14px;
+  color: var(--ink-2);
+  font-size: 14px;
+  line-height: 1.65;
+}
+
+.crash__stack {
+  max-height: 120px;
+  overflow: auto;
+  margin: 0 0 16px;
+  padding: 10px 12px;
+  border-radius: var(--radius-sm);
+  background: var(--line-soft);
+  color: var(--ink-3);
+  font-size: 12px;
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
+.crash__actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.crash__foot {
+  margin: 16px 0 0;
+  color: var(--ink-4);
+  font-size: 12px;
+}
+
+/* ---------- 重复投递提醒 ---------- */
+.qa-dup {
+  display: flex;
+  gap: 8px;
+  align-items: flex-start;
+  margin: 10px 0 2px;
+  padding: 9px 12px;
+  border: 1px solid #f7d4d5;
+  border-radius: var(--radius-sm);
+  background: var(--red-soft);
+  color: #a83236;
+  font-size: 13px;
+  line-height: 1.55;
+}
+
+.qa-dup.is-confirmed {
+  border-color: #f8e3b4;
+  background: var(--amber-soft);
+  color: #8a5a08;
+}
+
+.qa-dup__icon {
+  flex: none;
+  line-height: 1.4;
+}
+
+/* ---------- 设置页「关于」 ---------- */
+.about-list {
+  display: grid;
+  gap: 6px;
+  margin: 6px 0 10px;
+}
+
+.about-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  gap: 12px;
+  padding: 6px 0;
+  border-bottom: 1px dashed var(--line);
+  font-size: 13px;
+  color: var(--ink-3);
+}
+
+.about-row:last-child {
+  border-bottom: none;
+}
+
+.about-row strong {
+  color: var(--ink);
+  font-weight: 600;
+}
+
+.about-row__value--warn {
+  color: #a83236 !important;
+}

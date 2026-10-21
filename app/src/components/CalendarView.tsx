@@ -151,6 +151,7 @@ export function CalendarView({ api }: { api: AppApi }) {
                 className="icon-btn"
                 onClick={() => setCursor(addMonths(cursor, -1))}
                 title="上个月"
+                aria-label="上个月"
               >
                 ‹
               </button>
@@ -162,6 +163,7 @@ export function CalendarView({ api }: { api: AppApi }) {
                 className="icon-btn"
                 onClick={() => setCursor(addMonths(cursor, 1))}
                 title="下个月"
+                aria-label="下个月"
               >
                 ›
               </button>

@@ -1,7 +1,7 @@
 {
   "name": "job-desk",
   "private": false,
-  "version": "0.4.0",
+  "version": "0.4.1",
   "type": "module",
   "description": "求职工作台 · 把投递当管线管，数据只留在你自己的浏览器里",
   "license": "MIT",
@@ -33,9 +33,10 @@
     "check:bundle": "node scripts/check-bundle.mjs",
     "check:no-network": "node scripts/check-no-network.mjs",
     "validate:community": "node scripts/validate-community.mjs",
-    "verify": "npm run typecheck && npm test && npm run check:no-network && npm run build && npm run check:bundle && npm run validate:community",
+    "verify": "npm run typecheck && npm test && npm run check:no-network && npm run build && npm run check:bundle && npm run check:versions && npm run validate:community",
     "release:pack": "node scripts/pack-release.mjs",
-    "release:prep": "npm run verify && npm run release:pack"
+    "release:prep": "npm run verify && npm run release:pack",
+    "check:versions": "node scripts/check-versions.mjs"
   },
   "dependencies": {
     "react": "^18.3.1",

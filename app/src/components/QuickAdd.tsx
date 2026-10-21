@@ -4,7 +4,7 @@
  * 回车即保存，保存后留在浮层并提示「+1，继续记下一家」—— 因为 BOSS 上常常连着记好几家。
  */
 
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import type { AppApi } from '../lib/api';
 import type { Channel, Status } from '../types';
 import { CHANNEL_LABEL, CHANNEL_OPTIONS, STATUS_LABEL } from '../lib/rules';
@@ -35,6 +35,28 @@ export function QuickAdd({ api, initialStatus, onClose }: QuickAddProps) {
   const [durationMonths, setDurationMonths] = useState('');
   const [jdUrl, setJdUrl] = useState('');
   const [added, setAdded] = useState(0);
+  /** 重复提醒出现后，用户第二次点击才真正写入（不做静默拦截，也不做静默放行） */
+  const [dupConfirmed, setDupConfirmed] = useState(false);
+
+  /**
+   * 同公司 + 同岗位是否已经记过。
+   * 归一化只做两件确定的事：去空白、忽略大小写 —— 不做模糊匹配，
+   * 因为「前端开发」和「前端开发工程师」是两道不同的投递，误报比漏报更烦人。
+   */
+  const duplicate = useMemo(() => {
+    const companyKey = company.trim().toLowerCase();
+    const jobKey = jobTitle.trim().toLowerCase();
+    if (!companyKey || !jobKey) return null;
+    const companyIds = new Set(
+      api.db.companies.filter((item) => item.name.trim().toLowerCase() === companyKey).map((item) => item.id),
+    );
+    if (companyIds.size === 0) return null;
+    return (
+      api.db.applications.find(
+        (app) => companyIds.has(app.companyId) && app.jobTitle.trim().toLowerCase() === jobKey,
+      ) ?? null
+    );
+  }, [api.db.applications, api.db.companies, company, jobTitle]);
 
   const companyRef = useRef<HTMLInputElement | null>(null);
   const jobRef = useRef<HTMLInputElement | null>(null);
@@ -53,6 +75,7 @@ export function QuickAdd({ api, initialStatus, onClose }: QuickAddProps) {
     setDaysPerWeek('');
     setDurationMonths('');
     setJdUrl('');
+    setDupConfirmed(false);
     setAppliedAt(todayISO());
     companyRef.current?.focus();
   };
@@ -61,6 +84,11 @@ export function QuickAdd({ api, initialStatus, onClose }: QuickAddProps) {
     if (!canSave) {
       if (!company.trim()) companyRef.current?.focus();
       else jobRef.current?.focus();
+      return;
+    }
+    // 第一次点击只提醒，不写入：重复投递可能是真的（换个批次再投一次），也可能是手滑
+    if (duplicate && !dupConfirmed) {
+      setDupConfirmed(true);
       return;
     }
     api.addApplication({
@@ -94,7 +122,7 @@ export function QuickAdd({ api, initialStatus, onClose }: QuickAddProps) {
       <div className="modal modal--quickadd" onClick={(event) => event.stopPropagation()}>
         <header className="modal__head">
           <h2 className="modal__title">＋ 记一家</h2>
-          <button type="button" className="icon-btn" onClick={onClose} title="关闭（Esc）">
+          <button type="button" className="icon-btn" onClick={onClose} title="关闭（Esc）" aria-label="关闭">
             ✕
           </button>
         </header>
@@ -108,7 +136,10 @@ export function QuickAdd({ api, initialStatus, onClose }: QuickAddProps) {
                 className="input input--lg"
                 value={company}
                 placeholder="小红书"
-                onChange={(event) => setCompany(event.target.value)}
+                onChange={(event) => {
+                  setCompany(event.target.value);
+                  setDupConfirmed(false);
+                }}
                 onKeyDown={(event) => {
                   if (event.key === 'Enter') {
                     event.preventDefault();
@@ -124,7 +155,10 @@ export function QuickAdd({ api, initialStatus, onClose }: QuickAddProps) {
                 className="input input--lg"
                 value={jobTitle}
                 placeholder="前端开发实习生"
-                onChange={(event) => setJobTitle(event.target.value)}
+                onChange={(event) => {
+                  setJobTitle(event.target.value);
+                  setDupConfirmed(false);
+                }}
                 onKeyDown={(event) => {
                   if (event.key === 'Enter') {
                     event.preventDefault();
@@ -134,6 +168,19 @@ export function QuickAdd({ api, initialStatus, onClose }: QuickAddProps) {
               />
             </label>
           </div>
+
+          {duplicate ? (
+            <div className={cx('qa-dup', dupConfirmed && 'is-confirmed')} role="alert">
+              <span className="qa-dup__icon" aria-hidden="true">
+                ⚠
+              </span>
+              <span>
+                已经记过同一家同一个岗位：<strong>{STATUS_LABEL[duplicate.status]}</strong>
+                {duplicate.appliedAt ? ` · 投递于 ${duplicate.appliedAt}` : ''}。
+                {dupConfirmed ? '再点一次「仍然保存」就会多记一条。' : '确实是又一次投递，就再点一次保存。'}
+              </span>
+            </div>
+          ) : null}
 
           <div className="qa-row qa-row--status">
             <div className="qa-status">
@@ -259,7 +306,7 @@ export function QuickAdd({ api, initialStatus, onClose }: QuickAddProps) {
               关掉
             </button>
             <button type="button" className="btn btn--primary" onClick={save} disabled={!canSave}>
-              保存并继续
+              {duplicate && !dupConfirmed ? '仍然保存' : '保存并继续'}
             </button>
           </div>
         </footer>

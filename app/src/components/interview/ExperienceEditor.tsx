@@ -48,7 +48,7 @@ export function ExperienceEditor({ api, experienceId, onClose }: ExperienceEdito
         <aside className="drawer" onClick={(event) => event.stopPropagation()}>
           <header className="drawer__head">
             <h2 className="drawer__title">面经不见了</h2>
-            <button type="button" className="icon-btn" onClick={onClose}>
+            <button type="button" className="icon-btn" onClick={onClose} title="关闭" aria-label="关闭">
               ✕
             </button>
           </header>
@@ -76,7 +76,7 @@ export function ExperienceEditor({ api, experienceId, onClose }: ExperienceEdito
               {experience.source === 'community' ? <span className="chip">社区导入</span> : null}
             </div>
           </div>
-          <button type="button" className="icon-btn" onClick={onClose} title="关闭（Esc）">
+          <button type="button" className="icon-btn" onClick={onClose} title="关闭（Esc）" aria-label="关闭">
             ✕
           </button>
         </header>

@@ -596,3 +596,16 @@ graph TD
 | `onboarded` | 已结束 | 已入职 | — |
 | `rejected` | 已结束 | 挂在一面 | 重投别的岗位 |
 | `dropped` | 已结束 | 我放弃了 | — |
+
+---
+
+## 附注：v0.4 起课程表不再放在 settings 里
+
+上文 `settings.courseSlots` 的示例**已废弃**（v0.4 起）。课程与「任何事」统一为顶层 `events` 表：
+
+- `kind: 'course'`：每周固定课表（`weekly: true` + `weekday`）
+- `kind: 'personal'`：单次日程（`date`），组会 / 体检 / 急事都记在这里
+- 导入课表只替换 `course && weekly`，手动记的事不受影响
+- 冲突检测覆盖「面试 × 面试 × 课 × 任何事」，按同一天的具体时间段精确重叠判定
+
+详见 [`CHANGELOG.md`](../CHANGELOG.md) 的 `[0.4.0]` 段与 `docs/ARCHITECTURE-v0.2.md` 末尾补记。

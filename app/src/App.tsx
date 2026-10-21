@@ -43,6 +43,7 @@ import {
   loadDB,
   loadUIView,
   lockPersistence,
+  markExported,
   saveDB,
   saveUIView,
   unlockPersistence,
@@ -52,8 +53,10 @@ import { buildSampleDB } from './lib/sample';
 import {
   STATUS_LABEL,
   lastActivityAtOf,
+  restoreDeletedApplication,
   revertStatusChange,
   statusChangeText,
+  type DeletedApplication,
   type StatusUndo,
 } from './lib/rules';
 import { cloneDB, companyFullName, companyLabel, downloadText, uid } from './lib/util';
@@ -90,8 +93,22 @@ import { ExperienceEditor } from './components/interview/ExperienceEditor';
 
 const VIEW_KEYS: ViewKey[] = ['today', 'board', 'list', 'calendar', 'insights'];
 
-/** 一次可撤销的操作。v0.2 起不再只有状态变更 */
-type Undo = { kind: 'status'; status: StatusUndo } | { kind: 'sync'; sync: SyncUndo };
+/** 一次可撤销的操作。v0.2 起不再只有状态变更，v0.4.1 起加入「删除投递」 */
+type Undo =
+  | { kind: 'status'; status: StatusUndo }
+  | { kind: 'delete'; deleted: DeletedApplication }
+  | { kind: 'sync'; sync: SyncUndo };
+
+/** 撤销栈里的一格：撤销动作 + 给用户看的名字 +（可选）重做动作 */
+interface UndoEntry {
+  label: string;
+  undo: Undo;
+  /** 同步合并无法重放（当时确认过的合并计划已经消费掉了），留空即「不可重做」 */
+  redo?: () => void;
+}
+
+/** 撤销栈深度：10 步足够覆盖「手滑连点」，全部是字段级快照，不占内存 */
+const UNDO_LIMIT = 10;
 
 const QUESTION_TEXT_LIMIT = 2000;
 
@@ -143,7 +160,10 @@ export default function App() {
 
   const searchRef = useRef<HTMLInputElement | null>(null);
   const toastTimer = useRef<number | null>(null);
-  const lastUndoRef = useRef<Undo | null>(null);
+  const undoStackRef = useRef<UndoEntry[]>([]);
+  const redoStackRef = useRef<UndoEntry[]>([]);
+  /** 重做期间不要清空重做栈 —— 否则重做一步就把剩下的整叠扔了 */
+  const replayingRef = useRef(false);
   const highlightTimer = useRef<number | null>(null);
 
   /* ------------------------------------------------------------ 基础能力 */
@@ -165,31 +185,61 @@ export default function App() {
     setDb(next);
   }, []);
 
-  /** 按影响面撤销（状态变更 / 一次同步），绝不整库回滚 */
-  const applyUndo = useCallback(
-    (undo: Undo): void => {
+  /** 入栈。新操作会让「重做」失效 —— 标准撤销语义：重做只对刚撤销的那条链有效 */
+  const pushUndo = useCallback((entry: UndoEntry): void => {
+    const stack = undoStackRef.current;
+    stack.push(entry);
+    if (stack.length > UNDO_LIMIT) stack.splice(0, stack.length - UNDO_LIMIT);
+    if (!replayingRef.current) redoStackRef.current = [];
+  }, []);
+
+  /** 按影响面撤销（状态变更 / 删除 / 一次同步），绝不整库回滚 */
+  const performUndo = useCallback(
+    (entry: UndoEntry): void => {
+      const undo = entry.undo;
       mutate((draft) => {
         if (undo.kind === 'status') revertStatusChange(draft, undo.status);
+        else if (undo.kind === 'delete') restoreDeletedApplication(draft, undo.deleted);
         else revertSync(draft, undo.sync);
       });
-      lastUndoRef.current = null;
-      showToast(
-        undo.kind === 'status'
-          ? '已撤销：状态和那条系统记录已复原，你写的记录都还在'
-          : '已撤销这次同步：投递、note、暂存区都回到合并前',
-      );
     },
-    [mutate, showToast],
+    [mutate],
   );
 
   const undoLast = useCallback((): void => {
-    const undo = lastUndoRef.current;
-    if (!undo) {
-      showToast('没有可撤销的上一步');
+    const stack = undoStackRef.current;
+    const entry = stack.pop();
+    if (!entry) {
+      showToast('没有可撤销的步骤了');
       return;
     }
-    applyUndo(undo);
-  }, [applyUndo, showToast]);
+    performUndo(entry);
+    redoStackRef.current.push(entry);
+    showToast(
+      `已撤销：${entry.label}${stack.length > 0 ? `（再按一次可继续撤，还剩 ${stack.length} 步）` : ''}`,
+    );
+  }, [performUndo, showToast]);
+
+  const redoLast = useCallback((): void => {
+    const stack = redoStackRef.current;
+    const entry = stack.pop();
+    if (!entry) {
+      showToast('没有可重做的步骤');
+      return;
+    }
+    if (!entry.redo) {
+      stack.push(entry);
+      showToast('这一步不支持重做 —— 同步合并的计划已经用掉了，需要重新粘贴同步');
+      return;
+    }
+    replayingRef.current = true;
+    try {
+      entry.redo();
+    } finally {
+      replayingRef.current = false;
+    }
+    showToast(`已重做：${entry.label}`);
+  }, [showToast]);
 
   // 每分钟刷新一次「现在」，沉默天数会自然增长
   useEffect(() => {
@@ -377,14 +427,31 @@ export default function App() {
         });
       });
       const snapshot: Undo = { kind: 'status', status: undo };
-      lastUndoRef.current = snapshot;
-      showToast(`已更新 · ${STATUS_LABEL[from]} → ${STATUS_LABEL[status]}`, () => applyUndo(snapshot));
+      pushUndo({
+        label: `状态 ${STATUS_LABEL[from]} → ${STATUS_LABEL[status]}`,
+        undo: snapshot,
+        // 重做 = 再执行一次同样的状态变更（会生成新的系统记录，不覆盖撤销掉的那条）
+        redo: () => changeStatus(id, status, opts),
+      });
+      showToast(`已更新 · ${STATUS_LABEL[from]} → ${STATUS_LABEL[status]}`, undoLast);
     },
-    [applyUndo, mutate, showToast],
+    [mutate, pushUndo, showToast, undoLast],
   );
 
   const deleteApplication = useCallback(
     (id: string): void => {
+      const current = dbRef.current;
+      const app = current.applications.find((item) => item.id === id);
+      if (!app) return;
+      // 删除前先把「这一条投递带走的行」拍下来，撤销时才可能原样放回
+      const deleted: DeletedApplication = {
+        app,
+        interviews: current.interviews.filter((item) => item.applicationId === id),
+        notes: current.notes.filter((item) => item.applicationId === id),
+        experienceIds: current.experiences
+          .filter((item) => item.applicationId === id)
+          .map((item) => item.id),
+      };
       mutate((draft) => {
         draft.applications = draft.applications.filter((a) => a.id !== id);
         draft.interviews = draft.interviews.filter((i) => i.applicationId !== id);
@@ -394,8 +461,13 @@ export default function App() {
           exp.applicationId === id ? { ...exp, applicationId: null } : exp,
         );
       });
+      pushUndo({
+        label: `删除「${app.jobTitle}」（含 ${deleted.interviews.length} 场面试、${deleted.notes.length} 条记录）`,
+        undo: { kind: 'delete', deleted },
+        redo: () => deleteApplication(id),
+      });
     },
-    [mutate],
+    [mutate, pushUndo],
   );
 
   const addNote = useCallback(
@@ -566,12 +638,12 @@ export default function App() {
       dbRef.current = result.db;
       setDb(result.db);
       const undo: Undo = { kind: 'sync', sync: result.undo };
-      lastUndoRef.current = undo;
+      pushUndo({ label: `同步合并 ${result.written} 条`, undo });
 
       const parts = [`已写入 ${result.written} 条`];
       if (result.staged > 0) parts.push(`${result.staged} 条留暂存`);
       if (result.discarded > 0) parts.push(`暂存超上限，丢弃最旧 ${result.discarded} 条`);
-      showToast(parts.join(' · '), () => applyUndo(undo));
+      showToast(parts.join(' · '), undoLast);
 
       // 平台「邀请面试 / 已面完」只提示，不替用户造数据（PRD §B.6 红线）
       const hints = new Set<string>();
@@ -582,7 +654,7 @@ export default function App() {
       }
       if (hints.size > 0) window.setTimeout(() => showToast([...hints].join('；')), 900);
     },
-    [applyUndo, showToast, syncAdapterId, syncPlan],
+    [pushUndo, showToast, syncAdapterId, syncPlan, undoLast],
   );
 
   const resolveStaged = useCallback(
@@ -959,6 +1031,7 @@ export default function App() {
       const text = exportJSON(dbRef.current);
       // 按本地日期命名，不用 toISOString()（UTC，本地 8 点前会早一天）
       const ok = downloadText(text, 'application/json', `求职工作台-备份-${todayISO()}.json`);
+      if (ok) markExported();
       showToast(ok ? '已导出 JSON 备份' : '导出失败，浏览器可能禁止了下载');
     } catch {
       showToast('导出失败，浏览器可能禁止了下载');
@@ -1042,7 +1115,14 @@ export default function App() {
       }
       if (withCmd && event.key.toLowerCase() === 'z') {
         event.preventDefault();
-        undoLast();
+        if (event.shiftKey) redoLast();
+        else undoLast();
+        return;
+      }
+      // Windows 习惯：Ctrl+Y 也是重做
+      if (withCmd && event.key.toLowerCase() === 'y') {
+        event.preventDefault();
+        redoLast();
         return;
       }
       if (typing) return;
@@ -1073,7 +1153,7 @@ export default function App() {
     };
     window.addEventListener('keydown', onKeyDown);
     return () => window.removeEventListener('keydown', onKeyDown);
-  }, [quickAddOpen, settingsOpen, selectedId, syncOpen, quickNoteCtx, experienceEditorId, undoLast, openNew]);
+  }, [quickAddOpen, settingsOpen, selectedId, syncOpen, quickNoteCtx, experienceEditorId, undoLast, redoLast, openNew]);
 
   /* ------------------------------------------------------------ 搜索结果 */
 

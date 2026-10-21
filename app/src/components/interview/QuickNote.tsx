@@ -82,7 +82,7 @@ export function QuickNote({ api, onClose }: { api: AppApi; onClose: () => void }
       <section className="quick-note" onClick={(event) => event.stopPropagation()}>
         <header className="quick-note__head">
           <h2 className="quick-note__title">记面经</h2>
-          <button type="button" className="icon-btn" onClick={handleClose} title="关闭（Esc）">
+          <button type="button" className="icon-btn" onClick={handleClose} title="关闭（Esc）" aria-label="关闭">
             ✕
           </button>
         </header>

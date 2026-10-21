@@ -6,6 +6,7 @@ import { useMemo, useRef, useState } from 'react';
 import type { AppApi } from '../lib/api';
 import type { AppSettings, PlatformId } from '../types';
 import { BUDGET, budgetLevelOf, formatBytes, measureDB } from '../lib/budget';
+import { getLastExportAt, purgeRollbackPoints, rollbackPointsSize } from '../lib/storage';
 import { PLATFORM_LABEL } from '../adapters/registry';
 import { CommunityImport } from './interview/CommunityImport';
 
@@ -31,6 +32,19 @@ export function SettingsDrawer({ api, onClose, importError, onDismissError }: Se
   const [confirmClear, setConfirmClear] = useState(false);
   const [confirmSample, setConfirmSample] = useState(false);
   const fileRef = useRef<HTMLInputElement | null>(null);
+  const [rollbackSize, setRollbackSize] = useState(() => rollbackPointsSize());
+  const [lastExportAt] = useState(() => getLastExportAt());
+
+  /**
+   * 备份提醒的口径：从未导出 = 提醒；超过 7 天 = 提醒。
+   * 只做「温和提示」，不弹窗、不拦截操作 —— 工具不该在用户忙的时候挡路。
+   */
+  const backupDays = lastExportAt
+    ? Math.max(0, Math.floor((Date.now() - new Date(lastExportAt).getTime()) / 86400000))
+    : null;
+  const staleBackup = backupDays === null || backupDays >= 7;
+  const backupText =
+    backupDays === null ? '从未导出' : backupDays === 0 ? '今天' : `${backupDays} 天前`;
 
   const patchNumber = (key: NumberKey, raw: string): void => {
     const parsed = Number(raw);
@@ -83,7 +97,7 @@ export function SettingsDrawer({ api, onClose, importError, onDismissError }: Se
       <aside className="drawer drawer--settings" onClick={(event) => event.stopPropagation()}>
         <header className="drawer__head">
           <h2 className="drawer__title">设置</h2>
-          <button type="button" className="icon-btn" onClick={onClose} title="关闭（Esc）">
+          <button type="button" className="icon-btn" onClick={onClose} title="关闭（Esc）" aria-label="关闭">
             ✕
           </button>
         </header>
@@ -358,12 +372,51 @@ export function SettingsDrawer({ api, onClose, importError, onDismissError }: Se
             <p className="field__hint">换电脑、清浏览器缓存之前，先在上面「导出 JSON」存一份。</p>
           </section>
 
-          <section className="drawer__section drawer__section--danger">
+          <section className="drawer__section">
             <h3 className="drawer__section-title">关于</h3>
-            <p className="muted">
-              求职工作台 v0.2 · 数据只存在本地，不上传任何服务器、不发任何网络请求。
+            <div className="about-list">
+              <div className="about-row">
+                <span>版本</span>
+                <strong>v{__APP_VERSION__}</strong>
+              </div>
+              <div className="about-row">
+                <span>上次备份</span>
+                <strong className={staleBackup ? 'about-row__value--warn' : undefined}>{backupText}</strong>
+              </div>
+              <div className="about-row">
+                <span>迁移回滚点</span>
+                <strong>{rollbackSize > 0 ? formatBytes(rollbackSize) : '无'}</strong>
+              </div>
+            </div>
+            {staleBackup ? (
+              <p className="field__hint">
+                距离上次导出已经超过一周（或从未导出）。清缓存、换浏览器、无痕模式都会让本地数据消失，
+                点上面的「导出 JSON」存一份，十秒的事。
+              </p>
+            ) : null}
+            {rollbackSize > 0 ? (
+              <div className="btn-row">
+                <button
+                  type="button"
+                  className="btn btn--small"
+                  onClick={() => {
+                    const freed = purgeRollbackPoints();
+                    setRollbackSize(0);
+                    api.toast(
+                      freed.keys > 0
+                        ? `已清理 ${freed.keys} 份迁移回滚点，释放约 ${formatBytes(freed.bytes)}`
+                        : '没有可清理的回滚点',
+                    );
+                  }}
+                >
+                  清理迁移回滚点
+                </button>
+              </div>
+            ) : null}
+            <p className="field__hint">
+              数据只存在本地，不上传任何服务器、不发任何网络请求。
               <br />
-              快捷键：N 新建 / 1-5 切视图 / ⌘K 搜索 / ⌘Z 撤销上一步 / Esc 关闭浮层。
+              快捷键：N 新建 / 1-5 切视图 / ⌘K 搜索 / ⌘Z 撤销（可连按，最多 10 步）/ ⇧⌘Z 或 Ctrl+Y 重做 / Esc 关闭浮层。
             </p>
           </section>
         </div>

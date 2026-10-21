@@ -1122,6 +1122,41 @@ export function revertStatusChange(draft: DB, undo: StatusUndo): void {
   target.updatedAt = new Date().toISOString();
 }
 
+/* ------------------------------------------------------ 删除投递的撤销包 */
+
+/**
+ * 删除一条投递时被一并移走的东西。
+ *
+ * 只装「这一条投递影响到的行」，不复制整库 —— 与 StatusUndo 同样的原则：
+ * 撤销删除不能把用户在删除之后写的其他备注顺手吞掉。
+ */
+export interface DeletedApplication {
+  app: Application;
+  interviews: Interview[];
+  notes: Note[];
+  /** 被解绑（applicationId 置 null）的面经 id；恢复时只认仍是 null 的，避免抢别人的绑定 */
+  experienceIds: string[];
+}
+
+/** 在 draft 上原地恢复一条被删除的投递（幂等：已存在的 id 不重复插入） */
+export function restoreDeletedApplication(draft: DB, deleted: DeletedApplication): void {
+  if (!draft.applications.some((app) => app.id === deleted.app.id)) {
+    draft.applications.push(deleted.app);
+  }
+  const interviewIds = new Set(draft.interviews.map((item) => item.id));
+  for (const interview of deleted.interviews) {
+    if (!interviewIds.has(interview.id)) draft.interviews.push(interview);
+  }
+  const noteIds = new Set(draft.notes.map((item) => item.id));
+  for (const note of deleted.notes) {
+    if (!noteIds.has(note.id)) draft.notes.push(note);
+  }
+  for (const id of deleted.experienceIds) {
+    const experience = draft.experiences.find((item) => item.id === id);
+    if (experience && experience.applicationId === null) experience.applicationId = deleted.app.id;
+  }
+}
+
 /** 供日历用：某一天的所有面试 */
 export function interviewsOnDay(interviews: Interview[], day: Date): Interview[] {
   const key = toDateISO(startOfDay(day));

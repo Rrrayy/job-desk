@@ -395,3 +395,69 @@ describe('eventsOnDate', () => {
     expect(ids).toEqual(['ev-fixed']);
   });
 });
+
+/* ======================= v0.4.1：删除投递的撤销 ======================= */
+
+import { buildSampleDB } from './sample';
+import { restoreDeletedApplication } from './rules';
+import type { DeletedApplication } from './rules';
+
+describe('restoreDeletedApplication：删错了能原样放回', () => {
+  const makeDeleted = (): { before: ReturnType<typeof buildSampleDB>; after: ReturnType<typeof buildSampleDB>; deleted: DeletedApplication } => {
+    const before = buildSampleDB(new Date('2026-10-21T09:00:00'));
+    const app = before.applications[0];
+    const deleted: DeletedApplication = {
+      app,
+      interviews: before.interviews.filter((item) => item.applicationId === app.id),
+      notes: before.notes.filter((item) => item.applicationId === app.id),
+      experienceIds: before.experiences
+        .filter((item) => item.applicationId === app.id)
+        .map((item) => item.id),
+    };
+    // 复刻 deleteApplication 的删除动作
+    const after = structuredClone(before);
+    after.applications = after.applications.filter((item) => item.id !== app.id);
+    after.interviews = after.interviews.filter((item) => item.applicationId !== app.id);
+    after.notes = after.notes.filter((item) => item.applicationId !== app.id);
+    after.experiences = after.experiences.map((item) =>
+      item.applicationId === app.id ? { ...item, applicationId: null } : item,
+    );
+    return { before, after, deleted };
+  };
+
+  it('投递 / 面试 / 时间线数量全部回到删除前', () => {
+    const { before, after, deleted } = makeDeleted();
+    restoreDeletedApplication(after, deleted);
+    expect(after.applications).toHaveLength(before.applications.length);
+    expect(after.interviews).toHaveLength(before.interviews.length);
+    expect(after.notes).toHaveLength(before.notes.length);
+    expect(after.applications.some((item) => item.id === deleted.app.id)).toBe(true);
+  });
+
+  it('被解绑的面经重新接回这条投递', () => {
+    const { after, deleted } = makeDeleted();
+    restoreDeletedApplication(after, deleted);
+    for (const id of deleted.experienceIds) {
+      expect(after.experiences.find((item) => item.id === id)?.applicationId).toBe(deleted.app.id);
+    }
+  });
+
+  it('重复恢复是幂等的（连按两次撤销不会出现两条一样的投递）', () => {
+    const { after, deleted } = makeDeleted();
+    restoreDeletedApplication(after, deleted);
+    const countOnce = after.applications.length;
+    restoreDeletedApplication(after, deleted);
+    expect(after.applications).toHaveLength(countOnce);
+  });
+
+  it('面经在删除后被用户改绑到别的投递 → 恢复时不抢回来', () => {
+    const { after, deleted } = makeDeleted();
+    const id = deleted.experienceIds[0];
+    if (!id) return;
+    const exp = after.experiences.find((item) => item.id === id);
+    if (!exp) return;
+    exp.applicationId = 'another-app';
+    restoreDeletedApplication(after, deleted);
+    expect(after.experiences.find((item) => item.id === id)?.applicationId).toBe('another-app');
+  });
+});

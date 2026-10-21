@@ -153,12 +153,20 @@ const htmlOut = join(OUT_DIR, 'index.html');
 writeFileSync(htmlOut, html);
 
 // 2. 扩展：只打运行期需要的文件，把 README 留在仓库里（下载者不需要）
+//    manifest.json 的 version 在这里强制对齐 package.json —— v0.4 发版时曾出现
+//    「zip 叫 v0.4.0、里面 manifest 还是 0.2.0」，安装后被浏览器当成旧扩展。
 const extFiles = walk(EXT_DIR).filter((f) => !f.endsWith('README.md'));
 const zipBuf = makeZip(
-  extFiles.map((f) => ({
-    name: `job-desk-extension/${relative(EXT_DIR, f).split('\\').join('/')}`,
-    data: readFileSync(f),
-  })),
+  extFiles.map((f) => {
+    const rel = relative(EXT_DIR, f).split('\\').join('/');
+    let data = readFileSync(f);
+    if (rel === 'manifest.json') {
+      const parsed = JSON.parse(data.toString('utf-8'));
+      parsed.version = VERSION;
+      data = Buffer.from(`${JSON.stringify(parsed, null, 2)}\n`, 'utf-8');
+    }
+    return { name: `job-desk-extension/${rel}`, data };
+  }),
 );
 const zipName = `job-desk-extension-v${VERSION}.zip`;
 const zipOut = join(OUT_DIR, zipName);
@@ -175,7 +183,8 @@ writeFileSync(join(OUT_DIR, 'SHA256SUMS'), `${sums}\n`);
 const manifest = {
   name: 'job-desk',
   version: VERSION,
-  releasedAt: '2026-10-20T22:00:00+08:00',
+  // 固定值保证「同一份 dist 重复打包哈希一致」；每次发版手工更新这一行
+  releasedAt: process.env.RELEASE_AT || '2026-10-21T12:00:00+08:00',
   assets: [
     { file: 'index.html', bytes: html.length, sha256: sha256(html), kind: 'single-file-app' },
     { file: zipName, bytes: zipBuf.length, sha256: sha256(zipBuf), kind: 'browser-extension' },

@@ -123,7 +123,7 @@ export function TopBar(props: TopBarProps) {
           同步
           {pendingSync > 0 ? <span className="topbar__sync-dot">{pendingSync}</span> : null}
         </button>
-        <button type="button" className="icon-btn" onClick={onSettings} title="设置">
+        <button type="button" className="icon-btn" onClick={onSettings} title="设置" aria-label="打开设置">
           ⚙
         </button>
         <button type="button" className="btn btn--primary" onClick={onNew}>

@@ -11,8 +11,8 @@
 **把投递当管线管 —— 今日待办 · 看板 · 沉默提醒 · 截止倒计时 · 面经复盘**
 
 [![CI](https://img.shields.io/github/actions/workflow/status/Rrrayy/job-desk/ci.yml?branch=main&style=flat-square&label=CI)](https://github.com/Rrrayy/job-desk/actions/workflows/ci.yml)
-![tests](https://img.shields.io/badge/tests-226%20passed-2ea44f?style=flat-square)
-![bundle](https://img.shields.io/badge/bundle-441%20KB-4c6ef5?style=flat-square)
+![tests](https://img.shields.io/badge/tests-239%20passed-2ea44f?style=flat-square)
+![bundle](https://img.shields.io/badge/bundle-449%20KB-4c6ef5?style=flat-square)
 ![network](https://img.shields.io/badge/network-0%20requests-2ea44f?style=flat-square)
 ![schema](https://img.shields.io/badge/schema-v2-845ef7?style=flat-square)
 [![release](https://img.shields.io/github/v/release/Rrrayy/job-desk?style=flat-square)](https://github.com/Rrrayy/job-desk/releases/latest)
@@ -47,7 +47,8 @@
 
 - ⏱️ **沉默判定**：按渠道放大阈值（内推 ×3、官网 ×2），offer 阶段单独监控且不乘系数 —— 红了就是真该动了
 - ⏰ **截止倒计时**：已过期 / 今天 / 3 天内三级紧急度，静音压得住「该催了」，**压不住外部期限**
-- 💬 **催进话术**一键生成；3 秒记一家（公司 + 岗位就够），拖拽换阶段，`⌘Z` 按次撤销
+- 💬 **催进话术**一键生成；3 秒记一家（公司 + 岗位就够），拖拽换阶段，`⌘Z` 可连撤 10 步、`⇧⌘Z` 重做
+- 🧯 **崩了也不丢数据**：界面渲染出错时进「你的数据还在」兜底页，可一键下载原始 JSON，而不是白屏
 - 🎤 **面试多轮次建模**：每轮一张卡片，带准备清单、形式、结果；挂了记在第几轮
 - 📥 **课表导入**：从教务系统 / 课表 App 复制粘贴，一行一节课，识别不了的行告诉你原因；重复导入按替换处理，手动记的事不受影响
 - ⚠️ **日程冲突检测**：面试 × 面试 × 课 × 任何急事，同一时间段精确重叠比对（分钟级），撞了谁、几点到几点直接告诉你
@@ -91,6 +92,19 @@ cd app && npm install && npm run dev   # http://localhost:5173
 **详情抽屉 —— 截止日、静音、沉默阈值都在这一屏**
 
 ![详情抽屉](docs/screenshots-v0.3/04-drawer.png)
+
+## 🧯 v0.4.1：把「出事的时候」也做完
+
+这一版不加新视图，只补**会让你真丢数据或真被坑**的地方：
+
+| 场景 | 之前 | 现在 |
+| :--- | :--- | :--- |
+| 界面渲染崩了 | 纯白页面，数据还在但没有任何出口 | 兜底页三个出口：重新加载 / **下载原始数据** / 复制错误信息 |
+| 手滑连改三次状态 | 只能撤一步，第二下就「没有可撤销的操作」 | 撤销栈 **10 步**，`⇧⌘Z` / `Ctrl+Y` 重做 |
+| 删错一条投递 | 面试、时间线一起没，无法恢复 | 删除进撤销栈，投递 / 面试 / 时间线 / 面经绑定**原样放回** |
+| 重复记同一家同一岗 | 悄悄多出一条，看板里两个一模一样的卡 | 录入时提示「已经记过：已投递 · 投递于 2026-10-12」，第二次点击才写入 |
+| 版本号 | 设置页写死「v0.2」，扩展 manifest 还是 0.2.0 | 单一版本源 + CI 闸门：主应用 / 扩展 / 产物三处不一致就红 |
+| 备份 | 只能靠自己记得 | 设置页显示「上次备份：N 天前」，超 7 天标红提醒；可清理迁移回滚点腾空间 |
 
 ## 📅 v0.4：日历是一张通用日程表
 
@@ -216,8 +230,8 @@ silenceDays    = 今天（自然日零点）− lastActivityAt 的自然日差
 
 | 指标 | 数值 |
 | :--- | :--- |
-| 单元测试 | **226 个 / 15 个文件**，全绿 |
-| 产物体积 | **451,646 B（441 KB）**（红线 470KB 警告 / 540KB 失败） |
+| 单元测试 | **239 个 / 16 个文件**，全绿（含灾难恢复 9 条） |
+| 产物体积 | **460,142 B（449 KB）**（红线 470KB 警告 / 540KB 失败） |
 | 零网络扫描 | 通过，白名单为空 |
 | 独立 QA | 478 断言 0 失败（[`docs/QA-REPORT-v0.2.md`](docs/QA-REPORT-v0.2.md)） |
 | 可复现构建 | 干净目录 `npm ci && npm run build` 产物 sha256 一致 |
@@ -233,7 +247,8 @@ silenceDays    = 今天（自然日零点）− lastActivityAt 的自然日差
 | `N` | ＋记一家 |
 | `1` `2` `3` `4` `5` | 今日 / 看板 / 列表 / 日历 / 复盘 |
 | `⌘K` / `Ctrl+K` | 全局搜索（回车打开第一条） |
-| `⌘Z` / `Ctrl+Z` | 撤销上一步（状态变更 / 同步合并） |
+| `⌘Z` / `Ctrl+Z` | 撤销（可连按，最多 10 步） |
+| `⇧⌘Z` / `Ctrl+Y` | 重做 |
 | `Esc` | 关闭浮层 / 抽屉 |
 
 <details>
