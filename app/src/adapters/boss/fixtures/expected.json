@@ -32,6 +32,12 @@
       "jobTitle": "Agent 研发实习生",
       "city": "杭州",
       "salaryText": "300-310元/天"
+    },
+    {
+      "companyName": "杭州另一家智能科技有限公司",
+      "jobTitle": "前端开发实习生",
+      "city": "杭州",
+      "salaryText": "200-250元/天"
     }
   ],
   "unparsedReasons": ["这一行没有公司名"]

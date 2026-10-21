@@ -79,7 +79,11 @@ export function looksLikeSalary(line: string): boolean {
 }
 
 export function looksLikeCity(line: string): boolean {
-  return CITY_WORDS.some((city) => line.startsWith(city)) && line.length <= 24;
+  if (!CITY_WORDS.some((city) => line.startsWith(city)) || line.length > 24) return false;
+  // 公司行常常以城市词开头（「杭州芯流微澜智能科技」「南京先声药业」）——
+  // 有公司名收尾词的行不是城市行。不挡住的话，卡片形态里公司行排在城市行
+  // 之前时，公司名会被城市字段抢走，整块记录报「没有公司名」。
+  return !COMPANY_TAIL.test(line);
 }
 
 export function looksLikeJobTitle(line: string): boolean {

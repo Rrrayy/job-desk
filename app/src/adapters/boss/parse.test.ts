@@ -131,50 +131,58 @@ describe('BOSS 求职记录页解析（2026-10 真机形态）', () => {
 });
 
 describe('BOSS 求职记录卡片解析（2026-10-21 真机形态）', () => {
-  // 用户从 App 复制单张卡片：卡片头「杨琪 招聘者」、岗位与方括号城市分行、
-  // 薪资带「在校/应届 | 本科」标签、公司名与「行业 + 规模」分行。
+  // 真机原文（第二例）：卡片头「杨琪招聘者」**没有空格**（截图里的空格是
+  // 两个 HTML 元素的视觉间隙，innerText 里没有）；方括号城市被拆成
+  // 「[ / 城市 / ]」三行；薪资标签无竖线。fixture 按原文逐行还原。
   const CARD_NOW = '2026-10-21T16:00:00.000Z';
-  const expectedCard = expected.recordCards[0];
+  const expectedCard = expected.recordCards;
 
-  it('整张卡片解析成恰好一条记录，卡片头噪声不进任何字段', () => {
+  it('两张卡片解析成恰好两条记录，卡片头噪声不进任何字段', () => {
     const result = parseBossText({ text: fixture('record-card.txt'), capturedAt: CARD_NOW }, { now: CARD_NOW });
     expect(result.unparsed).toHaveLength(0);
-    expect(result.records).toHaveLength(1);
+    expect(result.records).toHaveLength(expectedCard.length);
 
-    const record = result.records[0];
-    expect(record.companyName).toBe(expectedCard.companyName);
-    expect(record.jobTitle).toBe(expectedCard.jobTitle);
-    expect(record.city).toBe(expectedCard.city);
-    expect(record.salaryText).toBe(expectedCard.salaryText);
+    result.records.forEach((record, index) => {
+      expect(record.companyName).toBe(expectedCard[index].companyName);
+      expect(record.jobTitle).toBe(expectedCard[index].jobTitle);
+      expect(record.city).toBe(expectedCard[index].city);
+      expect(record.salaryText).toBe(expectedCard[index].salaryText);
+    });
   });
 
-  it('公司名剥离「行业 + 规模」标签（半导体/芯片 0-20人），只留名字', () => {
+  it('公司名剥离「行业 + 规模」标签（半导体/芯片0-20人，无空格也留不下），只留名字', () => {
     const result = parseBossText({ text: fixture('record-card.txt'), capturedAt: CARD_NOW }, { now: CARD_NOW });
-    expect(result.records[0].companyName).not.toContain('半导体');
-    expect(result.records[0].companyName).not.toContain('0-20人');
+    result.records.forEach((record) => {
+      expect(record.companyName).not.toContain('半导体');
+      expect(record.companyName).not.toContain('0-20人');
+      expect(record.companyName).not.toContain('企业服务');
+    });
   });
 
-  it('薪资剥离「在校/应届 | 本科」标签；城市行不被当成公司名', () => {
+  it('薪资剥离「在校/应届 本科」标签；招聘者姓名（杨琪/邰京朝）不进任何字段', () => {
     const result = parseBossText({ text: fixture('record-card.txt'), capturedAt: CARD_NOW }, { now: CARD_NOW });
-    const record = result.records[0];
-    expect(record.salaryText).toBe('300-310元/天');
-    expect(record.companyName).not.toBe('杭州-萧山区·宁围');
+    const joined = JSON.stringify(result);
+    expect(joined).not.toContain('杨琪');
+    expect(joined).not.toContain('邰京朝');
+    result.records.forEach((record) => {
+      expect(record.salaryText).toBe(record.salaryText?.split(' ')[0]);
+    });
   });
 
   it('卡片没有时间行：lastContactAt 留空而不是猜「今天」，置信度诚实降级', () => {
     const result = parseBossText({ text: fixture('record-card.txt'), capturedAt: CARD_NOW }, { now: CARD_NOW });
-    const record = result.records[0];
-    expect(record.lastContactAt).toBeUndefined();
-    expect(record.status).toBeUndefined();
+    result.records.forEach((record) => {
+      expect(record.lastContactAt).toBeUndefined();
+      expect(record.status).toBeUndefined();
+      expect(record.confidence.status).toBe('low');
+    });
   });
 
-  it('多张卡片粘贴时一张卡一条记录，不互相粘连', () => {
-    const two = `${fixture('record-card.txt')}\n${fixture('record-card.txt')}`;
-    const result = parseBossText({ text: two, capturedAt: CARD_NOW }, { now: CARD_NOW });
-    expect(result.records).toHaveLength(2);
+  it('带空格的卡片头（「杨琪 招聘者」，第一例真机）同样识别', () => {
+    const spaced = fixture('record-card.txt').replace('杨琪招聘者', '杨琪 招聘者').replace('邰京朝招聘者', '邰京朝 招聘者');
+    const result = parseBossText({ text: spaced, capturedAt: CARD_NOW }, { now: CARD_NOW });
     expect(result.unparsed).toHaveLength(0);
-    result.records.forEach((record) => {
-      expect(record.companyName).toBe(expectedCard.companyName);
-    });
+    expect(result.records).toHaveLength(2);
+    expect(result.records[0].companyName).toBe(expectedCard[0].companyName);
   });
 });

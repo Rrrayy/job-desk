@@ -44,11 +44,13 @@ const GROUP_DATE_RE = /^(\d{1,2})月(\d{1,2})日$/;
 const LOCATION_TAGS_RE = /\s+\d+\s*天\s*\/\s*周\s.*$/;
 
 /**
- * 求职记录**卡片**头（App 单卡片复制，2026-10-21 真机）：「杨琪 招聘者」。
+ * 求职记录**卡片**头（App 单卡片复制，2026-10-21 真机两例）：「杨琪 招聘者」「杨琪招聘者」。
+ * 注意：**中间有没有空格都存在** —— 截图里的空格是两个 HTML 元素渲染出来的视觉间隙，
+ * innerText 里经常没有。所以不能要求 \s+。
  * 这是卡片头噪声——招聘者姓名在产品里没有对应字段（裸姓名脱敏都做不到，见已知限制），
  * 唯一的害处是被当成公司名吞进待归类，所以整行丢弃。
  */
-const CARD_RECRUITER_RE = /^.{1,12}\s+(?:招聘者|猎头)$/;
+const CARD_RECRUITER_RE = /^.{0,12}(?:招聘者|猎头)$/;
 
 /** 卡片地点在方括号里：「Agent 研发实习生 [杭州-萧山区·宁围]」→ 拆成岗位行 + 城市行 */
 const BRACKET_CITY_RE = /[[〔【]\s*([^\]〕】]{2,30}?)\s*[\]〕】]/;
@@ -59,7 +61,10 @@ const BRACKET_CITY_RE = /[[〔【]\s*([^\]〕】]{2,30}?)\s*[\]〕】]/;
  * 中段不要求是融资词、末段不要求「N-M人」带下限——「0-20人」也命中。
  */
 const COMPANY_WITH_INDUSTRY_RE =
-  /^(.{2,20}?)\s+[\u4e00-\u9fa5A-Za-z][\u4e00-\u9fa5A-Za-z/·、]*\s+\d+[-~－—]\d*人$/;
+  /^(.{2,20}?)\s+[\u4e00-\u9fa5A-Za-z][\u4e00-\u9fa5A-Za-z/·、]*\s*\d+[-~－—]\d*人$/;
+
+/** 行业+规模的**独立行**（公司名另起一行时）：「半导体/芯片0-20人」。整体丢弃 */
+const INDUSTRY_SIZE_LINE_RE = /^[\u4e00-\u9fa5A-Za-z]+\/[\u4e00-\u9fa5A-Za-z/·、]*\d+[-~－—]\d*人$/;
 
 /** 卡片薪资行的尾部标签：「300-310元/天 在校/应届 | 本科」——标签不是数据，丢弃 */
 const SALARY_TAG_TOKENS = new Set([
@@ -113,6 +118,10 @@ export function normalizeRecordPage(text: string): string {
       out.push(withIndustry[1]);
       continue;
     }
+
+    // 「半导体/芯片0-20人」独立行：不是数据，直接丢。
+    // 不丢的话它的「0-20」会被通用管线当薪资形态抢走，真薪资反而丢了。
+    if (INDUSTRY_SIZE_LINE_RE.test(line)) continue;
 
     // 方括号地点：拆成「岗位行 + 城市行」两行
     const bracket = BRACKET_CITY_RE.exec(line);
