@@ -141,7 +141,7 @@ silence long   │ time to nudge        │ one-click msg        │
 - **Recycle bin** — deleted applications stay 30 days with a reminder on day 27; interviews and notes come back with them
 - **Incremental import** — fills gaps only, never overwrites what you recorded this week; differing values are listed row by row for you to decide, and résumé version / priority always keep the local value
 - **Backups** — JSON (the only lossless format), a portable zip (app + data + checksums, openable by the recipient with a double-click), CSV for spreadsheets, ICS for calendars
-- **Platform sync** — BOSS Zhipin / Shixiseng / Nowcoder / generic tables: paste a listing, review a diff, confirm row by row, undo the whole merge
+- **Platform sync** — BOSS Zhipin / Shixiseng / Nowcoder / Liepin / generic tables: paste a listing or a job-detail page, review a diff, confirm row by row, undo the whole merge
 - **Timetable import** — one class per line, bad lines reported with a reason; only course rows are replaced, manual entries never are
 - **Storage upgrade** — `file://` uses localStorage; over `http(s)` IndexedDB is detected and preferred, lifting the 5 MB ceiling
 
@@ -424,7 +424,7 @@ Nothing hidden. Each item is a real boundary of the current release, not a "comi
 
 - **Each of the three exits has a gap**: the undo stack is memory-only (cleared on reload — by design, since persisting it raises "undo to which version?"); the recycle bin covers applications only, so deleting a company / interview / event can only be rescued by the undo stack
 - **IndexedDB is preferred, not required** — when disabled or in private mode it quietly falls back to localStorage with its 5 MB ceiling
-- **Sync is text parsing, not an API** — platform redesigns break it; it says "could not parse" and never silently drops data. BOSS / Shixiseng / Nowcoder selectors are not yet calibrated against real logged-in pages
+- **Sync is text parsing, not an API** — platform redesigns break it; it says "could not parse" and never silently drops data. BOSS's record page and all four platforms' job-detail pages are calibrated against real device text; the **list pages** of Shixiseng / Nowcoder / Liepin are not yet verified
 - **Bare personal names are not anonymised** — title anchors (interviewer / teacher / manager) are handled; pure names need NER, which regex cannot do
 - **Large libraries have a ceiling** — 1000 applications works (virtualised list), but derived views such as insights and the calendar still scale linearly with row count and are not yet sharded
 - **Mobile is usable, not designed** — narrow screens are responsive, but drag-and-drop and keyboard shortcuts are desktop-first

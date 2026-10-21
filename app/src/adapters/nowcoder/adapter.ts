@@ -8,7 +8,8 @@ export const nowcoderAdapter: SyncAdapter = {
   name: '牛客',
   platform: 'nowcoder',
   version: '1.0.0',
-  lastVerifiedAt: '2025-03-01',
+  /** 2026-10-21 用真机职位详情页文本校准；列表页尚未验证 */
+  lastVerifiedAt: '2026-10-21',
   matchUrl: (url: string) => /nowcoder\.com\/(my|applications|deliver)/.test(url),
   urlPattern: 'nowcoder.com/my/applications',
   inputType: 'paste',

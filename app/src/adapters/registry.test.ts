@@ -10,7 +10,7 @@ import { ADAPTERS, adapterById, adapterForUrl, isAdapterStale } from './registry
 describe('适配器注册表', () => {
   it('注册了 4 个平台且 id 唯一', () => {
     const ids = ADAPTERS.map((adapter) => adapter.id);
-    expect(ids).toEqual(['boss', 'shixiseng', 'nowcoder', 'custom']);
+    expect(ids).toEqual(['boss', 'shixiseng', 'nowcoder', 'liepin', 'custom']);
     expect(new Set(ids).size).toBe(ids.length);
   });
 

@@ -8,6 +8,7 @@ import type { SyncAdapter } from './types';
 import { bossAdapter } from './boss/adapter';
 import { shixisengAdapter } from './shixiseng/adapter';
 import { nowcoderAdapter } from './nowcoder/adapter';
+import { liepinAdapter } from './liepin/adapter';
 import { customAdapter } from './custom/adapter';
 
 /** 顺序 = 下拉框顺序 = URL 命中优先级 */
@@ -15,6 +16,7 @@ export const ADAPTERS: SyncAdapter[] = [
   bossAdapter,
   shixisengAdapter,
   nowcoderAdapter,
+  liepinAdapter,
   customAdapter,
 ];
 
@@ -38,5 +40,6 @@ export const PLATFORM_LABEL: Record<PlatformId, string> = {
   boss: 'BOSS 直聘',
   shixiseng: '实习僧',
   nowcoder: '牛客',
+  liepin: '猎聘',
   custom: '通用表格',
 };

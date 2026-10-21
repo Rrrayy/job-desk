@@ -30,7 +30,7 @@ import { V2_NOTE_TYPES, asOptionalString, asString, isRecord, normalizeCoreArray
 
 export type ImportResult = { ok: true; db: DB } | { ok: false; error: string };
 
-const PLATFORMS: PlatformId[] = ['boss', 'shixiseng', 'nowcoder', 'custom'];
+const PLATFORMS: PlatformId[] = ['boss', 'shixiseng', 'nowcoder', 'liepin', 'custom'];
 const EXPERIENCE_RESULTS: ExperienceResult[] = ['passed', 'failed', 'pending', 'unknown'];
 const EXPERIENCE_SOURCES: ExperienceSource[] = ['self', 'community'];
 const CATEGORIES: QuestionCategory[] = ['algo', 'concept', 'project', 'behavior', 'reverse', 'hr'];

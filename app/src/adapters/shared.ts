@@ -8,7 +8,7 @@
  * 这里**只放纯函数**：不 import React / storage / DOM，不读 Date.now()（时间全靠 nowIso 注入）。
  */
 
-import type { Confidence, NormalizedRecord, UnparsedItem } from './types';
+import type { AdapterResult, Confidence, NormalizedRecord, UnparsedItem } from './types';
 import { overallOf } from './types';
 
 /** 一次抓取里可能出现的时间词 */
@@ -31,6 +31,13 @@ export const STATUS_HINTS: RegExp[] = [
   /待沟通|未读|新消息/,
 ];
 
+/**
+ * 公司行：公司名 + 融资阶段 + 规模，如「同元软控 A轮 500-999人」（2026-10 真机形态）。
+ * BOSS 求职记录页与详情页共用，所以放在共享层。
+ */
+export const COMPANY_WITH_FUNDING_RE =
+  /^(.{2,20}?)\s+((?:A\+?轮|[BCD]轮|天使轮|已上市|不需要融资|未融资|战略投资)\s+[\d－~-]+人)$/;
+
 /** 城市词（与 normalize.ts 共用同一份语义，但这里只用于识别「这一行像城市」） */
 export const CITY_WORDS = [
   '北京', '上海', '广州', '深圳', '杭州', '成都', '武汉', '南京', '西安', '苏州', '天津', '重庆',
@@ -43,9 +50,9 @@ export const CITY_WORDS = [
 const JOB_HINTS =
   /实习|工程师|开发|前端|后端|客户端|服务端|算法|测试|产品|运营|设计|数据|架构|全栈|研究员|项目管理|市场|人力/;
 
-/** 薪资形态：200-300/天、15-25K、3000元/月 */
+/** 薪资形态：200-300/天、15-25K、3000元/月、100-150元/天 */
 const SALARY_RE =
-  /\d+(?:\.\d+)?\s*[-~至]\s*\d+(?:\.\d+)?\s*(?:k|K|元|千|万|\/天|\/月|\/年)?|\d+\s*元\s*\/\s*[天月]|\d+\s*[kK]\s*[-~]\s*\d+\s*[kK]/;
+  /\d+(?:\.\d+)?\s*[-~至]\s*\d+(?:\.\d+)?\s*(?:[kK千万])?(?:\s*元)?(?:\s*\/\s*[天月年])?|\d+\s*元\s*\/\s*[天月]|\d+\s*[kK]\s*[-~]\s*\d+\s*[kK]/;
 
 /** 公司名常见的收尾（用来判断「这一行像公司名」） */
 const COMPANY_TAIL =
@@ -379,4 +386,170 @@ export function parseListLike(
     else unparsed.push({ rawSnippet: result.snippet, reason: result.reason });
   }
   return { records, unparsed };
+}
+
+/* ==================== 详情页解析（2026-10-21 真机校准后新增） ==================== */
+
+/**
+ * 详情页特征词：列表页没有、详情页必有的文案。
+ * 用户从手机 App 复制整页职位详情时走这条通道，产出**恰好一条**记录。
+ */
+export const DETAIL_PAGE_HINTS: RegExp =
+  /职位详情|职位介绍|岗位职责|公司信息|立即投递|投递简历|职位亮点|投递要求|任职要求/;
+
+/** 详情页按钮 / 导航 / 装饰行（注意：「公司信息」是分节标题，详情解析要靠它定位公司名，不能丢） */
+const DETAIL_NOISE =
+  /^(职位详情|职位详情页|投递简历|立即投递|聊一聊|收藏|分享|举报|查看全部|立即优化|猜你喜欢|求职必备|问大家|反馈快|已认证|一周前在线|刚刚在线|职位亮点|投递要求|职位介绍|工作地点|简历要求|立即体验|立即定制|相关推荐|看了又看)$/;
+
+export function looksLikeDetailPage(text: string): boolean {
+  return DETAIL_PAGE_HINTS.test(text);
+}
+
+/** HR 行：如「华为HUAWEI · 服务与软件研发管理部HR」——中段之前是公司名 */
+const HR_LINE_RE = /^(.{2,20}?)\s*·\s*.{2,40}?(?:HR|经理|主管|专员|总监|顾问)$/u;
+
+/**
+ * 详情页纯文本 → 一条记录。
+ *
+ * 与列表页的本质区别：详情页**没有状态行**、没有「最后联系时间」——
+ * 所以 lastContactAt 一律 undefined（绝不用「90天前更新」「截止时间」凑数），
+ * 状态留空、置信度诚实降级，去重交给同步引擎的 matchKey + 模糊匹配。
+ *
+ * 公司名按可靠度递减取第一命中的：
+ * 1. 「公司信息」标题行的下一行（猎聘等有明确分节的页面）；
+ * 2. HR 行首段（「华为HUAWEI · …部HR」→「华为HUAWEI」，牛客等）；
+ * 3. 公司名 + 融资 + 规模 行（BOSS 详情页）；
+ * 4. 第一行像公司名的行（实习僧等）。
+ */
+export function parseDetailLike(
+  text: string,
+  _nowIso: string,
+  options: { companyTail?: RegExp } = {},
+): AdapterResult {
+  if (!text.trim()) {
+    return { records: [], unparsed: [{ rawSnippet: '', reason: '粘贴区是空的，先把页面整页复制过来' }] };
+  }
+  const snippet = clampSnippet(text);
+  const raw = splitLines(text).filter((line) => !DETAIL_NOISE.test(line));
+  const used = new Set<number>();
+
+  let company: string | undefined;
+  let jobTitle: string | undefined;
+  let city: string | undefined;
+  let salaryText: string | undefined;
+
+  // 1. 「公司信息」标题行的下一行
+  for (let i = 0; i < raw.length; i += 1) {
+    if (!/^公司信息$/.test(raw[i])) continue;
+    used.add(i);
+    for (let j = i + 1; j < raw.length && j <= i + 2; j += 1) {
+      const candidate = stripDecorations(raw[j]);
+      if (candidate.length >= 2 && candidate.length <= 40) {
+        company = candidate;
+        used.add(j);
+        break;
+      }
+    }
+    break;
+  }
+
+  // 2. HR 行首段
+  if (!company) {
+    for (let i = 0; i < raw.length; i += 1) {
+      const head = HR_LINE_RE.exec(stripDecorations(raw[i]))?.[1];
+      if (head && !looksLikeJobTitle(head)) {
+        company = head;
+        used.add(i);
+        break;
+      }
+    }
+  }
+
+  // 3. 公司名 + 融资 + 规模
+  if (!company) {
+    for (let i = 0; i < raw.length; i += 1) {
+      const hit = COMPANY_WITH_FUNDING_RE.exec(raw[i]);
+      if (hit) {
+        company = hit[1];
+        used.add(i);
+        break;
+      }
+    }
+  }
+
+  // 4. 第一行像公司名的行
+  if (!company) {
+    for (let i = 0; i < raw.length; i += 1) {
+      const candidate = stripDecorations(raw[i]);
+      if (looksLikeCompany(candidate)) {
+        company = candidate;
+        used.add(i);
+        break;
+      }
+    }
+  }
+
+  // 薪资：第一处薪资形态（可能和岗位名同一行，猎聘就是这样）
+  for (let i = 0; i < raw.length; i += 1) {
+    const hit = SALARY_RE.exec(raw[i]);
+    if (!hit) continue;
+    salaryText = hit[0].replace(/\s+/g, '');
+    used.add(i);
+    if (!jobTitle) {
+      const rest = raw[i].replace(hit[0], ' ').replace(/[\s·|]+/g, ' ').trim();
+      if (rest && rest.length <= 40 && looksLikeJobTitle(rest)) jobTitle = rest;
+    }
+    break;
+  }
+
+  // 岗位名：第一个像岗位的行
+  if (!jobTitle) {
+    for (let i = 0; i < raw.length; i += 1) {
+      const candidate = stripDecorations(raw[i]);
+      if (candidate.length <= 40 && looksLikeJobTitle(candidate)) {
+        jobTitle = candidate;
+        used.add(i);
+        break;
+      }
+    }
+  }
+
+  // 城市：第一个以城市词开头且足够短的行（「南京-秣陵」「西安 5天/周 …」）
+  for (let i = 0; i < raw.length; i += 1) {
+    if (used.has(i)) continue;
+    if (looksLikeCity(raw[i])) {
+      city = raw[i].split(/[·\s|/-]/)[0];
+      used.add(i);
+      break;
+    }
+  }
+
+  if (!company) {
+    return { records: [], unparsed: [{ rawSnippet: snippet, reason: '这一行没有公司名' }] };
+  }
+
+  const tail = options.companyTail ?? DEFAULT_COMPANY_TAIL;
+  const confidence: Partial<Record<keyof NormalizedRecord, Confidence>> = {
+    companyName: tail.test(company) ? 'high' : 'medium',
+    jobTitle: jobTitle ? 'high' : 'low',
+    status: 'low',
+    lastContactAt: 'low',
+  };
+  return {
+    records: [
+      {
+        companyName: company,
+        jobTitle,
+        city,
+        status: undefined,
+        platformStatusText: undefined,
+        lastContactAt: undefined,
+        salaryText,
+        rawSnippet: snippet,
+        confidence,
+        overall: overallOf(confidence),
+      },
+    ],
+    unparsed: [],
+  };
 }

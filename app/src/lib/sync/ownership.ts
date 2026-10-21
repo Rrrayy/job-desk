@@ -92,5 +92,6 @@ export const CHANNEL_BY_PLATFORM = {
   boss: 'boss',
   shixiseng: 'shixiseng',
   nowcoder: 'nowcoder',
+  liepin: 'liepin',
   custom: 'other',
 } as const;

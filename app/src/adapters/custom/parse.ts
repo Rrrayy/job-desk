@@ -5,14 +5,16 @@
  */
 
 import type { AdapterInput, AdapterResult, ParseContext } from '../types';
-import { parseListLike } from '../shared';
+import { looksLikeDetailPage, parseDetailLike, parseListLike } from '../shared';
 
 export function parseCustomText(input: AdapterInput, ctx: ParseContext): AdapterResult {
-  const tabular = parseTabular(input.text || '', ctx.now);
+  const text = input.text || '';
+  // 详情页形态（任何平台的职位详情粘贴进来）先走详情通道，产出恰好一条
+  if (looksLikeDetailPage(text)) return parseDetailLike(text, ctx.now);
+  const tabular = parseTabular(text, ctx.now);
   if (tabular.records.length > 0) return tabular;
-  return parseListLike(input.text || '', ctx.now, { assumeCompanyFromFirstLine: true });
+  return parseListLike(text, ctx.now, { assumeCompanyFromFirstLine: true });
 }
-
 /**
  * 表格形态：一行一条，列之间是 Tab / 多个空格 / 竖线。
  * 只认前两列（公司、岗位），后面的列能读出来就当附加信息。

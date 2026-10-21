@@ -30,10 +30,15 @@
 
 | id | 名称 | `urlPattern` | 输入 | `lastVerifiedAt` | 状态 |
 | --- | --- | --- | --- | --- | --- |
-| `boss` | BOSS 直聘 | `zhipin.com/web/geek/chat` | paste | 2025-03-01 | 稳定 |
-| `shixiseng` | 实习僧 | `shixiseng.com/my/delivery` | paste | 2025-03-01 | 稳定 |
-| `nowcoder` | 牛客 | `nowcoder.com/my/applications` | paste | 2025-03-01 | 稳定 |
+| `boss` | BOSS 直聘 | `zhipin.com/web/geek/chat` | paste | 2026-10-21 | 稳定（求职记录页真机校准） |
+| `shixiseng` | 实习僧 | `shixiseng.com/my/delivery` | paste | 2026-10-21 | 详情页真机校准；列表页未验证 |
+| `nowcoder` | 牛客 | `nowcoder.com/my/applications` | paste | 2026-10-21 | 详情页真机校准；列表页未验证 |
+| `liepin` | 猎聘 | `liepin.com` | paste | 2026-10-21 | 详情页真机校准；列表页未验证 |
 | `custom` | 通用表格 / 其他平台 | 任意页面的列表 / 表格 | paste | 2025-03-01 | 兜底 |
+
+**详情页通道**（2026-10-21 新增）：用户从手机 App 整页复制单个职位详情时，
+`parseDetailLike` 产出**恰好一条**记录；详情页没有状态行与联系事件，
+`status` / `lastContactAt` 一律留空（绝不拿「截止时间」「90天前更新」凑数）。
 
 - **顺序即优先级**：`registry.ts` 里 `ADAPTERS` 的数组顺序 = 下拉框顺序 = URL 命中优先级。
   `custom` 永远排最后，因为它 `matchUrl` 恒 `false`（只能被手动选中）。

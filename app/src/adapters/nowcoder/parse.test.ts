@@ -19,3 +19,23 @@ describe('牛客投递列表解析', () => {
     expect(tencent?.status).toBe('已面试');
   });
 });
+
+describe('牛客详情页解析（2026-10 真机形态）', () => {
+  const detail = readFileSync(`${here}fixtures/detail-job.txt`, 'utf-8');
+  const NOW2 = '2026-10-21T14:49:00.000Z';
+  const result = parseNowcoderText({ text: detail, capturedAt: NOW2 }, { now: NOW2 });
+
+  it('产出恰好一条记录，公司名取自 HR 行首段', () => {
+    expect(result.records).toHaveLength(1);
+    expect(result.unparsed).toHaveLength(0);
+    expect(result.records[0].companyName).toBe('华为HUAWEI');
+    expect(result.records[0].jobTitle).toBe('软件开发研发工程师（实习/正式均再招）');
+    expect(result.records[0].city).toBe('西安');
+    expect(result.records[0].salaryText).toBe('500-1000元/天');
+  });
+
+  it('详情页没有联系事件：lastContactAt / status 均留空', () => {
+    expect(result.records[0].lastContactAt).toBeUndefined();
+    expect(result.records[0].status).toBeUndefined();
+  });
+});

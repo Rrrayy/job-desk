@@ -12,7 +12,7 @@ import { cx, companyLabel } from '../lib/util';
 import { PLATFORM_LABEL } from '../adapters/registry';
 import { CommunityImport } from './interview/CommunityImport';
 
-const PLATFORMS: PlatformId[] = ['boss', 'shixiseng', 'nowcoder', 'custom'];
+const PLATFORMS: PlatformId[] = ['boss', 'shixiseng', 'nowcoder', 'liepin', 'custom'];
 
 export interface SettingsDrawerProps {
   api: AppApi;

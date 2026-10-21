@@ -91,6 +91,7 @@ export const CHANNEL_LABEL: Record<Channel, string> = {
   boss: 'BOSS直聘',
   shixiseng: '实习僧',
   nowcoder: '牛客',
+  liepin: '猎聘',
   referral: '内推',
   official: '官网',
   other: '其他',

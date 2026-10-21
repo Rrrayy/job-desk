@@ -1,7 +1,7 @@
 /**
  * BOSS 直聘文本解析。
  *
- * 支持两种页面形态：
+ * 支持三种页面形态：
  * 1. 沟通/投递列表（zhipin.com/web/geek/chat|apply）——每条记录自带状态行与完整时间，
  *    直接交给 shared.ts 的通用管线。
  * 2. 求职记录页（App「我的 → 求职记录」，2026-10 真机校准）——结构与前者不同：
@@ -10,6 +10,8 @@
  *    - 公司行带融资与规模（「同元软控 A轮 500-999人」）；
  *    - 地点行带周期标签（「苏州 苏州工业园区 湖东 5天/周 6个月 本科」）；
  *    - 沟通过 tab 里**没有状态行**。
+ * 3. 职位详情页（含「职位详情」「立即投递」等特征词）→ shared.ts 的 parseDetailLike，
+ *    产出恰好一条记录，lastContactAt 留空。
  *
  * 形态 2 在交给通用管线前先做一遍**纯函数**预处理（normalizeRecordPage），
  * 预处理只发生在 BOSS 适配器内部——共享引擎不加平台 if（架构 D-05）。
@@ -22,7 +24,13 @@
  */
 
 import type { AdapterInput, AdapterResult, ParseContext } from '../types';
-import { parseListLike, splitLines } from '../shared';
+import {
+  COMPANY_WITH_FUNDING_RE,
+  looksLikeDetailPage,
+  parseDetailLike,
+  parseListLike,
+  splitLines,
+} from '../shared';
 
 /** 求职记录页头部/导航噪声：整行命中即丢弃 */
 const RECORD_PAGE_NOISE =
@@ -30,10 +38,6 @@ const RECORD_PAGE_NOISE =
 
 /** 分组标题行：仅「10月21日」这种形态 */
 const GROUP_DATE_RE = /^(\d{1,2})月(\d{1,2})日$/;
-
-/** 公司行：公司名 + 融资阶段 + 规模，如「同元软控 A轮 500-999人」 */
-const COMPANY_WITH_FUNDING_RE =
-  /^(.{2,20}?)\s+((?:A\+?轮|[BCD]轮|天使轮|已上市|不需要融资|未融资|战略投资)\s+[\d－~-]+人)$/;
 
 /** 地点行尾部标签：如「 5天/周 6个月 本科」 */
 const LOCATION_TAGS_RE = /\s+\d+\s*天\s*\/\s*周\s.*$/;
@@ -43,7 +47,7 @@ const LOCATION_TAGS_RE = /\s+\d+\s*天\s*\/\s*周\s.*$/;
  * - 丢头部噪声行；
  * - 把分组日期记住，下放到其后第一条时刻行（「14:12」→「10月21日 14:12」），
  *   否则通用管线会把裸时刻当成「今天」，跨分组的日期全错；
- * - 公司行剥离「融资阶段 + 规模」，只留公司名；
+ * - 公司行剥离「融资阶段 + 规模」，只留公司名（正则在 shared.ts，详情页通道共用）；
  * - 地点行剥离「N天/周 N个月 学历」标签，否则超过 looksLikeCity 的长度上限。
  */
 export function normalizeRecordPage(text: string): string {
@@ -83,6 +87,7 @@ export function normalizeRecordPage(text: string): string {
 
 export function parseBossText(input: AdapterInput, ctx: ParseContext): AdapterResult {
   const raw = input.text || '';
+  if (looksLikeDetailPage(raw)) return parseDetailLike(raw, ctx.now);
   // 形态判定：含分组日期行或「融资阶段+规模」行 → 求职记录页；否则走原管线
   const isRecordPage = splitLines(raw).some(
     (line) => GROUP_DATE_RE.test(line) || COMPANY_WITH_FUNDING_RE.test(line),

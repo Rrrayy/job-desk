@@ -26,7 +26,7 @@ export type Status =
 export type JobType = 'daily' | 'summer' | 'fulltime';
 
 /** 投递渠道 */
-export type Channel = 'boss' | 'shixiseng' | 'nowcoder' | 'referral' | 'official' | 'other';
+export type Channel = 'boss' | 'shixiseng' | 'nowcoder' | 'liepin' | 'referral' | 'official' | 'other';
 
 /** 面试形式 */
 export type InterviewFormat = 'onsite' | 'video' | 'phone';
@@ -41,7 +41,7 @@ export type InterviewResult = 'pending' | 'passed' | 'failed' | 'cancelled';
 export type NoteType = 'chat' | 'interview' | 'followup' | 'system' | 'memo' | 'sync';
 
 /** 平台标识：只增不改，等同一个稳定命名空间 */
-export type PlatformId = 'boss' | 'shixiseng' | 'nowcoder' | 'custom';
+export type PlatformId = 'boss' | 'shixiseng' | 'nowcoder' | 'liepin' | 'custom';
 
 /** 公司档案 */
 export interface Company {

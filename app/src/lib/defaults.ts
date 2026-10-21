@@ -42,6 +42,7 @@ export function defaultSettings(): Settings {
       boss: 1,
       shixiseng: 1,
       nowcoder: 1,
+      liepin: 1,
       other: 1,
     },
     weeklyApplyGoal: 8,

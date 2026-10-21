@@ -22,7 +22,7 @@ export interface Step1CaptureProps {
   riskAckAt?: string;
 }
 
-const PLATFORMS: PlatformId[] = ['boss', 'shixiseng', 'nowcoder', 'custom'];
+const PLATFORMS: PlatformId[] = ['boss', 'shixiseng', 'nowcoder', 'liepin', 'custom'];
 
 export function Step1Capture(props: Step1CaptureProps) {
   const { text, onText, platform, onPlatform, onParse, parsing, error, summary } = props;

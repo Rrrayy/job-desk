@@ -801,7 +801,7 @@ export const ROLLBACK_PREFIX = BACKUP_KEY_PREFIX;
 export const readMigrationPointer = readPointer;
 
 /** 平台默认值（供设置页下拉用，避免各组件各写一份） */
-export const DEFAULT_PLATFORM_ORDER: PlatformId[] = ['boss', 'shixiseng', 'nowcoder', 'custom'];
+export const DEFAULT_PLATFORM_ORDER: PlatformId[] = ['boss', 'shixiseng', 'nowcoder', 'liepin', 'custom'];
 
 /** 空状态映射覆盖表的类型别名（设置页编辑用） */
 export type StatusMapOverrides = Record<string, Status | null>;
