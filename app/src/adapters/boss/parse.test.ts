@@ -131,7 +131,7 @@ describe('BOSS 求职记录页解析（2026-10 真机形态）', () => {
 });
 
 describe('BOSS 求职记录卡片解析（2026-10-21 真机形态）', () => {
-  // 真机原文（第二例）：卡片头「杨琪招聘者」**没有空格**（截图里的空格是
+  // 样例文本（第二例）：卡片头「王芳招聘者」**没有空格**（截图里的空格是
   // 两个 HTML 元素的视觉间隙，innerText 里没有）；方括号城市被拆成
   // 「[ / 城市 / ]」三行；薪资标签无竖线。fixture 按原文逐行还原。
   const CARD_NOW = '2026-10-21T16:00:00.000Z';
@@ -159,11 +159,11 @@ describe('BOSS 求职记录卡片解析（2026-10-21 真机形态）', () => {
     });
   });
 
-  it('薪资剥离「在校/应届 本科」标签；招聘者姓名（杨琪/邰京朝）不进任何字段', () => {
+  it('薪资剥离「在校/应届 本科」标签；招聘者姓名（王芳/陈大明）不进任何字段', () => {
     const result = parseBossText({ text: fixture('record-card.txt'), capturedAt: CARD_NOW }, { now: CARD_NOW });
     const joined = JSON.stringify(result);
-    expect(joined).not.toContain('杨琪');
-    expect(joined).not.toContain('邰京朝');
+    expect(joined).not.toContain('王芳');
+    expect(joined).not.toContain('陈大明');
     result.records.forEach((record) => {
       expect(record.salaryText).toBe(record.salaryText?.split(' ')[0]);
     });
@@ -178,8 +178,8 @@ describe('BOSS 求职记录卡片解析（2026-10-21 真机形态）', () => {
     });
   });
 
-  it('带空格的卡片头（「杨琪 招聘者」，第一例真机）同样识别', () => {
-    const spaced = fixture('record-card.txt').replace('杨琪招聘者', '杨琪 招聘者').replace('邰京朝招聘者', '邰京朝 招聘者');
+  it('带空格的卡片头（「王芳 招聘者」，第一例形态）同样识别', () => {
+    const spaced = fixture('record-card.txt').replace('王芳招聘者', '王芳 招聘者').replace('陈大明招聘者', '陈大明 招聘者');
     const result = parseBossText({ text: spaced, capturedAt: CARD_NOW }, { now: CARD_NOW });
     expect(result.unparsed).toHaveLength(0);
     expect(result.records).toHaveLength(2);

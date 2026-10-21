@@ -326,7 +326,7 @@ describe('v0.7 JD 字段 additive 往返', () => {
   it('jdText / jdCapturedAt / jdLinkDeadAt 经 v2→v3 校验后原样保留', () => {
     const db = {
       settings: { schemaVersion: 2, theme: 'warm', defaultResumeVersion: '', silenceWarnDays: 3, silenceStaleDays: 7, backupReminderDays: 7, dailyActionBudget: 5 },
-      companies: [{ id: 'c1', name: '杭州芯流微澜智能科技', createdAt: NOW, updatedAt: NOW }],
+      companies: [{ id: 'c1', name: '杭州星澜智慧云图智能科技', createdAt: NOW, updatedAt: NOW }],
       applications: [{
         id: 'a1', companyId: 'c1', jobTitle: 'Agent 研发实习生', status: 'applied',
         statusChangedAt: NOW, lastActivityAt: NOW, createdAt: NOW, updatedAt: NOW,

@@ -26,7 +26,8 @@ const PLATFORMS: PlatformId[] = ['boss', 'shixiseng', 'nowcoder', 'liepin', 'cus
 
 /**
  * v0.7.2 解析模板：告诉用户「复制成什么长样的文本」才能被解析。
- * 样板全部来自真机 fixture（不是编的），并明说各平台目前哪条路最稳。
+ * 样本为明显虚构的示例文本（行结构与真机 fixture 完全一致，不含任何真实姓名或公司），
+ * 并明说各平台目前哪条路最稳。
  * 认不出的行不会丢——会进待归类，这一点也要说，免得用户以为粘贴失败。
  */
 const PASTE_TEMPLATES: Partial<Record<PlatformId, { title: string; samples: { label: string; body: string }[]; note?: string }>> = {
@@ -35,12 +36,12 @@ const PASTE_TEMPLATES: Partial<Record<PlatformId, { title: string; samples: { la
     samples: [
       {
         label: '求职记录卡片（App 里单张卡片复制）',
-        body: `杨琪招聘者
-杭州芯流微澜智能科技
+        body: `王芳招聘者
+杭州星澜智慧云图智能科技
 半导体/芯片0-20人
 Agent 研发实习生
 [
-杭州·萧山区·宁围
+杭州·滨江区·示例路
 ]
 300-310元/天 在校/应届 本科`,
       },
@@ -49,8 +50,8 @@ Agent 研发实习生
         body: `10月21日
 14:12
 AI开发工程师实习生
-苏州 苏州工业园区 湖东 5天/周 6个月 本科
-同元软控 A轮 500-999人`,
+苏州 高新园区 湖东 5天/周 6个月 本科
+云图软创 A轮 500-999人`,
       },
     ],
     note: '卡片头「XX招聘者」会被自动丢弃；「沟通过」页签里没有状态行 → 状态留空、需要你归类，这是诚实的降级不是失败。',

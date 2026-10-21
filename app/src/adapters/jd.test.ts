@@ -14,7 +14,7 @@ import { JD_TEXT_MAX_CHARS, extractJdSections, parseJdText } from './shared';
 const NOW = '2026-10-21T08:00:00.000Z';
 
 const BOSS_JD = `Agent 研发实习生
-杭州-萧山区
+杭州-滨江区
 300-310元/天
 
 职位亮点

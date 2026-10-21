@@ -64,7 +64,7 @@ const FAIL_BYTES = 560 * 1024;
  * 当前版本的体积基线（每次发版更新，用来在 CI 里显示「这次改动胖了多少」）。
  * 它的作用不是判失败，而是让体积增长**可见** —— 静悄悄长胖是最难回头的技术债。
  */
-const BASELINE_BYTES = 544 * 1024;
+const BASELINE_BYTES = 545 * 1024;
 
 const here = dirname(fileURLToPath(import.meta.url));
 const appRoot = resolve(here, '..');

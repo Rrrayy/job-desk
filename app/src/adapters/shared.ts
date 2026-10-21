@@ -32,7 +32,7 @@ export const STATUS_HINTS: RegExp[] = [
 ];
 
 /**
- * 公司行：公司名 + 融资阶段 + 规模，如「同元软控 A轮 500-999人」（2026-10 真机形态）。
+ * 公司行：公司名 + 融资阶段 + 规模，如「云图软创 A轮 500-999人」。
  * BOSS 求职记录页与详情页共用，所以放在共享层。
  */
 export const COMPANY_WITH_FUNDING_RE =
@@ -80,7 +80,7 @@ export function looksLikeSalary(line: string): boolean {
 
 export function looksLikeCity(line: string): boolean {
   if (!CITY_WORDS.some((city) => line.startsWith(city)) || line.length > 24) return false;
-  // 公司行常常以城市词开头（「杭州芯流微澜智能科技」「南京先声药业」）——
+  // 公司行常常以城市词开头（「杭州星澜智慧云图智能科技」「南京安康药业」）——
   // 有公司名收尾词的行不是城市行。不挡住的话，卡片形态里公司行排在城市行
   // 之前时，公司名会被城市字段抢走，整块记录报「没有公司名」。
   return !COMPANY_TAIL.test(line);
@@ -320,8 +320,8 @@ function parseChunk(
     if (used.has(i)) continue;
     const line = stripDecorations(chunk.lines[i]);
     if (!line || line.length > 40) continue;
-    // 城市行不能当公司名：「杭州-萧山区-宁围」里的连字符在公司名字符集里。
-    // 但只挡「纯城市形态」——「杭州芯流微澜智能科技」也以城市词开头，
+    // 城市行不能当公司名：「杭州-滨江区-示例路」里的连字符在公司名字符集里。
+    // 但只挡「纯城市形态」——「杭州星澜智慧云图智能科技」也以城市词开头，
     // 得靠公司名收尾词（科技/公司/…）放行，否则杭州的公司全被误杀。
     if (looksLikeCity(line) && !tail.test(line)) continue;
     if (!looksLikeCompany(line) && !(options.assumeCompanyFromFirstLine && i === 0)) continue;
@@ -512,7 +512,7 @@ export function looksLikeDetailPage(text: string): boolean {
   return DETAIL_PAGE_HINTS.test(text);
 }
 
-/** HR 行：如「华为HUAWEI · 服务与软件研发管理部HR」——中段之前是公司名 */
+/** HR 行：如「华为HUAWEI · 软件研发管理部HR」——中段之前是公司名 */
 const HR_LINE_RE = /^(.{2,20}?)\s*·\s*.{2,40}?(?:HR|经理|主管|专员|总监|顾问)$/u;
 
 /**
