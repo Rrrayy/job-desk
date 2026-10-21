@@ -21,7 +21,8 @@
 
 [⬇️ 下载最新版](https://github.com/Rrrayy/job-desk/releases/latest) ｜ [English](README.en.md) ｜ [报告问题](https://github.com/Rrrayy/job-desk/issues) ｜ [更新日志](CHANGELOG.md)
 
-<img src="docs/screenshots-v0.3/01-today.png" alt="今日视图" width="100%">
+<img src="assets/demo.gif" alt="动态演示：加载示例数据 → 今日待办 → 看板 → 日历时间冲突 → 详情抽屉一键催进" width="100%">
+<sub>真实应用实录：示例数据 → 今日 → 看板 → 日历发现「面试撞组会」→ 详情页一键催进（顶栏「2 家已沉默」随之清零）。这 11 秒就是它的全部日常。</sub>
 
 </div>
 
@@ -39,7 +40,7 @@
 | :--- | :--- |
 | [它能干什么](#-它能干什么) | 五个视图各回答什么问题 |
 | [30 秒上手](#-30-秒上手) | 下载即用 / 源码构建 / 开发模式 |
-| [界面一览](#-界面一览) | 真实截图 |
+| [界面一览](#-界面一览) | 11 秒动态演示 + 真实截图 |
 | [设计取舍](#-设计取舍) | 六个「为什么这么设计」，含代价 |
 | [数据存在哪](#-数据存在哪--怎么备份) | localStorage 全部 key + 备份边界 |
 | [隐私与边界](#-隐私与边界) | 为什么一个请求都不发 |
@@ -107,6 +108,8 @@ cd app && npm install && npm run dev   # http://localhost:5173
 所以解析器只需要维护一份。
 
 ## 📸 界面一览
+
+顶部的 11 秒动态演示覆盖了「今日 → 看板 → 日历 → 详情」的完整闭环；下面是各视图的静态大图。
 
 | 🗂️ 看板 —— 50 家卡在哪 | 📃 列表 —— 最凉的那几家 |
 | :---: | :---: |
@@ -301,7 +304,7 @@ job-desk/
 │   │   │   └── budget.ts     # 体积水位与文本截断
 │   │   └── components/       # 视图 + 抽屉 + 面经 + 同步面板 + ErrorBoundary
 │   └── scripts/              # 类型 / 测试 / 体积 / 零网络 / 版本一致性 / 打包脚本
-├── assets/                   # README 横幅（明 / 暗两版，仓库内 SVG）
+├── assets/                   # README 横幅（SVG ×2）+ 动态演示 demo.gif
 ├── extension/                # 可选 MV3 扩展（只 activeTab + scripting）
 ├── community/                # 社区面经（CC BY-SA 4.0，离线导入）
 ├── docs/                     # PRD / 架构 / QA 报告 / 适配器指南 / 发布说明 / 截图
