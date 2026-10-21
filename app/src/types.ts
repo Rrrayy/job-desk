@@ -108,6 +108,16 @@ export interface Application {
   /** 沉默计算基准（派生但落库，便于排序），ISO */
   lastActivityAt: string;
   jdUrl?: string;
+  /**
+   * v0.7：JD 原文留档（用户粘贴或扩展抓取后确认写入）。
+   * 只解决「链接失效后还想回看当时投的是什么」，不参与任何同步与沉默计算。
+   * 上限 20,000 字符，超出由 UI 拒绝保存（不静默截断）。
+   */
+  jdText?: string;
+  /** v0.7：JD 留档时刻（ISO）。三个月后回看时用于区分「当时投的是哪版 JD」 */
+  jdCapturedAt?: string;
+  /** v0.7：用户标记「链接已失效」的时刻（ISO）。可恢复 ≠ 删除 jdUrl */
+  jdLinkDeadAt?: string;
   resumeVersion?: string;
   salaryText?: string;
   daysPerWeek?: number;

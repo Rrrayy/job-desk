@@ -316,6 +316,10 @@ function parseChunk(
     if (used.has(i)) continue;
     const line = stripDecorations(chunk.lines[i]);
     if (!line || line.length > 40) continue;
+    // 城市行不能当公司名：「杭州-萧山区-宁围」里的连字符在公司名字符集里。
+    // 但只挡「纯城市形态」——「杭州芯流微澜智能科技」也以城市词开头，
+    // 得靠公司名收尾词（科技/公司/…）放行，否则杭州的公司全被误杀。
+    if (looksLikeCity(line) && !tail.test(line)) continue;
     if (!looksLikeCompany(line) && !(options.assumeCompanyFromFirstLine && i === 0)) continue;
     companyName = line;
     used.add(i);
@@ -388,6 +392,105 @@ export function parseListLike(
   return { records, unparsed };
 }
 
+/* ==================== JD 正文摘要（v0.7，JD 链接延伸） ==================== */
+
+/**
+ * JD 正文与详情页卡片不同：主体是「岗位职责 / 任职要求」这类**分节长文**，
+ * 不是结构化字段。所以这里只做两件事，都偏保守 —— 宁可少抽不可错抽：
+ * 1. `parseJdText()`：调 `parseDetailLike` 拿公司/岗位/城市/薪资基记录（不重复造启发式），
+ *    再补章节抽取与「每周天数 / 实习月数」线索；
+ * 2. `extractJdSections()`：只认显式标题行（「任职要求」「岗位职责」等），
+ *    每节收集到下一个标题行为止，行数 ≥1 才成节。
+ *
+ * 这里不碰 `NormalizedRecord` 的形状 —— 五个适配器都在用 parseDetailLike，
+ * 契约一动全平台陪葬。
+ */
+
+/** 章节标题 → 语义分组的线索表（顺序即匹配优先级） */
+const JD_SECTION_TITLES: Array<{ title: RegExp; kind: string }> = [
+  { title: /^(岗位职责|工作职责|职位描述|工作内容|你会做什么)$/, kind: 'duty' },
+  { title: /^(任职要求|岗位要求|任职资格|职位要求|我们希望你|招聘要求)$/, kind: 'require' },
+  { title: /^(加分项|优先条件|加分项\(非必须\)|亮点)$/, kind: 'bonus' },
+  { title: /^(实习要求|工作安排|工作时间|到岗时间)$/, kind: 'arrange' },
+];
+
+/** 每节正文最多保留的行数（防一节灌进几千行拖垮 UI） */
+const JD_SECTION_MAX_LINES = 30;
+
+export interface JdSection {
+  kind: string;
+  /** 触发分节的标题行原文 */
+  title: string;
+  lines: string[];
+}
+
+/**
+ * 从 JD 正文抽取「标题行 + 其下正文」的分节。
+ * 只认**整行**就是标题的形态（「任职要求：」带冒号也认），
+ * 标题夹在长句里的不认 —— 那种基本都是误报。
+ */
+export function extractJdSections(text: string): JdSection[] {
+  const sections: JdSection[] = [];
+  let current: JdSection | null = null;
+
+  for (const line of splitLines(text)) {
+    const bare = line.replace(/[：:]\s*$/, '').trim();
+    const hit = JD_SECTION_TITLES.find((rule) => rule.title.test(bare));
+    if (hit) {
+      current = { kind: hit.kind, title: bare, lines: [] };
+      sections.push(current);
+      continue;
+    }
+    if (current && current.lines.length < JD_SECTION_MAX_LINES) current.lines.push(line);
+  }
+  return sections.filter((section) => section.lines.length >= 1);
+}
+
+/** 「每周 X 天」线索（「每周可实习4天」这种中间隔字的也算）；认不出不猜 */
+const DAYS_PER_WEEK_RE = /每周[^。\n]{0,8}?([1-7])\s*天|([3-6])\s*天\s*\/\s*周/;
+/** 「实习 N 个月」线索：仅在正文出现「实习」时才采信，否则不猜 */
+const DURATION_MONTHS_RE = /(?:实习|到岗)[^\n。]{0,12}?(\d{1,2})\s*个?月|(?:实习|到岗)\s*(\d{1,2})\s*个?月/;
+
+/** JD 原文入库上限；超出由 UI 拒绝保存（不静默截断） */
+export const JD_TEXT_MAX_CHARS = 20_000;
+
+export interface JdDigest {
+  /** parseDetailLike 的原样产出；无公司名时为 null */
+  record: NormalizedRecord | null;
+  /** 显式标题行分节（职责/要求/加分项/安排） */
+  sections: JdSection[];
+  /** 「每周几天 / 实习几个月」线索；认不出就不给，不猜 */
+  hints: { daysPerWeek?: number; durationMonths?: number };
+  /** 解析失败时的一句话原因，供 UI 直说 */
+  reasonText?: string;
+}
+
+/**
+ * JD 正文 → 摘要。与 parseDetailLike 的分工：
+ * 基记录（公司/岗位/城市/薪资）完全复用前者；这里只做 JD 特有的章节与线索。
+ */
+export function parseJdText(text: string, nowIso: string): JdDigest {
+  if (!text.trim()) {
+    return { record: null, sections: [], hints: {}, reasonText: '粘贴区是空的' };
+  }
+  const result = parseDetailLike(text, nowIso);
+  const sections = extractJdSections(text);
+
+  const days = DAYS_PER_WEEK_RE.exec(text);
+  const duration = DURATION_MONTHS_RE.exec(text);
+  const hints: JdDigest['hints'] = {
+    ...(days ? { daysPerWeek: Number(days[1] ?? days[2]) } : {}),
+    ...(duration && /实习/.test(text) ? { durationMonths: Number(duration[1] ?? duration[2]) } : {}),
+  };
+
+  return {
+    record: result.records[0] ?? null,
+    sections,
+    hints,
+    reasonText: result.records.length === 0 ? result.unparsed[0]?.reason : undefined,
+  };
+}
+
 /* ==================== 详情页解析（2026-10-21 真机校准后新增） ==================== */
 
 /**
@@ -399,7 +502,7 @@ export const DETAIL_PAGE_HINTS: RegExp =
 
 /** 详情页按钮 / 导航 / 装饰行（注意：「公司信息」是分节标题，详情解析要靠它定位公司名，不能丢） */
 const DETAIL_NOISE =
-  /^(职位详情|职位详情页|投递简历|立即投递|聊一聊|收藏|分享|举报|查看全部|立即优化|猜你喜欢|求职必备|问大家|反馈快|已认证|一周前在线|刚刚在线|职位亮点|投递要求|职位介绍|工作地点|简历要求|立即体验|立即定制|相关推荐|看了又看)$/;
+  /^(职位详情|职位详情页|投递简历|立即投递|聊一聊|收藏|分享|举报|查看全部|立即优化|猜你喜欢|求职必备|问大家|反馈快|已认证|一周前在线|刚刚在线|职位亮点|投递要求|职位介绍|工作地点|简历要求|立即体验|立即定制|相关推荐|看了又看|岗位职责|工作职责|职位描述|工作内容|任职要求|岗位要求|任职资格|招聘要求|加分项|优先条件|实习要求|工作安排|工作时间|到岗时间)$/;
 
 export function looksLikeDetailPage(text: string): boolean {
   return DETAIL_PAGE_HINTS.test(text);

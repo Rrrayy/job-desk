@@ -45,6 +45,13 @@ export const FIELD_OWNERSHIP: Record<keyof Application, Ownership> = {
   // 补全型
   jobTitle: 'fill-only',
   jdUrl: 'fill-only',
+  /**
+   * v0.7：JD 原文三字段全部 user-only —— 平台永不写。
+   * 粘贴/抓取 JD 是用户主动行为，走后缀 updateApplication，不经同步引擎。
+   */
+  jdText: 'user-only',
+  jdCapturedAt: 'user-only',
+  jdLinkDeadAt: 'user-only',
   city: 'fill-only',
   salaryText: 'fill-only',
   /**

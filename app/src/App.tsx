@@ -60,7 +60,7 @@ import {
   type StatusUndo,
 } from './lib/rules';
 import { sweepTrash, trashReminder, trashedApps, visibleDB } from './lib/trash';
-import { cloneDB, companyFullName, companyLabel, downloadBlob, downloadText, pad2, textBytes, uid } from './lib/util';
+import { cloneDB, companyFullName, companyLabel, downloadBlob, downloadText, pad2, safeHref, textBytes, uid } from './lib/util';
 import {
   PORTABLE_FILES,
   buildZip,
@@ -1837,6 +1837,20 @@ export default function App() {
         else if (selectedId) setSelectedId(null);
         return;
       }
+
+      // v0.7：单键 J —— 详情抽屉打开时直接打开该投递的 JD 链接。
+      // 必须放在 overlayOpen 判定**之前**：抽屉开着时 overlayOpen 恒为真。
+      if (event.key === 'j' || event.key === 'J') {
+        if (withCmd || event.altKey) return; // 不抢 ⌘J（浏览器下载）/ Alt+J
+        if (!selectedId) return; // 抽屉没开就不做任何事
+        const target = dbRef.current.applications.find((a) => a.id === selectedId);
+        const href = safeHref(target?.jdUrl);
+        if (!href || target?.jdLinkDeadAt) return;
+        event.preventDefault();
+        window.open(href, '_blank', 'noopener');
+        return;
+      }
+
       if (overlayOpen) return;
 
       if (event.key === 'n' || event.key === 'N') {

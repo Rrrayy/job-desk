@@ -40,6 +40,11 @@
  *   那正是 v0.3 批评过的「空白支票」。
  *   v0.6 之后的红线回到「每版只随基线浮动」的节奏，下一版起默认不再动 FAIL。
  *
+ * ★ v0.7（JD 链接延伸 + BOSS 卡片解析）：WARN/FAIL 不动。
+ *   新增 parseJdText + extractJdSections（纯函数约 3 KB）、JdPanel 面板与样式（约 7 KB）、
+ *   快捷键与 safeHref（<1 KB），预计 +11～14 KB，会越过 WARN（WARN 只提示不失败），
+ *   离 FAIL 仍留 15 KB 以上。这是「贴近水位就留记录」惯例的执行，不是抬线。
+ *
  * ★ 改动阈值必须写进 docs/RELEASE-NOTES：涨红线不是技术决策，是产品决策。
  */
 

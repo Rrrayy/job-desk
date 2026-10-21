@@ -26,6 +26,7 @@
 import type { AdapterInput, AdapterResult, ParseContext } from '../types';
 import {
   COMPANY_WITH_FUNDING_RE,
+  SALARY_RE,
   looksLikeDetailPage,
   parseDetailLike,
   parseListLike,
@@ -43,11 +44,37 @@ const GROUP_DATE_RE = /^(\d{1,2})月(\d{1,2})日$/;
 const LOCATION_TAGS_RE = /\s+\d+\s*天\s*\/\s*周\s.*$/;
 
 /**
- * 求职记录页预处理：
- * - 丢头部噪声行；
+ * 求职记录**卡片**头（App 单卡片复制，2026-10-21 真机）：「杨琪 招聘者」。
+ * 这是卡片头噪声——招聘者姓名在产品里没有对应字段（裸姓名脱敏都做不到，见已知限制），
+ * 唯一的害处是被当成公司名吞进待归类，所以整行丢弃。
+ */
+const CARD_RECRUITER_RE = /^.{1,12}\s+(?:招聘者|猎头)$/;
+
+/** 卡片地点在方括号里：「Agent 研发实习生 [杭州-萧山区·宁围]」→ 拆成岗位行 + 城市行 */
+const BRACKET_CITY_RE = /[[〔【]\s*([^\]〕】]{2,30}?)\s*[\]〕】]/;
+
+/**
+ * 卡片公司行变体：公司名 + 行业 + 规模（无融资阶段），如
+ * 「杭州芯流微澜智能科技 半导体/芯片 0-20人」。与 COMPANY_WITH_FUNDING_RE 的区别：
+ * 中段不要求是融资词、末段不要求「N-M人」带下限——「0-20人」也命中。
+ */
+const COMPANY_WITH_INDUSTRY_RE =
+  /^(.{2,20}?)\s+[\u4e00-\u9fa5A-Za-z][\u4e00-\u9fa5A-Za-z/·、]*\s+\d+[-~－—]\d*人$/;
+
+/** 卡片薪资行的尾部标签：「300-310元/天 在校/应届 | 本科」——标签不是数据，丢弃 */
+const SALARY_TAG_TOKENS = new Set([
+  '在校', '应届', '往届', '本科', '硕士', '大专', '博士', '不限', '全职', '实习', '兼职',
+]);
+
+/**
+ * 求职记录页预处理（含卡片形态）：
+ * - 丢头部噪声行与卡片头（「杨琪 招聘者」）；
+ * - 卡片头是块边界：其前插入空行，保证一张卡恰好一个块（chunkByBlankLines）；
  * - 把分组日期记住，下放到其后第一条时刻行（「14:12」→「10月21日 14:12」），
  *   否则通用管线会把裸时刻当成「今天」，跨分组的日期全错；
- * - 公司行剥离「融资阶段 + 规模」，只留公司名（正则在 shared.ts，详情页通道共用）；
+ * - 公司行剥离「融资阶段 + 规模」或「行业 + 规模」（两种真机形态），只留公司名；
+ * - 方括号地点拆成独立城市行：「Agent 研发实习生 [杭州-萧山区·宁围]」；
+ * - 薪资行剥离「在校/应届 | 本科」类标签，只留薪资本体；
  * - 地点行剥离「N天/周 N个月 学历」标签，否则超过 looksLikeCity 的长度上限。
  */
 export function normalizeRecordPage(text: string): string {
@@ -56,6 +83,12 @@ export function normalizeRecordPage(text: string): string {
 
   for (const line of splitLines(text)) {
     if (RECORD_PAGE_NOISE.test(line)) continue;
+
+    if (CARD_RECRUITER_RE.test(line)) {
+      // 卡片边界：前面已有内容就隔一个空行，让分块器在这里切开
+      if (out.length > 0 && out[out.length - 1] !== '') out.push('');
+      continue;
+    }
 
     const group = GROUP_DATE_RE.exec(line);
     if (group) {
@@ -75,6 +108,32 @@ export function normalizeRecordPage(text: string): string {
       continue;
     }
 
+    const withIndustry = COMPANY_WITH_INDUSTRY_RE.exec(line);
+    if (withIndustry) {
+      out.push(withIndustry[1]);
+      continue;
+    }
+
+    // 方括号地点：拆成「岗位行 + 城市行」两行
+    const bracket = BRACKET_CITY_RE.exec(line);
+    if (bracket) {
+      const rest = line.replace(BRACKET_CITY_RE, ' ').replace(/\s+/g, ' ').trim();
+      if (rest) out.push(rest);
+      out.push(bracket[1]);
+      continue;
+    }
+
+    // 薪资 + 标签：标签全是学历/届别词时只留薪资本体
+    const salary = SALARY_RE.exec(line);
+    if (salary) {
+      const rest = line.replace(salary[0], ' ');
+      const tokens = rest.split(/[|/、\s]+/).filter(Boolean);
+      if (tokens.every((token) => SALARY_TAG_TOKENS.has(token))) {
+        out.push(salary[0].replace(/\s+/g, ''));
+        continue;
+      }
+    }
+
     if (LOCATION_TAGS_RE.test(line)) {
       out.push(line.replace(LOCATION_TAGS_RE, ''));
       continue;
@@ -88,9 +147,9 @@ export function normalizeRecordPage(text: string): string {
 export function parseBossText(input: AdapterInput, ctx: ParseContext): AdapterResult {
   const raw = input.text || '';
   if (looksLikeDetailPage(raw)) return parseDetailLike(raw, ctx.now);
-  // 形态判定：含分组日期行或「融资阶段+规模」行 → 求职记录页；否则走原管线
+  // 形态判定：分组日期行 / 融资+规模行 / 卡片头 → 求职记录页；否则走原管线
   const isRecordPage = splitLines(raw).some(
-    (line) => GROUP_DATE_RE.test(line) || COMPANY_WITH_FUNDING_RE.test(line),
+    (line) => GROUP_DATE_RE.test(line) || COMPANY_WITH_FUNDING_RE.test(line) || CARD_RECRUITER_RE.test(line),
   );
   const text = isRecordPage ? normalizeRecordPage(raw) : raw;
   return parseListLike(text, ctx.now);

@@ -5171,3 +5171,99 @@ button.chip:hover {
 .issue-list li {
   margin-bottom: 3px;
 }
+
+/* ==================== v0.7 JD 区块 ==================== */
+
+.jd-panel__actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin: 4px 0 10px;
+  align-items: center;
+}
+
+.jd-panel__dead {
+  color: var(--text-tertiary, #9a8f80);
+  font-size: 12px;
+}
+
+.jd-panel__textarea {
+  width: 100%;
+  min-height: 120px;
+  resize: vertical;
+  margin-bottom: 6px;
+}
+
+.jd-panel__error {
+  color: var(--danger, #b42318);
+  font-size: 12px;
+  margin: 4px 0;
+}
+
+.jd-panel__digest {
+  border: 1px solid var(--border, #e5ded4);
+  border-radius: 8px;
+  padding: 8px 10px;
+  margin-top: 8px;
+}
+
+.jd-panel__digest-head {
+  font-size: 12px;
+  margin: 0 0 6px;
+  color: var(--text-secondary, #6f675c);
+}
+
+.jd-panel__status {
+  list-style: none;
+  margin: 0 0 8px;
+  padding: 0;
+  display: grid;
+  gap: 4px;
+  font-size: 12px;
+}
+
+.jd-panel__status li {
+  display: flex;
+  gap: 8px;
+  align-items: baseline;
+}
+
+.jd-panel__state {
+  flex: 0 0 62px;
+  color: var(--text-tertiary, #9a8f80);
+}
+
+.jd-panel__state.is-ok {
+  color: var(--ok, #1f7a3d);
+}
+
+.jd-panel__hint {
+  font-size: 12px;
+  color: var(--text-secondary, #6f675c);
+  margin: 4px 0;
+}
+
+.jd-panel__adopt {
+  display: grid;
+  gap: 4px;
+  margin: 8px 0;
+  font-size: 12px;
+}
+
+.jd-panel__adopt-row {
+  display: flex;
+  gap: 6px;
+  align-items: baseline;
+}
+
+.jd-panel__pre {
+  white-space: pre-wrap;
+  word-break: break-word;
+  font-size: 12px;
+  line-height: 1.6;
+  max-height: 320px;
+  overflow: auto;
+  background: var(--surface-sunken, #f7f3ec);
+  border-radius: 6px;
+  padding: 8px 10px;
+}

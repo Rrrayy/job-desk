@@ -319,3 +319,55 @@ describe('migrateV1ToV2', () => {
     expect((valid.db as DB).applications).toHaveLength(26);
   });
 });
+
+describe('v0.7 JD 字段 additive 往返', () => {
+  const NOW = '2026-10-21T16:00:00.000Z';
+
+  it('jdText / jdCapturedAt / jdLinkDeadAt 经 v2→v3 校验后原样保留', () => {
+    const db = {
+      settings: { schemaVersion: 2, theme: 'warm', defaultResumeVersion: '', silenceWarnDays: 3, silenceStaleDays: 7, backupReminderDays: 7, dailyActionBudget: 5 },
+      companies: [{ id: 'c1', name: '杭州芯流微澜智能科技', createdAt: NOW, updatedAt: NOW }],
+      applications: [{
+        id: 'a1', companyId: 'c1', jobTitle: 'Agent 研发实习生', status: 'applied',
+        statusChangedAt: NOW, lastActivityAt: NOW, createdAt: NOW, updatedAt: NOW,
+        jdUrl: 'https://www.zhipin.com/job_detail/x.html',
+        jdText: '岗位职责\n写 Agent。',
+        jdCapturedAt: NOW,
+        jdLinkDeadAt: NOW,
+      }],
+      interviews: [], notes: [], experiences: [], questions: [], events: [], trash: [],
+    } as unknown as DB;
+
+    const migrated = migrateV2ToV3(structuredClone(db), { now: NOW });
+    expect(migrated.ok).toBe(true);
+    if (!migrated.ok) return;
+    const app = migrated.db.applications[0];
+    expect(app.jdText).toBe('岗位职责\n写 Agent。');
+    expect(app.jdCapturedAt).toBe(NOW);
+    expect(app.jdLinkDeadAt).toBe(NOW);
+    expect(app.jdUrl).toBe('https://www.zhipin.com/job_detail/x.html');
+    // 幂等：再走一遍不变
+    const again = migrateV2ToV3(structuredClone(migrated.db) as unknown as typeof db, { now: NOW });
+    expect(again.ok).toBe(true);
+    if (!again.ok) return;
+    expect(again.db.applications[0].jdText).toBe('岗位职责\n写 Agent。');
+  });
+
+  it('老备份没有这三个字段 → 补 undefined，不拦导入', () => {
+    const db = {
+      settings: { schemaVersion: 2, theme: 'warm', defaultResumeVersion: '', silenceWarnDays: 3, silenceStaleDays: 7, backupReminderDays: 7, dailyActionBudget: 5 },
+      companies: [{ id: 'c1', name: '旧公司', createdAt: NOW, updatedAt: NOW }],
+      applications: [{
+        id: 'a1', companyId: 'c1', jobTitle: '前端实习', status: 'applied',
+        statusChangedAt: NOW, lastActivityAt: NOW, createdAt: NOW, updatedAt: NOW,
+      }],
+      interviews: [], notes: [], experiences: [], questions: [], events: [], trash: [],
+    } as unknown as DB;
+    const migrated = migrateV2ToV3(db, { now: NOW });
+    expect(migrated.ok).toBe(true);
+    if (!migrated.ok) return;
+    expect(migrated.db.applications[0].jdText).toBeUndefined();
+    expect(migrated.db.applications[0].jdCapturedAt).toBeUndefined();
+    expect(migrated.db.applications[0].jdLinkDeadAt).toBeUndefined();
+  });
+});

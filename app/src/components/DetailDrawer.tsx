@@ -40,6 +40,7 @@ import { experienceForInterview, questionsOf } from '../lib/interview';
 import { PLATFORM_LABEL } from '../adapters/registry';
 import { copyText, cx, orDash } from '../lib/util';
 import { Field, InfoRow, SelectField } from './Field';
+import { JdPanel } from './JdPanel';
 
 export function DetailDrawer({ api }: { api: AppApi }) {
   const app = api.db.applications.find((item) => item.id === api.selectedId);
@@ -399,7 +400,7 @@ function DetailBody({ api, app }: { api: AppApi; app: Application }) {
               hint="填了就是绝对阈值（不再乘渠道系数）；留空 = 全局阈值 × 渠道系数；最小生效 1 天，填 1 会当天标红"
               narrow
             />
-            <Field label="JD 链接" type="url" value={app.jdUrl || ''} onCommit={(value) => update({ jdUrl: value.trim() || undefined })} placeholder="https://" />
+            <JdPanel api={api} app={app} />
             <Field
               label="内推人 / 介绍人"
               value={company?.referrer || ''}

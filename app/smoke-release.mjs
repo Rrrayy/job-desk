@@ -21,14 +21,14 @@ import { tmpdir } from 'node:os';
 
 // 本脚本在 app/ 下，release/ 在仓库根（dirname+'/..'）
 const APP_DIR = dirname(fileURLToPath(import.meta.url));
-const TARGET = join(APP_DIR, '..', 'release', 'v0.6.0', 'index.html');
+const TARGET = join(APP_DIR, '..', 'release', 'v0.7.0', 'index.html');
 const EDGE_CANDIDATES = [
   'C:/Program Files (x86)/Microsoft/Edge/Application/msedge.exe',
   'C:/Program Files/Microsoft/Edge/Application/msedge.exe',
 ];
 
 if (!existsSync(TARGET)) {
-  console.error('✗ 找不到 release/v0.6.0/index.html，先 npm run release:pack');
+  console.error('✗ 找不到 release/v0.7.0/index.html，先 npm run release:pack');
   process.exit(1);
 }
 const edge = EDGE_CANDIDATES.find((p) => existsSync(p));
@@ -154,7 +154,7 @@ try {
   await sleep(900);
 
   const settingsText = await evalJs('document.body.innerText');
-  check('设置页显示 v0.6.0', /v0\.6\.0/.test(settingsText || ''));
+  check('设置页显示 v0.7.0', /v0\.7\.0/.test(settingsText || ''));
   check('设置页有备份加密开关', /加密/.test(settingsText || ''));
   check('设置页有备份提醒天数', /提醒.*天|天.*提醒/.test(settingsText || ''));
 

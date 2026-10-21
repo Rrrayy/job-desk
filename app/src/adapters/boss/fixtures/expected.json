@@ -26,5 +26,13 @@
     { "companyName": "先声药业", "jobTitle": "AI应用开发实习生", "city": "南京", "salaryText": "130-180元/天", "day": 21 },
     { "companyName": "先声药业", "jobTitle": "AI场景应用开发工程师(实习)", "city": "南京", "salaryText": "100-180元/天", "day": 20 }
   ],
+  "recordCards": [
+    {
+      "companyName": "杭州芯流微澜智能科技",
+      "jobTitle": "Agent 研发实习生",
+      "city": "杭州",
+      "salaryText": "300-310元/天"
+    }
+  ],
   "unparsedReasons": ["这一行没有公司名"]
 }

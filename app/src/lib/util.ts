@@ -125,3 +125,20 @@ export function orDash(value?: string | number | null, placeholder = '—'): str
   if (value === undefined || value === null || value === '') return placeholder;
   return String(value);
 }
+
+/**
+ * v0.7：把任意字符串变成可安全渲染成 <a href> 的 URL，不安全返回 null。
+ * jdUrl 来自 CSV 导入与同步信封，是不可信输入 —— `javascript:` 之类的
+ * 危险协议必须挡在渲染层；只放行 http/https。
+ */
+export function safeHref(raw: string | undefined | null): string | null {
+  const value = (raw || '').trim();
+  if (!value) return null;
+  try {
+    const url = new URL(value);
+    if (url.protocol !== 'http:' && url.protocol !== 'https:') return null;
+    return url.href;
+  } catch {
+    return null;
+  }
+}
