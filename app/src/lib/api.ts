@@ -144,6 +144,14 @@ export interface AppApi {
   updateApplication: (id: string, patch: Partial<Application>) => void;
   changeStatus: (id: string, status: Status, opts?: StatusChangeOpts) => void;
   deleteApplication: (id: string) => void;
+  /** v0.5 回收站：从回收站恢复（面试与沟通记录原样回来） */
+  restoreApplication: (id: string) => void;
+  /** v0.5 回收站：永久删除一条，不可撤销 */
+  purgeApplication: (id: string) => void;
+  /** v0.5 回收站：清空 */
+  emptyTrash: () => void;
+  /** v0.5 回收站：把到期时间再推 7 天 */
+  extendTrash: (id: string) => void;
 
   addNote: (applicationId: string, type: NoteType, content: string, at?: string) => void;
   deleteNote: (noteId: string) => void;
@@ -171,6 +179,18 @@ export interface AppApi {
   /** 面试日历 ICS（单向导出，导进系统日历） */
   exportIcs: () => void;
   importData: (file: File) => void;
+  /**
+   * 便携包（v0.5 / D5）：应用本体 + 当前数据打成一个 zip。
+   * 与 `exportData` 的区别：那个只有数据，别人拿到还得先找到 index.html。
+   */
+  exportPortable: () => Promise<void>;
+  /**
+   * 存储用量与配额（v0.5）。localStorage 后端拿不到真实配额，
+   * 只有 IndexedDB 后端才有值；返回 null 时 UI 不展示。
+   */
+  checkStorage: () => Promise<{ usage: number; quota: number; ratio: number } | null>;
+  /** 当前存储后端名（localStorage / IndexedDB），用于设置页如实告知 */
+  storageBackend: () => string;
 
   /* ---------------- 复盘二级 tab（v2） ---------------- */
   insightsTab: InsightsTab;

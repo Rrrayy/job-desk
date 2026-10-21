@@ -10,10 +10,12 @@ import type { Application, Status } from '../types';
 import {
   BOARD_COLUMNS,
   ENDED_STATUSES,
+  NOTE_TYPE_LABEL,
   STATUS_LABEL,
   STATUS_TONE,
   buildNoteIndex,
   interviewPhaseLabel,
+  latestUserNoteOf,
   nextInterviewOf,
   silenceStateOf,
   suggestionFor,
@@ -77,6 +79,9 @@ export function BoardView({ api }: { api: AppApi }) {
     const nextPhase = next ? interviewPhaseLabel(next, now, db.settings) : '';
     const suggestion = suggestionFor(app, silence);
     const noteCount = noteIndex.get(app.id)?.length ?? 0;
+    // v0.5：卡片上直接露出最新一条「我写的」记录 —— 不点开详情也能想起进度。
+    // auto 流水（同步/示例）不占这个位置，见 latestUserNoteOf 的注释。
+    const latestNote = latestUserNoteOf(noteIndex, app.id);
     const isEnded = ENDED_STATUSES.includes(app.status);
 
     return (
@@ -124,6 +129,19 @@ export function BoardView({ api }: { api: AppApi }) {
             .filter(Boolean)
             .join(' · ') || '还没填城市 / 渠道'}
         </div>
+
+        {latestNote ? (
+          // title 里放全文：一行截断不可避免，悬停能看到完整的
+          <div
+            className="app-card__note"
+            title={`${NOTE_TYPE_LABEL[latestNote.type]} · ${latestNote.content}`}
+          >
+            <span className={cx('app-card__note-type', `app-card__note-type--${latestNote.type}`)}>
+              {NOTE_TYPE_LABEL[latestNote.type]}
+            </span>
+            <span className="app-card__note-text">{latestNote.content}</span>
+          </div>
+        ) : null}
 
         <div className="app-card__signals">
           {isEnded ? (

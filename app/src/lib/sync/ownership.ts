@@ -67,6 +67,12 @@ export const FIELD_OWNERSHIP: Record<keyof Application, Ownership> = {
   nextActionAt: 'user-only',
   /** 静音是纯个人意图（「这段时间别催我」），平台永远不该碰 */
   mutedUntil: 'user-only',
+  /**
+   * v0.5：回收站标记。**平台永不触碰**。
+   * 否则会出现「你删掉的投递，下一次同步又被平台数据拉回来」这种灵异事件 ——
+   * 从用户视角那就是「删不掉」，比不同步更让人绝望。
+   */
+  deletedAt: 'never',
 };
 
 /** 会被同步写到的字段（UI 预览表列顺序 = 这个顺序） */

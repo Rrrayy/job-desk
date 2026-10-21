@@ -19,7 +19,14 @@ import {
 } from '../lib/rules';
 import { fmtDate, fmtDateTime, timeValue } from '../lib/date';
 import { companyLabel, cx } from '../lib/util';
+import { useVirtualList } from '../lib/virtual';
 import { DEFAULT_LIST_FILTERS, loadListFilters, saveListFilters, type ListFilterState } from '../lib/storage';
+
+/**
+ * 列表行高（px）。固定值 —— 虚拟滚动靠它算区间，改 CSS 必须同步改这里。
+ * 38 = 上下 padding 9×2 + 行内文字 20（12px 字号 × 1.66 行高）
+ */
+const ROW_HEIGHT = 38;
 
 type SortKey =
   | 'company'
@@ -174,6 +181,12 @@ export function ListView({ api }: { api: AppApi }) {
     return list;
   }, [db, now, statusFilter, channelFilter, versionFilter, cityFilter, keyword, sort]);
 
+  /**
+   * 窗口化（v0.5 / D6）：行高固定 38px（见 styles.css .table td 的 padding
+   * + line-height），所以能用纯算术算渲染区间。行高一旦改，这里必须同步改。
+   */
+  const virtual = useVirtualList({ rowHeight: ROW_HEIGHT, count: rows.length });
+
   const toggleSort = (key: SortKey): void => {
     setSort((prev) =>
       prev.key === key ? { key, dir: prev.dir === 'asc' ? 'desc' : 'asc' } : { key, dir: 'desc' },
@@ -320,7 +333,7 @@ export function ListView({ api }: { api: AppApi }) {
           </button>
         </div>
       ) : (
-        <div className="table-wrap">
+        <div className="table-wrap" ref={virtual.containerRef} onScroll={virtual.onScroll}>
           <table className="table">
             <thead>
               <tr>
@@ -333,7 +346,14 @@ export function ListView({ api }: { api: AppApi }) {
               </tr>
             </thead>
             <tbody>
-              {rows.map((row) => {
+              {/* v0.5 / D6：超过阈值时只渲染视口内的行，用两个占位行撑出滚动高度。
+                  占位用 <tr> 而不是 div —— <table> 里塞别的元素会被浏览器挪出表格外。 */}
+              {virtual.range.padTop > 0 ? (
+                <tr aria-hidden="true" className="table__spacer">
+                  <td colSpan={9} style={{ height: virtual.range.padTop, padding: 0, border: 0 }} />
+                </tr>
+              ) : null}
+              {rows.slice(virtual.range.start, virtual.range.end).map((row) => {
                 const stale = row.silence.level === 'stale';
                 const staleAt = effectiveStaleDays(row.app, db.settings);
                 return (
@@ -392,6 +412,11 @@ export function ListView({ api }: { api: AppApi }) {
                   </tr>
                 );
               })}
+              {virtual.range.padBottom > 0 ? (
+                <tr aria-hidden="true" className="table__spacer">
+                  <td colSpan={9} style={{ height: virtual.range.padBottom, padding: 0, border: 0 }} />
+                </tr>
+              ) : null}
             </tbody>
           </table>
         </div>

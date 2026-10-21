@@ -1212,6 +1212,45 @@ ol {
   white-space: nowrap;
 }
 
+/* v0.5 · 卡片上的「最新一条我写的记录」预览：类型 chip + 一行截断正文 */
+.app-card__note {
+  display: flex;
+  align-items: baseline;
+  gap: 6px;
+  margin-top: 5px;
+  min-width: 0;
+}
+
+.app-card__note-type {
+  flex: none;
+  font-size: 10px;
+  line-height: 1;
+  padding: 3px 5px;
+  border-radius: 4px;
+  background: var(--line-soft);
+  color: var(--ink-3);
+}
+
+/* 随手记用暖色，和「沟通」一眼可分（与详情页时间线的口径一致） */
+.app-card__note-type--memo {
+  background: var(--amber-soft);
+  color: #96601b;
+}
+
+.app-card__note-type--chat {
+  background: var(--indigo-soft);
+  color: var(--indigo-dark);
+}
+
+.app-card__note-text {
+  min-width: 0;
+  font-size: 11.5px;
+  color: var(--ink-2);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
 .app-card__signals {
   display: flex;
   flex-wrap: wrap;
@@ -1491,8 +1530,10 @@ ol {
   background: var(--surface);
   border: 1px solid var(--line);
   border-radius: var(--radius-lg);
-  overflow: hidden;
   box-shadow: var(--shadow-1);
+  /* v0.5：变成滚动容器，列表窗口化才能量到视口高度；表头靠 sticky 贴住 */
+  max-height: calc(100vh - 220px);
+  overflow: auto;
 }
 
 .table {
@@ -1511,6 +1552,10 @@ ol {
   cursor: pointer;
   white-space: nowrap;
   user-select: none;
+  /* v0.5：长列表滚动时表头贴住，否则看不到列名 */
+  position: sticky;
+  top: 0;
+  z-index: 1;
 }
 
 .table th:hover {
@@ -1530,6 +1575,8 @@ ol {
 .table tbody tr {
   cursor: pointer;
   transition: background 0.12s;
+  /* v0.5：固定行高是列表窗口化的前提（ListView 的 ROW_HEIGHT 必须与此一致） */
+  height: 38px;
 }
 
 .table tbody tr:hover {
@@ -4730,4 +4777,253 @@ button.chip:hover {
 
 .about-row__value--warn {
   color: #a83236 !important;
+}
+
+/* ==========================================================================
+   v0.5 · 回收站（软删除）
+   ========================================================================== */
+
+.trash-list {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin-top: 8px;
+}
+
+.trash-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 8px 10px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  background: var(--surface);
+}
+
+.trash-row--expiring {
+  border-color: #f0c98a;
+  background: var(--amber-soft);
+}
+
+.trash-row__main {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.trash-row__title {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--ink);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.trash-row__meta {
+  font-size: 11.5px;
+  color: var(--ink-3);
+}
+
+.trash-row__meta--warn {
+  color: #a8630a;
+  font-weight: 600;
+}
+
+.trash-row__actions {
+  flex: none;
+  display: flex;
+  gap: 4px;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+}
+
+.btn-row--tight {
+  display: flex;
+  gap: 6px;
+  flex-wrap: wrap;
+  align-items: center;
+}
+
+/* ==========================================================================
+   v0.5 · 导入增量合并（冲突确认面板）
+   ========================================================================== */
+
+.import__summary {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-bottom: 10px;
+}
+
+.import__stat {
+  font-size: 12px;
+  padding: 4px 9px;
+  border-radius: 999px;
+  background: var(--indigo-soft);
+  color: var(--indigo-dark);
+}
+
+.import__stat strong {
+  font-weight: 700;
+}
+
+.import__stat--dim {
+  background: var(--line-soft);
+  color: var(--ink-3);
+}
+
+.import__bulk {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  flex-wrap: wrap;
+  margin: 12px 0 8px;
+  font-size: 12px;
+}
+
+.import__bulk-btns {
+  display: flex;
+  gap: 6px;
+}
+
+.import__conflicts {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  list-style: none;
+  padding: 0;
+  margin: 0;
+}
+
+.import__conflict {
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  padding: 10px 12px;
+  background: var(--surface);
+}
+
+.import__conflict--on {
+  border-color: #b9c0f0;
+  background: #fbfbff;
+}
+
+.import__conflict-head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  cursor: pointer;
+}
+
+.import__conflict-title {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  font-size: 13px;
+}
+
+.import__conflict-job {
+  color: var(--ink-3);
+  font-size: 12px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.import__conflict-side {
+  flex: none;
+  font-size: 11.5px;
+  color: var(--ink-3);
+}
+
+.import__conflict--on .import__conflict-side {
+  color: var(--indigo-dark);
+  font-weight: 600;
+}
+
+.import__diff {
+  width: 100%;
+  margin-top: 8px;
+  border-collapse: collapse;
+  font-size: 12px;
+}
+
+.import__diff th,
+.import__diff td {
+  text-align: left;
+  padding: 4px 8px;
+  border-bottom: 1px dashed var(--line);
+  vertical-align: top;
+  word-break: break-word;
+}
+
+.import__diff thead th {
+  font-weight: 600;
+  color: var(--ink-3);
+  font-size: 11px;
+  border-bottom: 1px solid var(--line);
+}
+
+.import__diff tbody th {
+  font-weight: 500;
+  color: var(--ink-3);
+  width: 90px;
+  white-space: nowrap;
+}
+
+.import__diff tr:last-child th,
+.import__diff tr:last-child td {
+  border-bottom: none;
+}
+
+.import__diff-row--protected tbody th {
+  color: var(--ink-4);
+}
+
+.import__val--win {
+  color: #1f9d55;
+  font-weight: 600;
+}
+
+.import__val--lost {
+  color: var(--ink-4);
+  text-decoration: line-through;
+}
+
+.import__conflict-note {
+  margin: 6px 0 0;
+  font-size: 11.5px;
+  color: #96601b;
+}
+
+/* ==========================================================================
+   v0.5 · 列表窗口化（D6）
+   `max-height / overflow / sticky / height:38px` 已经合并回 .table-wrap /
+   .table th / .table tbody tr 的原始定义里（追加覆盖会留下两份冗余规则）。
+   这里只剩窗口化独有的占位行与窄屏适配。
+   ========================================================================== */
+
+.table__spacer,
+.table__spacer td {
+  background: transparent !important;
+  pointer-events: none;
+  cursor: default;
+}
+
+/* 窄屏下不再限高：手机上视口本来就小，再压一个内部滚动区会变成双层滚动 */
+@media (max-width: 720px) {
+  .table-wrap {
+    max-height: none;
+    overflow: visible;
+  }
+}
+
+.field__hint--danger {
+  color: #a83236;
+  font-weight: 500;
 }

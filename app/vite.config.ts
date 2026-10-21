@@ -22,6 +22,11 @@ export default defineConfig({
     outDir: 'dist',
     assetsDir: 'assets',
     cssCodeSplit: false,
+    // cssCodeSplit:false 时 vite 会把 CSS 原样交给 singlefile 插件，**不做压缩**。
+    // 单文件产物的体积直接等于用户下载量，所以这里显式打开。
+    // 用 esbuild 而不是 lightningcss：后者要额外装包，而本项目的
+    // 「构建链不加依赖」是写进 README 的承诺；esbuild 本来就是 vite 的传递依赖。
+    cssMinify: 'esbuild',
     assetsInlineLimit: 100 * 1024 * 1024,
     reportCompressedSize: false,
   },

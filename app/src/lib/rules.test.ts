@@ -15,10 +15,12 @@ import { defaultSettings, emptyDB } from './defaults';
 import {
   buildActionItems,
   buildDailyPlan,
+  buildNoteIndex,
   buildTodos,
   deadlineStateOf,
   effectiveStaleDays,
   isMuted,
+  latestUserNoteOf,
   muteRemainDays,
   SILENCE_STATUSES,
   silenceStateOf,
@@ -459,5 +461,57 @@ describe('restoreDeletedApplication：删错了能原样放回', () => {
     exp.applicationId = 'another-app';
     restoreDeletedApplication(after, deleted);
     expect(after.experiences.find((item) => item.id === id)?.applicationId).toBe('another-app');
+  });
+});
+
+/* ======================= v0.5 · 卡片预览：最新一条人写的记录 ======================= */
+
+describe('latestUserNoteOf', () => {
+  const note = (id: string, over: Partial<Note>): Note => ({
+    id,
+    applicationId: 'a1',
+    type: 'memo',
+    content: '内容',
+    touchedAt: '2026-10-20T08:00:00.000Z',
+    ...over,
+  });
+
+  it('桶为空时返回 null', () => {
+    expect(latestUserNoteOf(buildNoteIndex([]), 'a1')).toBeNull();
+    expect(latestUserNoteOf(buildNoteIndex([]), '不存在')).toBeNull();
+  });
+
+  it('返回最新的一条（桶内按时间倒序）', () => {
+    const index = buildNoteIndex([
+      note('old', { content: '旧的', touchedAt: '2026-10-19T08:00:00.000Z' }),
+      note('new', { content: '最新的', touchedAt: '2026-10-20T09:00:00.000Z' }),
+    ]);
+    expect(latestUserNoteOf(index, 'a1')?.id).toBe('new');
+  });
+
+  it('auto 流水不占预览位：最新一条是同步写的 → 跳过它取人写的', () => {
+    const index = buildNoteIndex([
+      note('auto1', { auto: true, content: 'BOSS 上变为已读', touchedAt: '2026-10-20T09:00:00.000Z' }),
+      note('mine', { content: 'HR 说下周一面', touchedAt: '2026-10-20T08:00:00.000Z' }),
+    ]);
+    const latest = latestUserNoteOf(index, 'a1');
+    expect(latest?.id).toBe('mine');
+    expect(latest?.content).toBe('HR 说下周一面');
+  });
+
+  it('全是 auto 时返回 null（宁可不显示，也不拿系统流水冒充用户记的）', () => {
+    const index = buildNoteIndex([
+      note('s1', { auto: true, touchedAt: '2026-10-20T09:00:00.000Z' }),
+      note('s2', { auto: true, touchedAt: '2026-10-19T09:00:00.000Z' }),
+    ]);
+    expect(latestUserNoteOf(index, 'a1')).toBeNull();
+  });
+
+  it('不同投递互不串：a2 的记录不会出现在 a1 的卡片上', () => {
+    const index = buildNoteIndex([
+      note('x', { applicationId: 'a2', content: '别人的' }),
+    ]);
+    expect(latestUserNoteOf(index, 'a1')).toBeNull();
+    expect(latestUserNoteOf(index, 'a2')?.id).toBe('x');
   });
 });

@@ -16,6 +16,17 @@
  *   收紧到 540 KB 之后，当前（v0.3.0）占 80%，剩下的 88 KB 大约等于"再做一个同量级功能"
  *   就要停下来优化 —— 这才是红线该有的手感：不痛不痒的阈值等于没有阈值。
  *
+ * ★ v0.5 为什么把 WARN 提到 490 KB、FAIL 保持 540 KB：
+ *   v0.5 一次落了五个地基功能（存储后端抽象、回收站、导入增量合并、
+ *   便携包、列表窗口化），实测 479 KB。此时 470 的水位会**常态报警**，
+ *   而常态报警等于没有报警 —— 与 v0.3 把 600 收到 540 是同一条逻辑的反向应用。
+ *   所以只把 WARN 抬到 490（留 11 KB 余量），FAIL 不动：
+ *   红线仍然是「再塞一个同量级功能就必须先优化」的位置。
+ *   本次 +30 KB 的构成见 docs/CHANGELOG：新增库代码约 18 KB
+ *   （portable 4.0 / merge 3.7 / trash 2.8 / idb 2.3 / backend 1.5 /
+ *   detect 1.2 / virtual 1.2 / selfSnapshot 1.2），
+ *   UI 与接线约 12 KB，样式 +4.5 KB（压缩后约 3.4 KB）。
+ *
  * ★ 改动阈值必须写进 docs/RELEASE-NOTES：涨红线不是技术决策，是产品决策。
  */
 
@@ -23,7 +34,7 @@ import { existsSync, statSync } from 'node:fs';
 import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
-const WARN_BYTES = 470 * 1024;
+const WARN_BYTES = 490 * 1024;
 const FAIL_BYTES = 540 * 1024;
 
 /**

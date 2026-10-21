@@ -2,11 +2,13 @@
  * 设置抽屉：阈值 / 每周目标 / 课程时间段 / 默认简历版本 / 示例数据 / 清空 / 导入导出。
  */
 
-import { useMemo, useRef, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import type { AppApi } from '../lib/api';
-import type { AppSettings, PlatformId } from '../types';
+import type { AppSettings, Application, PlatformId } from '../types';
 import { BUDGET, budgetLevelOf, formatBytes, measureDB } from '../lib/budget';
 import { getLastExportAt, purgeRollbackPoints, rollbackPointsSize } from '../lib/storage';
+import { trashDaysLeft } from '../lib/trash';
+import { cx, companyLabel } from '../lib/util';
 import { PLATFORM_LABEL } from '../adapters/registry';
 import { CommunityImport } from './interview/CommunityImport';
 
@@ -17,6 +19,14 @@ export interface SettingsDrawerProps {
   onClose: () => void;
   importError: string | null;
   onDismissError: () => void;
+  /**
+   * v0.5：z 回收站里的投递。
+   *
+   * 为什么单独传而不从 `api.db` 里取：`api.db` 是**已经摘掉回收站**的视图库
+   * （全库唯一过滤点在 App）。设置页是唯一需要「看见已删除」的地方，
+   * 所以它显式接收这份数据 —— 边界写在签名上，比在组件里猜「这个 db 是哪种」可靠。
+   */
+  trashed: Application[];
 }
 
 type NumberKey =
@@ -26,14 +36,34 @@ type NumberKey =
   | 'wishlistExpireDays'
   | 'weeklyApplyGoal';
 
-export function SettingsDrawer({ api, onClose, importError, onDismissError }: SettingsDrawerProps) {
+export function SettingsDrawer({ api, onClose, importError, onDismissError, trashed }: SettingsDrawerProps) {
   const { db } = api;
   const settings = db.settings;
   const [confirmClear, setConfirmClear] = useState(false);
   const [confirmSample, setConfirmSample] = useState(false);
+  const [confirmEmptyTrash, setConfirmEmptyTrash] = useState(false);
+  const [purgeTarget, setPurgeTarget] = useState<string | null>(null);
+
+  /**
+   * 存储用量（v0.5）。打开设置页时才查一次，不轮询 ——
+   * `navigator.storage.estimate()` 在部分浏览器会碰磁盘，每帧调是浪费。
+   */
+  const [storage, setStorage] = useState<{ usage: number; quota: number; ratio: number } | null>(null);
+  const backendName = api.storageBackend();
+  useEffect(() => {
+    let alive = true;
+    void api.checkStorage().then((result) => {
+      if (alive) setStorage(result);
+    });
+    return () => {
+      alive = false;
+    };
+  }, [api]);
   const fileRef = useRef<HTMLInputElement | null>(null);
   const [rollbackSize, setRollbackSize] = useState(() => rollbackPointsSize());
   const [lastExportAt] = useState(() => getLastExportAt());
+  /** 回收站「还剩几天」要跟着时间走，抽屉打开时算一次就够（不会有人开着抽屉跨天） */
+  const [trashNow] = useState(() => new Date());
 
   /**
    * 备份提醒的口径：从未导出 = 提醒；超过 7 天 = 提醒。
@@ -171,6 +201,9 @@ export function SettingsDrawer({ api, onClose, importError, onDismissError }: Se
               <button type="button" className="btn btn--small" onClick={api.exportIcs}>
                 导出日历
               </button>
+              <button type="button" className="btn btn--small" onClick={() => void api.exportPortable()}>
+                导出便携包
+              </button>
               <input
                 ref={fileRef}
                 type="file"
@@ -193,12 +226,114 @@ export function SettingsDrawer({ api, onClose, importError, onDismissError }: Se
               </div>
             ) : null}
             <p className="field__hint">
-              数据存在这个浏览器的 localStorage（key: jobdesk.v1）。换电脑请先导出再导入。
+              数据存在这个浏览器里（key: <code>jobdesk.v1</code>），当前用 <strong>{backendName}</strong>。
+              双击打开文件时用 localStorage（上限约 5 MB）；通过 http(s) 访问时自动改用 IndexedDB，容量大得多。
+              换电脑请先导出再导入。
             </p>
+            {storage ? (
+              <p className={storage.ratio > 0.8 ? 'field__hint field__hint--danger' : 'field__hint'}>
+                已用 {formatBytes(storage.usage)} / 可用 {formatBytes(storage.quota)}（
+                {Math.round(storage.ratio * 100)}%）
+                {storage.ratio > 0.8 ? ' ——  快到上限了，建议先导出备份。' : '。'}
+              </p>
+            ) : null}
             <p className="field__hint">
               <strong>只有 JSON 能导入回来</strong>。CSV 给 Excel 看、日历给系统日历看，两个都是单向的，
               别拿它们当备份。
             </p>
+            <p className="field__hint">
+              <strong>导出便携包</strong>
+              是把「应用本体 + 数据 + 使用说明」打成一个 zip，对方解压双击就能看，不用先装什么。
+              想换电脑、发给同学看，用它；只是备份，用「导出 JSON」就够。
+            </p>
+
+            {/* -------------------------- 回收站（v0.5） -------------------------- */}
+            <div className="data-card">
+              <div>
+                <div className="data-card__title">
+                  回收站{trashed.length > 0 ? ` · ${trashed.length} 条` : ''}
+                </div>
+                <div className="data-card__text">
+                  {trashed.length === 0
+                    ? '删除的投递会在这里留 30 天，面试和沟通记录一并保留，随时能找回。'
+                    : '删除的投递在这里留 30 天。到期自动永久删除，也可以现在就清空。'}
+                </div>
+              </div>
+              {trashed.length > 0 ? (
+                confirmEmptyTrash ? (
+                  <div className="btn-row">
+                    <button
+                      type="button"
+                      className="btn btn--small btn--danger"
+                      onClick={() => {
+                        api.emptyTrash();
+                        setConfirmEmptyTrash(false);
+                      }}
+                    >
+                      确认清空 {trashed.length} 条
+                    </button>
+                    <button type="button" className="btn btn--small" onClick={() => setConfirmEmptyTrash(false)}>
+                      取消
+                    </button>
+                  </div>
+                ) : (
+                  <button type="button" className="btn btn--small" onClick={() => setConfirmEmptyTrash(true)}>
+                    清空回收站
+                  </button>
+                )
+              ) : null}
+            </div>
+
+            {trashed.length > 0 ? (
+              <ul className="trash-list">
+                {trashed.map((app) => {
+                  const days = trashDaysLeft(app, trashNow);
+                  const urgent = days !== null && days <= 3;
+                  return (
+                    <li key={app.id} className={cx('trash-row', urgent && 'trash-row--expiring')}>
+                      <div className="trash-row__main">
+                        <span className="trash-row__title">
+                          {companyLabel(db.companies, app.companyId)} · {app.jobTitle}
+                        </span>
+                        <span className={cx('trash-row__meta', urgent && 'trash-row__meta--warn')}>
+                          {deletedDay(app.deletedAt)} 删除 ·{' '}
+                          {days === null ? '已到期' : `还剩 ${days} 天`}
+                        </span>
+                      </div>
+                      <div className="trash-row__actions btn-row btn-row--tight">
+                        <button type="button" className="btn btn--tiny btn--primary" onClick={() => api.restoreApplication(app.id)}>
+                          恢复
+                        </button>
+                        <button type="button" className="btn btn--tiny" onClick={() => api.extendTrash(app.id)}>
+                          再留 7 天
+                        </button>
+                        {purgeTarget === app.id ? (
+                          <>
+                            <button
+                              type="button"
+                              className="btn btn--tiny btn--danger"
+                              onClick={() => {
+                                api.purgeApplication(app.id);
+                                setPurgeTarget(null);
+                              }}
+                            >
+                              确认永久删除
+                            </button>
+                            <button type="button" className="btn btn--tiny" onClick={() => setPurgeTarget(null)}>
+                              取消
+                            </button>
+                          </>
+                        ) : (
+                          <button type="button" className="btn btn--tiny btn--danger-ghost" onClick={() => setPurgeTarget(app.id)}>
+                            永久删除
+                          </button>
+                        )}
+                      </div>
+                    </li>
+                  );
+                })}
+              </ul>
+            ) : null}
 
             <div className="data-card">
               <div>
@@ -431,4 +566,12 @@ function formatLocalMinute(iso: string): string {
   if (Number.isNaN(date.getTime())) return iso;
   const pad = (value: number): string => (value < 10 ? `0${value}` : String(value));
   return `${date.getMonth() + 1}/${date.getDate()} ${pad(date.getHours())}:${pad(date.getMinutes())}`;
+}
+
+/** 回收站里的「哪天删的」：只要日期，不显示时分（用户不关心几点删的） */
+function deletedDay(iso: string | null | undefined): string {
+  if (!iso) return '之前';
+  const date = new Date(iso);
+  if (Number.isNaN(date.getTime())) return '之前';
+  return `${date.getMonth() + 1}/${date.getDate()}`;
 }

@@ -182,6 +182,23 @@ export function buildNoteIndex(notes: Note[]): NoteIndex {
 }
 
 /**
+ * 卡片上要展示的「最新一条人写的记录」（v0.5）。
+ *
+ * 为什么过滤 `auto`：示例数据和同步引擎都会写 `auto: true` 的流水
+ * （「状态改为已投递」「BOSS 上变为已读」），这些是系统行为不是用户的话。
+ * 卡片预览的目的只有一个 —— 不点开详情就能想起「我上次记了什么」，
+ * 系统流水帮不上这个忙，反而会把用户真正写的那条挤掉。
+ * 桶内已按时间倒序（buildNoteIndex 保证），所以 find 到的第一条就是最新的。
+ *
+ * 全是人写的都没有时返回 null（卡片就不显示预览行，与「0 条记录」一致）。
+ */
+export function latestUserNoteOf(index: NoteIndex, appId: string): Note | null {
+  const bucket = index.get(appId);
+  if (!bucket) return null;
+  return bucket.find((note) => !note.auto) ?? null;
+}
+
+/**
  * 沉默基准时间：状态变更时间与所有 note 时间的最大值。
  * 只要新增任意一条 Note 或状态变更，基准立刻刷新 —— 红色标记自动消失。
  *

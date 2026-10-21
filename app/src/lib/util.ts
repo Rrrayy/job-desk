@@ -68,16 +68,13 @@ export async function copyText(text: string): Promise<boolean> {
 }
 
 /**
- * 触发浏览器下载一段文本，返回是否成功。
+ * 触发浏览器下载一个 Blob，返回是否成功。
  *
- * 为什么必须收口到一个函数：这三步每步都有坑，各页面各写一遍必然有人漏。
- * 1. `URL.createObjectURL` 不 revoke 就是内存泄漏（单文件应用开一天会积很多）；
- * 2. `<a>` 必须 append 到 body 再 click，否则 Firefox 不触发下载；
- * 3. MIME 里带 charset，否则部分环境把中文当 latin-1 解。
+ * `downloadText` 与便携包（zip）共用这一段 —— 三个坑（不 revoke、
+ * 不 append 到 body、MIME 大小写）在两条路径上一模一样，不能各写一份。
  */
-export function downloadText(text: string, mime: string, filename: string): boolean {
+export function downloadBlob(blob: Blob, filename: string): boolean {
   try {
-    const blob = new Blob([text], { type: `${mime};charset=utf-8` });
     const url = URL.createObjectURL(blob);
     const link = document.createElement('a');
     link.href = url;
@@ -90,6 +87,28 @@ export function downloadText(text: string, mime: string, filename: string): bool
   } catch {
     return false;
   }
+}
+
+/**
+ * 触发浏览器下载一段文本，返回是否成功。
+ *
+ * 为什么必须收口到一个函数：这三步每步都有坑，各页面各写一遍必然有人漏。
+ * 1. `URL.createObjectURL` 不 revoke 就是内存泄漏（单文件应用开一天会积很多）；
+ * 2. `<a>` 必须 append 到 body 再 click，否则 Firefox 不触发下载；
+ * 3. MIME 里带 charset，否则部分环境把中文当 latin-1 解。
+ */
+export function downloadText(text: string, mime: string, filename: string): boolean {
+  return downloadBlob(new Blob([text], { type: `${mime};charset=utf-8` }), filename);
+}
+
+/** UTF-8 编码成字节（便携包 zip 需要原始字节） */
+export function textBytes(text: string): Uint8Array {
+  return new TextEncoder().encode(text);
+}
+
+/** 两位补零（日期、时分） */
+export function pad2(n: number): string {
+  return String(n).padStart(2, '0');
 }
 
 /** 数字输入解析：空字符串返回 undefined */

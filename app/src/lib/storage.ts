@@ -20,10 +20,91 @@ import {
   writePointer,
   writeRollbackPoint,
 } from './rollback';
+import { localBackend, type StorageBackend } from './storage/backend';
+import { detectBackend } from './storage/detect';
 import { type ImportResult, validateV2 } from './validateV2';
 
 export { defaultSettings, emptyDB };
 export type { ImportResult };
+
+/* ------------------------- v0.5：存储后端接入 ------------------------- */
+
+/**
+ * 当前后端怎么定、什么时候定。
+ *
+ * 约束：启动路径（`useState(() => loadDB())`）是**同步**的，不能为了 IDB 把整个
+ * App 改成 await 引导 —— 那会牵动「渲染失败页并 return」的时序，而那段时序
+ * 正是 QA D4 那次数据丢失事故的现场，不能拿它换一个异步签名。
+ *
+ * 所以：
+ * - `file://`  → localStorage，模块加载时直接定（同步、可预测、就是主场景）
+ * - `https://` → localStorage（第三方平台托管，容量本就宽松，不值得引入 IDB 的复杂度）
+ * - `http://`  → IndexedDB（本地开发 / 自建服务器），这是唯一允许异步的分支
+ *
+ * 注意 http 下首个同步读会返回「读取中」，由 `whenReady()` 之后的重新加载补上。
+ * 这个窗口只有几十毫秒，且**闸门是锁着的**，绝不会有东西被覆盖。
+ */
+let backendPinned: StorageBackend | null = null;
+let backendReady: Promise<void> = Promise.resolve();
+
+export function activeBackend(): StorageBackend {
+  if (backendPinned) return backendPinned;
+  return localBackend;
+}
+
+export function activeBackendName(): string {
+  return activeBackend().name;
+}
+
+/** 后端就绪（http 下的 IDB 探测完成后 resolve）；其它情况立刻 resolve */
+export function whenBackendReady(): Promise<void> {
+  return backendReady;
+}
+
+/**
+ * 同步读：只对 localStorage 成立。IDB 下返回 `pending`，
+ * 由调用方决定「先当空的、就绪后重读」—— 见 App 的 boot 逻辑。
+ */
+type SyncRead =
+  | { status: 'ok'; value: string }
+  | { status: 'empty' }
+  | { status: 'error'; message: string }
+  | { status: 'pending' };
+
+function readSync(backend: StorageBackend, key: string): SyncRead {
+  if (backend.name !== 'localStorage') return { status: 'pending' };
+  try {
+    const value = localStorage.getItem(key);
+    return value === null ? { status: 'empty' } : { status: 'ok', value };
+  } catch {
+    return { status: 'error', message: '浏览器禁止了本地存储，数据无法读取。请检查隐私设置。' };
+  }
+}
+
+/**
+ * 模块加载即定后端。同步分支（file:// / https）在这里就落地；
+ * 只有 http 会进入异步探测，并在完成后把 `backendPinned` 换掉。
+ */
+function bootBackend(): void {
+  const protocol = typeof location === 'undefined' ? '' : location.protocol;
+  if (protocol !== 'http:') {
+    // file:// 与 https:// 都用 localStorage：前者是 IDB 本来就不支持，
+    // 后者是托管平台的配额够用，没必要为省容量引入异步引导。
+    backendPinned = localBackend;
+    backendReady = Promise.resolve();
+    return;
+  }
+  backendReady = detectBackend().then((result) => {
+    backendPinned = result.backend;
+  });
+}
+
+bootBackend();
+
+/** 供 App 在探测完成后判断「要不要因为换了后端而重读一次」 */
+export function isBackendPending(): boolean {
+  return backendPinned === null;
+}
 
 const STORAGE_KEY = 'jobdesk.v1';
 const UI_KEY = 'jobdesk.v1.ui';
@@ -186,14 +267,44 @@ function readDB(): LoadResult {
     return { db: emptyDB(), error: '当前浏览器不支持本地存储，数据不会被保存。' };
   }
 
-  let raw: string | null = null;
-  try {
-    raw = localStorage.getItem(STORAGE_KEY);
-  } catch {
-    return { db: emptyDB(), error: '浏览器禁止了本地存储，数据无法保存。请检查隐私设置。' };
+  // v0.5：主数据走「当前后端」（localStorage 或 IndexedDB）。
+  // 这一层之上的一切（校验、迁移、坏数据隔离、上锁）与 v0.4.1 完全相同 ——
+  // 后端只负责「把字符串拿给我」，不参与任何业务判断。
+  const backend = activeBackend();
+  const outcome = readSync(backend, STORAGE_KEY);
+  if (outcome.status === 'empty') return { db: emptyDB(), error: null };
+  if (outcome.status === 'error') {
+    // 读不出来的原因可能是后端不可用（而不是数据坏了）：
+    // 这时绝不能当「空库」继续写，否则一次渲染就把用户数据覆盖掉（QA D4 的老坑）。
+    return {
+      db: emptyDB(),
+      error: outcome.message,
+      migration: {
+        failed: true,
+        from: 1,
+        backupKey: null,
+        failedAtKey: null,
+        raw: '',
+        reason: outcome.message,
+      },
+    };
   }
-  if (!raw) return { db: emptyDB(), error: null };
+  if (outcome.status === 'pending') {
+    // http 下 IDB 还没探测完。返回空库，但在调用方（App）进入主界面之前
+    // 必须等 `whenBackendReady()` 并重新 loadDBAsync 一次。
+    return { db: emptyDB(), error: null };
+  }
+  return readDBFromRaw(outcome.value);
+}
 
+/**
+ * 从「已拿到的原始字符串」走完校验 / 迁移 / 坏数据隔离。
+ *
+ * ★ 这是 v0.5 抽出来的：后端换成 IndexedDB 后，读出来的是一段字符串，
+ *   字符串之后的一切必须与 localStorage 路径**完全同一条代码**，
+ *   否则「同一个备份，file:// 打开能读、http 打开读不出」这种鬼故事就会发生。
+ */
+function readDBFromRaw(raw: string): LoadResult {
   sweepRollbackPoints(new Date().toISOString());
 
   let parsed: unknown;
@@ -339,16 +450,111 @@ function writeDB(db: DB): string | null {
     return '保存失败：数据无法被序列化（可能存在循环引用）。请立刻导出备份。';
   }
   const size = text.length;
-  if (size >= BUDGET.block) {
+  // ★ v0.5：体积上限只在 localStorage 后端生效。
+  //   IndexedDB 的配额是磁盘百分比（几百 MB 起步），4.5MB 这个数字是为
+  //   localStorage 的 5MB 天花板留的余量，套到 IDB 上会让「大库」这个
+  //   唯一卖点当场失效。IDB 下改为配额预检（见 checkQuota）。
+  const backend = activeBackend();
+  if (backend.name === 'localStorage' && size >= BUDGET.block) {
     return `数据已达约 ${Math.round(size / 10000) / 100} 万字符，超过安全上限，已暂停写入。请先导出备份，再清理一批已结束的投递。`;
   }
-  try {
-    localStorage.setItem(STORAGE_KEY, text);
-    return null;
-  } catch (error) {
-    const message = error instanceof Error ? error.message : '未知错误';
-    return `保存失败（${message}）。可能是浏览器存储空间不足或被禁用。请立刻导出备份。`;
+  if (backend.name === 'localStorage') {
+    try {
+      localStorage.setItem(STORAGE_KEY, text);
+      return null;
+    } catch (error) {
+      const message = error instanceof Error ? error.message : '未知错误';
+      return `保存失败（${message}）。可能是浏览器存储空间不足或被禁用。请立刻导出备份。`;
+    }
   }
+
+  // IndexedDB：写入是异步的，但 saveDB 的签名必须保持 sync（调用方是 useEffect，
+  // 且要能立刻拿到错误串去展示）。做法是「排队 + 只保留最新一版」：
+  // 连续 mutate 三次只落盘最后一版，中途的中间态没有保存价值。
+  queueIDBWrite(backend, text);
+  return null;
+}
+
+/* ---------------------- IndexedDB 写队列（只留最新一版） ---------------------- */
+
+let writeChain: Promise<void> = Promise.resolve();
+let queued: { backend: StorageBackend; text: string } | null = null;
+let lastWriteError: string | null = null;
+const writeErrorListeners = new Set<(message: string | null) => void>();
+
+/** 订阅 IDB 异步写失败（同步签名拿不到，只能事后通知） */
+export function onAsyncWriteError(listener: (message: string | null) => void): () => void {
+  writeErrorListeners.add(listener);
+  return () => writeErrorListeners.delete(listener);
+}
+
+/** 最近一次异步写失败的原因；成功后清空 */
+export function getAsyncWriteError(): string | null {
+  return lastWriteError;
+}
+
+function reportWriteError(message: string | null): void {
+  if (lastWriteError === message) return;
+  lastWriteError = message;
+  for (const listener of writeErrorListeners) listener(message);
+}
+
+function queueIDBWrite(backend: StorageBackend, text: string): void {
+  queued = { backend, text };
+  writeChain = writeChain.then(async () => {
+    const job = queued;
+    if (!job) return;
+    queued = null; // 先清再写：写入期间新的写入会重新排队，不会丢
+    const error = await job.backend.write(STORAGE_KEY, job.text);
+    reportWriteError(error);
+  });
+}
+
+/** 测试与「导出前」用：等所有排队中的写入落盘 */
+export async function flushWrites(): Promise<void> {
+  await writeChain;
+}
+
+/**
+ * 异步版启动读取（v0.5）。
+ *
+ * 为什么需要两个入口：`loadDB()` 是同步的、给 localStorage 后端和既有测试用；
+ * http 下后端是 IndexedDB，同步读拿不到东西 —— 这时**必须 await 这个**，
+ * 绝不能把同步结果的空库当成真数据进主界面（那就是 485 字节事故的翻版）。
+ */
+export async function loadDBAsync(): Promise<LoadResult> {
+  await whenBackendReady();
+  const backend = activeBackend();
+  if (backend.name === 'localStorage') return loadDB();
+
+  const outcome = await backend.read(STORAGE_KEY);
+  if (outcome.status === 'error') {
+    const result: LoadResult = {
+      db: emptyDB(),
+      error: outcome.message,
+      migration: {
+        failed: true,
+        from: 1,
+        backupKey: null,
+        failedAtKey: null,
+        raw: '',
+        reason: outcome.message,
+      },
+    };
+    lockPersistence();
+    return result;
+  }
+  const result =
+    outcome.status === 'empty' ? { db: emptyDB(), error: null } : readDBFromRaw(outcome.value);
+  if (result.migration?.failed) lockPersistence();
+  return result;
+}
+
+/** 配额预检（v0.5）：剩余 < 10% 时提醒用户导出归档 */
+export async function checkQuota(): Promise<{ usage: number; quota: number; ratio: number } | null> {
+  const estimate = await activeBackend().estimate();
+  if (!estimate || estimate.quota <= 0) return null;
+  return { ...estimate, ratio: estimate.usage / estimate.quota };
 }
 
 /**

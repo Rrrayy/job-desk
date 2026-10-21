@@ -36,6 +36,8 @@ import type {
 } from './types';
 import type { NewCalendarEventInput, ParsedCourseInput } from './lib/api';
 import {
+  activeBackendName,
+  checkQuota,
   emptyDB,
   exportJSON,
   importFromText,
@@ -53,13 +55,21 @@ import { buildSampleDB } from './lib/sample';
 import {
   STATUS_LABEL,
   lastActivityAtOf,
-  restoreDeletedApplication,
   revertStatusChange,
   statusChangeText,
-  type DeletedApplication,
   type StatusUndo,
 } from './lib/rules';
-import { cloneDB, companyFullName, companyLabel, downloadText, uid } from './lib/util';
+import { sweepTrash, trashReminder, trashedApps, visibleDB } from './lib/trash';
+import { cloneDB, companyFullName, companyLabel, downloadBlob, downloadText, pad2, textBytes, uid } from './lib/util';
+import {
+  PORTABLE_FILES,
+  buildZip,
+  formatSums,
+  portableReadme,
+  portableZipName,
+  type ZipEntry,
+} from './lib/portable';
+import { rebuildSelfHtml, sha256Hex } from './lib/selfSnapshot';
 import { todayISO } from './lib/date';
 import { budgetLevelOf, clampText, measureDB } from './lib/budget';
 import {
@@ -73,6 +83,8 @@ import { markdownFileName, renderManyMarkdown } from './lib/interviewMarkdown';
 import { detectCapture, pickAdapter, toAdapterInput } from './lib/sync/capture';
 import { apply as applyMerge, plan as planMerge, revertSync } from './lib/sync/engine';
 import type { MergePlan, PlannedRow, SyncUndo } from './lib/sync/types';
+// 导入合并计划与同步合并计划是两个东西（一个是 DB 级、一个是字段级），故意分名
+import { mergeImport, type MergePlan as ImportPlan } from './lib/merge';
 import { TopBar, type SearchHit } from './components/TopBar';
 import { TodoBar } from './components/TodoBar';
 import { TodayView } from './components/TodayView';
@@ -88,6 +100,7 @@ import { Welcome } from './components/Welcome';
 import { MigrationFailPage } from './components/MigrationFailPage';
 import { BulkBanner } from './components/BulkBanner';
 import { SyncDrawer, type SyncStep } from './components/sync/SyncDrawer';
+import { ImportConfirm } from './components/ImportConfirm';
 import { QuickNote } from './components/interview/QuickNote';
 import { ExperienceEditor } from './components/interview/ExperienceEditor';
 
@@ -96,7 +109,11 @@ const VIEW_KEYS: ViewKey[] = ['today', 'board', 'list', 'calendar', 'insights'];
 /** 一次可撤销的操作。v0.2 起不再只有状态变更，v0.4.1 起加入「删除投递」 */
 type Undo =
   | { kind: 'status'; status: StatusUndo }
-  | { kind: 'delete'; deleted: DeletedApplication }
+  /** v0.5：软删除后只需按 id 把标记清掉 —— 面试/备注本来就没被动过 */
+  | { kind: 'delete'; appId: string }
+  /** v0.5：导入合并。整库快照回滚是这里唯一允许的「整库级」撤销 ——
+   *  因为导入本身就是一次全库级操作，按条撤销没有意义 */
+  | { kind: 'import'; previous: DB }
   | { kind: 'sync'; sync: SyncUndo };
 
 /** 撤销栈里的一格：撤销动作 + 给用户看的名字 +（可选）重做动作 */
@@ -126,12 +143,25 @@ function initialUI(): UIBoot {
 
 export default function App() {
   const [boot, setBoot] = useState<LoadResult>(() => loadDB());
-  const [db, setDb] = useState<DB>(boot.db);
-  const dbRef = useRef<DB>(boot.db);
+  // v0.5：启动即清一次过期回收站。放在 useState 初始化里（而不是 effect），
+  // 是为了让「清理」发生在第一帧渲染之前 —— 否则用户会先看到一条已过期 30 天的
+  // 幽灵记录闪一下再消失。返回值里带 removedApps 用于事后告知。
+  const [swept] = useState(() => sweepTrash(boot.db, new Date()));
+  const [db, setDb] = useState<DB>(swept.db);
+  const dbRef = useRef<DB>(swept.db);
   const [loadError, setLoadError] = useState<string | null>(boot.error);
   const [emptyContinue, setEmptyContinue] = useState(false);
   const [saveError, setSaveError] = useState<string | null>(null);
   const [importError, setImportError] = useState<string | null>(null);
+  /**
+   * 导入冲突裁决（v0.5 / D4）。三个状态必须一起动：
+   * - snapshot：导入前的整库 JSON，用户点「取消」或撤销时都靠它
+   * - pending ：待裁决的计划（含原始备份 db，改主意重算时用）
+   * - overwrite：用户勾了「用备份覆盖」的本地 id 集合（默认空 = 全保留本地）
+   */
+  const [importOpen, setImportOpen] = useState(false);
+  const [importPending, setImportPending] = useState<{ incoming: DB; plan: ImportPlan } | null>(null);
+  const [importOverwrite, setImportOverwrite] = useState<ReadonlySet<string>>(() => new Set<string>());
 
   const [ui] = useState<UIBoot>(initialUI);
   const [view, setViewState] = useState<ViewKey>(ui.view);
@@ -199,8 +229,15 @@ export default function App() {
       const undo = entry.undo;
       mutate((draft) => {
         if (undo.kind === 'status') revertStatusChange(draft, undo.status);
-        else if (undo.kind === 'delete') restoreDeletedApplication(draft, undo.deleted);
-        else revertSync(draft, undo.sync);
+        else if (undo.kind === 'delete') {
+          draft.applications = draft.applications.map((app) =>
+            app.id === undo.appId ? { ...app, deletedAt: null } : app,
+          );
+        } else if (undo.kind === 'import') {
+          // 整库恢复：导入这一次操作本来就是全库级的，按条撤销没有意义。
+          // 先清空再赋值，保持 draft 的对象身份不变（mutate 依赖它被 recipe 改）
+          Object.assign(draft, structuredClone(undo.previous));
+        } else revertSync(draft, undo.sync);
       });
     },
     [mutate],
@@ -257,6 +294,24 @@ export default function App() {
     const error = saveDB(db);
     setSaveError(error);
   }, [db]);
+
+  // 启动提示（v0.5）：先说过期清理，再说即将到期 —— 两件事别抢一个 toast
+  useEffect(() => {
+    if (swept.removedApps > 0) {
+      showToast(
+        `回收站里有 ${swept.removedApps} 条投递已满 30 天，已自动永久删除（含 ${swept.removedInterviews} 场面试、${swept.removedNotes} 条记录）`,
+      );
+      return;
+    }
+    const reminder = trashReminder(swept.db, new Date());
+    if (reminder.expiring > 0) {
+      showToast(
+        `回收站有 ${reminder.expiring} 条投递归将在 ${reminder.soonestDaysLeft ?? 1} 天内永久删除，可在设置里恢复`,
+      );
+    }
+    // 只在启动时提示一次：[swept] 恒定，不会因为之后的数据变化重复弹
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   // 记住当前视图 + 复盘二级 tab
   useEffect(() => {
@@ -443,31 +498,93 @@ export default function App() {
       const current = dbRef.current;
       const app = current.applications.find((item) => item.id === id);
       if (!app) return;
-      // 删除前先把「这一条投递带走的行」拍下来，撤销时才可能原样放回
-      const deleted: DeletedApplication = {
-        app,
-        interviews: current.interviews.filter((item) => item.applicationId === id),
-        notes: current.notes.filter((item) => item.applicationId === id),
-        experienceIds: current.experiences
-          .filter((item) => item.applicationId === id)
-          .map((item) => item.id),
-      };
+      // ★ v0.5：删除改为**软删除**（进回收站 30 天），不再抹掉行。
+      //   所以这里不需要再手工拍「这一条带走了哪些面试/备注」——
+      //   它们原样留在库里，靠父投递的 deletedAt 推导可见性（见 lib/trash.ts）。
+      const nowIso = new Date().toISOString();
+      const interviewCount = current.interviews.filter((item) => item.applicationId === id).length;
+      const noteCount = current.notes.filter((item) => item.applicationId === id).length;
       mutate((draft) => {
-        draft.applications = draft.applications.filter((a) => a.id !== id);
-        draft.interviews = draft.interviews.filter((i) => i.applicationId !== id);
-        draft.notes = draft.notes.filter((n) => n.applicationId !== id);
-        // 面经不跟着删：companyName/jobTitle 是冗余快照，删投递不该丢掉你写过的经验
-        draft.experiences = draft.experiences.map((exp) =>
-          exp.applicationId === id ? { ...exp, applicationId: null } : exp,
+        draft.applications = draft.applications.map((a) =>
+          a.id === id ? { ...a, deletedAt: nowIso } : a,
         );
       });
       pushUndo({
-        label: `删除「${app.jobTitle}」（含 ${deleted.interviews.length} 场面试、${deleted.notes.length} 条记录）`,
-        undo: { kind: 'delete', deleted },
+        label: `删除「${app.jobTitle}」（含 ${interviewCount} 场面试、${noteCount} 条记录，可在回收站找回）`,
+        undo: { kind: 'delete', appId: id },
         redo: () => deleteApplication(id),
       });
     },
     [mutate, pushUndo],
+  );
+
+  /* ------------------------------ 回收站操作（v0.5） ------------------------------ */
+
+  const restoreApplication = useCallback(
+    (id: string): void => {
+      const app = dbRef.current.applications.find((item) => item.id === id);
+      if (!app) return;
+      mutate((draft) => {
+        draft.applications = draft.applications.map((item) =>
+          item.id === id ? { ...item, deletedAt: null } : item,
+        );
+      });
+      showToast(`已恢复「${app.jobTitle}」：面试与沟通记录都在`);
+    },
+    [mutate, showToast],
+  );
+
+  const purgeApplication = useCallback(
+    (id: string): void => {
+      const app = dbRef.current.applications.find((item) => item.id === id);
+      if (!app) return;
+      mutate((draft) => {
+        draft.applications = draft.applications.filter((item) => item.id !== id);
+        draft.interviews = draft.interviews.filter((item) => item.applicationId !== id);
+        draft.notes = draft.notes.filter((item) => item.applicationId !== id);
+        // 面经不删：那是你写过的经验，companyName/jobTitle 是冗余快照
+        draft.experiences = draft.experiences.map((exp) =>
+          exp.applicationId === id ? { ...exp, applicationId: null } : exp,
+        );
+      });
+      showToast(`已永久删除「${app.jobTitle}」，无法撤销`);
+    },
+    [mutate, showToast],
+  );
+
+  const emptyTrash = useCallback((): void => {
+    const count = dbRef.current.applications.filter((a) => a.deletedAt).length;
+    if (count === 0) {
+      showToast('回收站是空的');
+      return;
+    }
+    mutate((draft) => {
+      const doomed = new Set(
+        draft.applications.filter((a) => a.deletedAt).map((a) => a.id),
+      );
+      draft.applications = draft.applications.filter((a) => !doomed.has(a.id));
+      draft.interviews = draft.interviews.filter((i) => !doomed.has(i.applicationId));
+      draft.notes = draft.notes.filter((n) => !doomed.has(n.applicationId));
+      draft.experiences = draft.experiences.map((exp) =>
+        exp.applicationId && doomed.has(exp.applicationId) ? { ...exp, applicationId: null } : exp,
+      );
+    });
+    showToast(`已清空回收站：永久删除 ${count} 条投递`);
+  }, [mutate, showToast]);
+
+  const extendTrash = useCallback(
+    (id: string): void => {
+      mutate((draft) => {
+        draft.applications = draft.applications.map((app) => {
+          if (app.id !== id || !app.deletedAt) return app;
+          const base = Date.parse(app.deletedAt);
+          if (Number.isNaN(base)) return app;
+          return { ...app, deletedAt: new Date(base + 7 * 86_400_000).toISOString() };
+        });
+      });
+      showToast('已延长 7 天');
+    },
+    [mutate, showToast],
   );
 
   const addNote = useCallback(
@@ -1026,6 +1143,65 @@ export default function App() {
     [mutate],
   );
 
+  /**
+   * 便携包（v0.5 / D5）：index.html + data.json + 使用说明 + SHA256SUMS。
+   *
+   * 与「导出 JSON」的分工要跟用户说清：JSON 是**给本应用导回来**的备份，
+   * 便携包是**给别人 / 给另一台机器直接打开**的一整套东西。两者都留着，
+   * 因为「我只是想备份」的用户不该被迫下载一个 zip。
+   */
+  const exportPortable = useCallback(async (): Promise<void> => {
+    try {
+      const current = dbRef.current;
+      const now = new Date();
+      const { html, scriptCount } = rebuildSelfHtml();
+      if (scriptCount === 0) {
+        showToast('这个环境取不到应用本体，请改用「导出 JSON」');
+        return;
+      }
+
+      const dataJson = exportJSON(current);
+      const exportedAt = `${now.getFullYear()}-${pad2(now.getMonth() + 1)}-${pad2(now.getDate())} ${pad2(
+        now.getHours(),
+      )}:${pad2(now.getMinutes())}`;
+      const readme = portableReadme(__APP_VERSION__, exportedAt, {
+        applications: current.applications.length,
+        companies: current.companies.length,
+        interviews: current.interviews.length,
+      });
+
+      const files: ZipEntry[] = [
+        { name: PORTABLE_FILES.app, data: textBytes(html) },
+        { name: PORTABLE_FILES.data, data: textBytes(dataJson) },
+        { name: PORTABLE_FILES.readme, data: textBytes(readme) },
+      ];
+
+      // 校验和：非安全上下文下 sha256Hex 返回空串，那就整份 SHASUMS 不带
+      const sums = await Promise.all(
+        files.map(async (file) => ({ name: file.name, sha256: await sha256Hex(file.data) })),
+      );
+      if (sums.every((row) => row.sha256 !== '')) {
+        files.push({ name: PORTABLE_FILES.sums, data: textBytes(formatSums(sums)) });
+      }
+
+      const zip = buildZip(files);
+      const ok = downloadBlob(
+        // 显式切一份 ArrayBuffer：Uint8Array 的 buffer 类型可能是 SharedArrayBuffer，
+        // 而 BlobPart 只接受 ArrayBuffer
+        new Blob([zip.buffer as ArrayBuffer], { type: 'application/zip' }),
+        portableZipName(now),
+      );
+      if (ok) markExported();
+      showToast(
+        ok
+          ? `已导出便携包（${current.applications.length} 条投递 + 应用本体）`
+          : '导出失败，浏览器可能禁止了下载',
+      );
+    } catch {
+      showToast('导出失败，浏览器可能禁止了下载');
+    }
+  }, [markExported, showToast]);
+
   const exportData = useCallback((): void => {
     try {
       const text = exportJSON(dbRef.current);
@@ -1071,6 +1247,46 @@ export default function App() {
     showToast(ok ? `已导出 ${current.interviews.length} 场面试（ICS）` : '导出失败，浏览器可能禁止了下载');
   }, [showToast]);
 
+  /** 把合并计划落库，并把「撤销这一次导入」挂到撤销栈上 */
+  const applyImportPlan = useCallback(
+    (plan: ImportPlan): void => {
+      const before = dbRef.current;
+      dbRef.current = plan.db;
+      setDb(plan.db);
+      setSelectedId(null);
+      setWelcomeDismissed(true);
+      setImportOpen(false);
+      setImportPending(null);
+
+      const parts: string[] = [];
+      if (plan.counts.added > 0) parts.push(`新增 ${plan.counts.added} 条`);
+      if (plan.counts.addedInterviews > 0) parts.push(`${plan.counts.addedInterviews} 场面试`);
+      if (plan.counts.addedNotes > 0) parts.push(`${plan.counts.addedNotes} 条记录`);
+      if (plan.counts.unchanged > 0) parts.push(`${plan.counts.unchanged} 条已存在`);
+      if (plan.counts.conflicts > 0) parts.push(`${plan.counts.conflicts} 处保留本地`);
+      showToast(
+        parts.length > 0 ? `导入完成：${parts.join('、')}` : '导入完成：没有需要新增的内容',
+      );
+
+      pushUndo({
+        label: '导入备份',
+        undo: { kind: 'import', previous: before },
+        redo: () => applyImportPlan(plan),
+      });
+    },
+    // 自引用（撤销后重做）没有别的写法，用 ref 拿最新闭包避免循环依赖
+    [pushUndo, showToast],
+  );
+
+  /**
+   * 导入（v0.5 / D4）：默认**增量合并**，不再整库覆盖。
+   *
+   * v0.4.1 是「导入 = 换成备份里的库」—— 拿一周前的备份补一条记录，
+   * 这一周记的全没了。现在的流程：
+   *   解析 → 合并计划（纯计算）→ 有冲突就交给 UI 逐条裁决 → 无冲突直接落库
+   *
+   * 冲突的默认值是**保留本地**（不勾 = 不动），这与同步面板的语义保持一致。
+   */
   const importData = useCallback(
     (file: File): void => {
       const reader = new FileReader();
@@ -1087,16 +1303,64 @@ export default function App() {
           return;
         }
         setImportError(null);
-        dbRef.current = result.db;
-        setDb(result.db);
-        setSelectedId(null);
-        setWelcomeDismissed(true);
-        showToast(`导入成功：${result.db.applications.length} 条投递`);
+
+        const plan = mergeImport(dbRef.current, result.db);
+        if (plan.conflicts.length > 0) {
+          // 有冲突：先给用户看差异，确认后才落库。
+          // 备份 db 一起存下来 —— 用户在面板里勾「用备份覆盖」时要按新选择重算，
+          // 重算必须从**原始**备份出发，不能在已合并的结果上再合一次（会双重计入）
+          setImportPending({ incoming: result.db, plan });
+          setImportOverwrite(new Set<string>());
+          setImportOpen(true);
+          showToast(`识别到 ${plan.counts.conflicts} 处差异，请逐条确认`);
+          return;
+        }
+        applyImportPlan(plan);
       };
       reader.readAsText(file, 'utf-8');
     },
-    [showToast],
+    [applyImportPlan, showToast],
   );
+
+  /**
+   * 冲突面板的勾选（v0.5 / D4）。勾选集合是唯一状态，计划由它派生 ——
+   * 每一次勾选都从**原始备份**重算，绝不在已有合并结果上再合一次。
+   */
+  const toggleImportOverwrite = useCallback((localId: string, next: boolean): void => {
+    setImportOverwrite((prev) => {
+      const copy = new Set(prev);
+      if (next) copy.add(localId);
+      else copy.delete(localId);
+      return copy;
+    });
+  }, []);
+
+  const toggleAllImportOverwrite = useCallback(
+    (next: boolean): void => {
+      setImportOverwrite(() => {
+        if (!next) return new Set<string>();
+        return new Set((importPending?.plan.conflicts ?? []).map((row) => row.localId));
+      });
+    },
+    [importPending],
+  );
+
+  /** 最终的确认导入：按当前勾选集合重算一次，然后落库 */
+  const confirmImport = useCallback((): void => {
+    if (!importPending) return;
+    const plan = mergeImport(dbRef.current, importPending.incoming, {
+      overwriteLocalIds: importOverwrite,
+    });
+    applyImportPlan(plan);
+  }, [applyImportPlan, importOverwrite, importPending]);
+
+  /** 取消导入：什么都没写进库，库和撤销栈都不动 */
+  const cancelImport = useCallback((): void => {
+    setImportPending(null);
+    setImportOverwrite(new Set<string>());
+    setImportOpen(false);
+    showToast('已取消导入，数据没有变化');
+  }, [showToast]);
 
   /* ------------------------------------------------------------ 键盘快捷键 */
 
@@ -1157,27 +1421,39 @@ export default function App() {
 
   /* ------------------------------------------------------------ 搜索结果 */
 
+  /**
+   * v0.5：**全库唯一的回收站过滤点**。
+   *
+   * 所有视图、搜索、待办条、导出之外的派生计算都从这里取数据。
+   * 为什么不要求每个组件自己判 `deletedAt`：40+ 个消费点，漏一个就是
+   * 「删掉的投递还在看板上」—— 用户看到的是数据错乱，比崩溃更难查。
+   * 放在这里还有一个好处：回收站页要看的「含已删除」版本可以用 `db` 本身，
+   * 两边的边界一眼能看清。
+   */
+  const viewDB = useMemo(() => visibleDB(db), [db]);
+
   const hits = useMemo<SearchHit[]>(() => {
     const keyword = query.trim().toLowerCase();
     if (!keyword) return [];
     const list: SearchHit[] = [];
-    for (const app of db.applications) {
-      const short = companyLabel(db.companies, app.companyId);
-      const full = companyFullName(db.companies, app.companyId);
+    for (const app of viewDB.applications) {
+      const short = companyLabel(viewDB.companies, app.companyId);
+      const full = companyFullName(viewDB.companies, app.companyId);
       const haystack = `${short} ${full} ${app.jobTitle}`.toLowerCase();
       if (haystack.includes(keyword)) {
         list.push({ id: app.id, company: short, jobTitle: app.jobTitle, status: app.status });
       }
     }
     return list;
-  }, [query, db.applications, db.companies]);
+  }, [query, viewDB.applications, viewDB.companies]);
 
   const pendingSyncCount = db.staging.length;
   const dbSize = useMemo(() => measureDB(db), [db]);
   const budgetLevel = budgetLevelOf(dbSize);
 
   const api: AppApi = {
-    db,
+    // ★ 视图拿到的是**已摘掉回收站**的库；回收站页与设置页直接读 `db`（含已删除）。
+    db: viewDB,
     now,
     view,
     selectedId,
@@ -1193,6 +1469,10 @@ export default function App() {
     updateApplication,
     changeStatus,
     deleteApplication,
+    restoreApplication,
+    purgeApplication,
+    emptyTrash,
+    extendTrash,
     addNote,
     deleteNote,
     addInterview,
@@ -1209,6 +1489,9 @@ export default function App() {
     exportCsv,
     exportIcs,
     importData,
+    exportPortable,
+    checkStorage: checkQuota,
+    storageBackend: activeBackendName,
 
     insightsTab,
     setInsightsTab,
@@ -1345,9 +1628,21 @@ export default function App() {
           onClose={() => setSettingsOpen(false)}
           importError={importError}
           onDismissError={() => setImportError(null)}
+          trashed={trashedApps(db)}
         />
       ) : null}
       {syncOpen ? <SyncDrawer api={api} onClose={closeSync} initialStep={syncStep} /> : null}
+      {importOpen && importPending ? (
+        <ImportConfirm
+          counts={importPending.plan.counts}
+          conflicts={importPending.plan.conflicts}
+          overwrite={importOverwrite}
+          onToggle={toggleImportOverwrite}
+          onToggleAll={toggleAllImportOverwrite}
+          onConfirm={confirmImport}
+          onCancel={cancelImport}
+        />
+      ) : null}
       {quickNoteCtx !== null ? <QuickNote api={api} onClose={closeQuickNote} /> : null}
       {experienceEditorId ? (
         <ExperienceEditor api={api} experienceId={experienceEditorId} onClose={closeExperience} />
