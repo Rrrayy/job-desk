@@ -9,7 +9,8 @@
 
 import type { MergePlan, PlannedRow } from '../../lib/sync/types';
 import { rowSummaryText } from '../../lib/sync/engine';
-import { STATUS_LABEL } from '../../lib/rules';
+import { ALL_STATUSES, STATUS_LABEL } from '../../lib/rules';
+import type { Status } from '../../types';
 import { KindBadge, ConfidenceBadge } from './badges';
 
 export interface Step3ConfirmProps {
@@ -20,12 +21,14 @@ export interface Step3ConfirmProps {
   onCheckOnly: (kind: PlannedRow['kind']) => void;
   onUncheckAll: () => void;
   onCheckConflicts: () => void;
+  /** v0.7.2：staged 行人工指定状态 → 行升级为新增写入，不进暂存区 */
+  onManualStatus: (key: string, status: Status) => void;
 }
 
 const SELECTABLE: PlannedRow['kind'][] = ['new', 'update', 'conflict'];
 
 export function Step3Confirm(props: Step3ConfirmProps) {
-  const { plan, onToggle, onCheckOnly, onUncheckAll, onCheckConflicts } = props;
+  const { plan, onToggle, onCheckOnly, onUncheckAll, onCheckConflicts, onManualStatus } = props;
   const checkedCount = plan.rows.filter((row) => isChecked(row)).length;
   const conflictCount = plan.rows.filter((row) => row.kind === 'conflict').length;
 
@@ -110,7 +113,32 @@ export function Step3Confirm(props: Step3ConfirmProps) {
 
                 {row.kind === 'staged' ? (
                   <div className="sync__staged-note">
-                    这条没法自动归类（{reasonText(row)}），合并后会进暂存区逐条处理。
+                    <div>这条没法自动归类（{reasonText(row)}），合并后会进暂存区逐条处理。</div>
+                    <label className="sync__manual-status">
+                      <span>人工指定状态（当场归类，按新增写入）：</span>
+                      <select
+                        className="select select--compact"
+                        value=""
+                        onChange={(event) => {
+                          const value = event.target.value as Status;
+                          if (value) onManualStatus(row.key, value);
+                        }}
+                      >
+                        <option value="">选状态…</option>
+                        {ALL_STATUSES.map((status) => (
+                          <option key={status} value={status}>
+                            {STATUS_LABEL[status]}
+                          </option>
+                        ))}
+                      </select>
+                    </label>
+                  </div>
+                ) : null}
+
+                {row.manuallyResolved && row.mappedStatus ? (
+                  <div className="sync__manual-status-done">
+                    ✍️ 你手动指定状态：<strong>{STATUS_LABEL[row.mappedStatus]}</strong>
+                    （按新增写入，不进暂存区；公司 / 岗位仍以解析结果为准）
                   </div>
                 ) : null}
 

@@ -57,6 +57,12 @@ export interface PlannedRow {
   defaultChecked: boolean;
   /** 用户最终是否勾选（默认 = defaultChecked；④ 确认前由 UI 覆盖） */
   checked?: boolean;
+  /**
+   * v0.7.2：staged 行被用户**手动指定状态**后置位。
+   * 此时 kind 已改为 'new'、mappedStatus 为用户选的状态——按新增写入，不再进暂存区。
+   * UI 据此显示「你手动指定了状态」而不是状态选择器。
+   */
+  manuallyResolved?: boolean;
   /** 给用户看的一句话解释：'你 3/10 手动改过'、'平台落后于你' */
   warnings: string[];
 }

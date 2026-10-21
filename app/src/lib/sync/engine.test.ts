@@ -557,3 +557,44 @@ describe('行 key 与暂存 key', () => {
 /** 类型检查用：PlannedRow 的 checked 可选 */
 const _typeCheck: PlannedRow['checked'] = undefined;
 void _typeCheck;
+
+describe('v0.7.2 staged 行人工指定状态', () => {
+  it('staged/unmapped 行手动指定状态后按 new 写入，不进暂存区', () => {
+    const db = baseDB();
+    const planned = plan(planInput(db, [record({ companyName: '美团', jobTitle: '到店后端实习生', status: '待沟通' })]));
+    expect(planned.rows[0].kind).toBe('staged');
+
+    // 模拟 Step3Confirm 的人工修改（SyncDrawer.handleManualStatus 的同款变换）
+    const row: PlannedRow = {
+      ...planned.rows[0],
+      kind: 'new',
+      mappedStatus: 'chatting',
+      stagedReason: undefined,
+      manuallyResolved: true,
+      checked: true,
+      warnings: [...planned.rows[0].warnings, '状态由你手动指定为「沟通中」'],
+    };
+
+    const applied = apply(db, { rows: [row], now: NOW, capturedAt: NOW, platform: 'boss' });
+    expect(applied.written).toBe(1);
+    expect(applied.staged).toBe(0);
+
+    const created = applied.db.applications.find((app) => app.jobTitle === row.record.jobTitle);
+    expect(created).toBeDefined();
+    expect(created?.status).toBe('chatting');
+    expect(applied.db.staging).toHaveLength(0);
+  });
+
+  it('未指定状态的 staged 行行为不变：照旧进暂存区', () => {
+    const db = baseDB();
+    const planned = plan(planInput(db, [record({ status: '待沟通' })]));
+    const applied = apply(db, {
+      rows: planned.rows.map((row) => ({ ...row, checked: false })),
+      now: NOW,
+      capturedAt: NOW,
+      platform: 'boss',
+    });
+    expect(applied.written).toBe(0);
+    expect(applied.staged).toBe(1);
+  });
+});

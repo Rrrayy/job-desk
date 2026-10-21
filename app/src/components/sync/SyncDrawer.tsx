@@ -10,7 +10,7 @@
 import { useMemo, useState } from 'react';
 import type { AppApi } from '../../lib/api';
 import type { MergePlan, PlannedRow } from '../../lib/sync/types';
-import type { PlatformId } from '../../types';
+import type { PlatformId, Status } from '../../types';
 import { rowSummaryText } from '../../lib/sync/engine';
 import { PLATFORM_LABEL } from '../../adapters/registry';
 import { STATUS_LABEL } from '../../lib/rules';
@@ -108,6 +108,32 @@ export function SyncDrawer(props: SyncDrawerProps) {
     setRows((prev) => prev.map((row) => (row.kind === 'conflict' ? { ...row, checked: true } : row)));
   };
 
+  /**
+   * v0.7.2：staged 行的人工修改出口——用户手动指定状态。
+   * 行就地升级为 'new' + mappedStatus，确认合并时按新增写入，不再进暂存区。
+   * 这是「状态读不出来，需要你归类」的直接解法：与其合并后去暂存区再归类，
+   * 不如当场指认。公司/岗位不动（它们参与匹配，改错比不填更糟）。
+   */
+  const handleManualStatus = (key: string, status: Status): void => {
+    setRows((prev) =>
+      prev.map((row) => {
+        if (row.key !== key || row.kind !== 'staged') return row;
+        return {
+          ...row,
+          kind: 'new',
+          mappedStatus: status,
+          stagedReason: undefined,
+          manuallyResolved: true,
+          checked: true,
+          warnings: [
+            ...row.warnings,
+            `状态由你手动指定为「${STATUS_LABEL[status]}」——平台原文没识别出来，写入以你的指认为准`,
+          ],
+        };
+      }),
+    );
+  };
+
   const handleCommit = (): void => {
     api.commitSync(rows);
     setStep(4);
@@ -192,6 +218,7 @@ export function SyncDrawer(props: SyncDrawerProps) {
                   onCheckOnly={handleCheckOnly}
                   onUncheckAll={handleUncheckAll}
                   onCheckConflicts={handleCheckConflicts}
+                  onManualStatus={handleManualStatus}
                 />
               ) : null}
 

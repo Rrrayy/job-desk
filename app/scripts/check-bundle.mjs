@@ -45,6 +45,11 @@
  *   快捷键与 safeHref（<1 KB），预计 +11～14 KB，会越过 WARN（WARN 只提示不失败），
  *   离 FAIL 仍留 15 KB 以上。这是「贴近水位就留记录」惯例的执行，不是抬线。
  *
+ * ★ v0.7.2（同步确认面板：解析模板 + 人工指定状态）：WARN/FAIL 不动。
+ *   新增 PASTE_TEMPLATES 五平台复制样板（约 4 KB）、Step3Confirm 状态选择器与
+ *   SyncDrawer.handleManualStatus（约 2 KB）及样式，实测 +13 KB（531→544），越过 WARN，
+ *   离 FAIL 仍有 16 KB。红线不动，构成在此留痕。
+ *
  * ★ 改动阈值必须写进 docs/RELEASE-NOTES：涨红线不是技术决策，是产品决策。
  */
 
@@ -59,7 +64,7 @@ const FAIL_BYTES = 560 * 1024;
  * 当前版本的体积基线（每次发版更新，用来在 CI 里显示「这次改动胖了多少」）。
  * 它的作用不是判失败，而是让体积增长**可见** —— 静悄悄长胖是最难回头的技术债。
  */
-const BASELINE_BYTES = 531 * 1024;
+const BASELINE_BYTES = 544 * 1024;
 
 const here = dirname(fileURLToPath(import.meta.url));
 const appRoot = resolve(here, '..');

@@ -1,7 +1,7 @@
 {
   "name": "job-desk",
   "private": false,
-  "version": "0.7.1",
+  "version": "0.7.2",
   "type": "module",
   "description": "求职工作台 · 把投递当管线管，数据只留在你自己的浏览器里",
   "license": "MIT",
