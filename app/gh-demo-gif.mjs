@@ -216,6 +216,8 @@ async function locateConflictCell() {
 }
 
 /* --------------------------------- 流程 --------------------------------- */
+// 分镜原则（v2）：每个视图停留 ≥1.3s 让观众看清；视图切换的光标移动 550ms；
+// 关键细节各给特写：红色待办 → 抽屉 → 催进清零 → 双向冲突 → 全局搜索直达。
 
 console.log(`加载 ${URL_}`);
 await navigate(URL_);
@@ -225,90 +227,128 @@ await waitApp();
 await evaluate('localStorage.clear()');
 await navigate(URL_);
 await waitApp();
-await sleep(280);
+await sleep(350);
 
 await installCursor();
 await evaluate(`window.scrollTo(0, 0)`);
 
 /* 1. 欢迎页 → 加载示例数据 */
-await moveTo(940, 610, 0);
-await shot(620, '欢迎页');
+await moveTo(920, 610, 0);
+await shot(950, '欢迎页');
 
 const loadBtn = await locate('.welcome__actions .btn', 0);
-await moveTo(loadBtn.x, loadBtn.y, 380);
-await shot(130, '光标移向「加载示例数据」');
-await sleep(300);
-await shot(300, '悬停');
+await moveTo(loadBtn.x, loadBtn.y, 550);
+await shot(170, '光标移向「加载示例数据」');
+await sleep(430);
+await shot(430, '悬停');
 await clickAt(loadBtn.x, loadBtn.y);
+await shot(150, '点击');
+await sleep(500);
+await shot(1500, '今日视图 + 加载提示');
+
+/* 2. 今日：最紧急的红色待办 → 点开详情抽屉 */
+const firstAction = await locate('.action-list .action-item', 0);
+await moveTo(firstAction.x, firstAction.y, 520);
+await shot(170, '光标移向红色待办');
+await sleep(430);
+await shot(800, '红色待办特写（该催了）');
+
+const actionBtn = await locate('.action-list .action-item .btn--tiny', 0);
+await moveTo(actionBtn.x, actionBtn.y, 450);
+await shot(150, '光标移向「去催一下」');
+await sleep(320);
+await clickAt(actionBtn.x, actionBtn.y);
+await shot(150, '点击');
+await sleep(520);
+await shot(1300, '详情抽屉：截止 / 沉默 / 下一步');
+
+/* 3. 抽屉里催一下 → 话术 + toast，顶栏沉默计数清零 */
+const followBtn = await locate('.drawer__actions .btn--primary', 0);
+await moveTo(followBtn.x, followBtn.y, 480);
+await shot(170, '光标移向「去催一下」');
+await sleep(360);
+await shot(300, '悬停');
+await clickAt(followBtn.x, followBtn.y);
+await shot(150, '点击');
+await sleep(650);
+await shot(1600, '话术 + 提示（沉默计时清零）');
+
+/* 4. 关抽屉 → 看板 */
+const closeBtn = await locate('.drawer .icon-btn', 0);
+await moveTo(closeBtn.x, closeBtn.y, 450);
+await shot(150, '光标移向关闭');
+await sleep(300);
+await clickAt(closeBtn.x, closeBtn.y);
 await shot(140, '点击');
 await sleep(420);
-await shot(760, '今日视图');
+await shot(600, '回到今日');
 
-/* 2. 看板 */
 const boardTab = await locate('.nav__item', 1);
-await moveTo(boardTab.x, boardTab.y, 300);
-await shot(140, '光标移向「看板」');
-await sleep(200);
+await moveTo(boardTab.x, boardTab.y, 550);
+await shot(170, '光标移向「看板」');
+await sleep(420);
 await clickAt(boardTab.x, boardTab.y);
-await shot(130, '点击');
-await sleep(380);
-await shot(900, '看板');
+await shot(150, '点击');
+await sleep(480);
+await shot(1500, '看板');
 
 const card1 = await locate('.app-card', 1);
-await moveTo(card1.x, card1.y, 320);
-await shot(420, '卡片悬停');
-const card2 = await locate('.app-card', 3);
-await moveTo(card2.x, card2.y, 320);
-await shot(430, '换一张卡');
+await moveTo(card1.x, card1.y, 480);
+await shot(800, '卡片悬停');
 
-/* 3. 日历 + 冲突 */
+/* 5. 日历：整月冲突角标 → 点开冲突那天看双向提示 */
 const calTab = await locate('.nav__item', 3);
-await moveTo(calTab.x, calTab.y, 320);
-await shot(140, '光标移向「日历」');
-await sleep(200);
+await moveTo(calTab.x, calTab.y, 520);
+await shot(170, '光标移向「日历」');
+await sleep(380);
 await clickAt(calTab.x, calTab.y);
-await shot(130, '点击');
-await sleep(360);
-await shot(1000, '日历（⚠ 1 处时间冲突）');
+await shot(150, '点击');
+await sleep(460);
+await shot(1700, '日历（⚠ 时间冲突计数）');
 
 const conflictCell = await locateConflictCell();
-await moveTo(conflictCell.x, conflictCell.y, 340);
-await shot(150, '光标移向冲突那天');
-await sleep(240);
-await clickAt(conflictCell.x, conflictCell.y);
-await shot(130, '点击');
+await moveTo(conflictCell.x, conflictCell.y, 500);
+await shot(170, '光标移向冲突那天');
 await sleep(380);
-await shot(950, '冲突详情');
-
-/* 4. 列表 → 详情抽屉 */
-const listTab = await locate('.nav__item', 2);
-await moveTo(listTab.x, listTab.y, 300);
-await shot(140, '光标移向「列表」');
-await sleep(180);
-await clickAt(listTab.x, listTab.y);
-await shot(130, '点击');
-await sleep(340);
-await shot(760, '列表');
-
-const firstRow = await locate('.table tbody tr', 0);
-await moveTo(firstRow.x, Math.min(firstRow.y, 420), 320);
-await shot(300, '光标移向第一行');
-await clickAt(firstRow.x, Math.min(firstRow.y, 420));
-await shot(140, '点击');
-await sleep(420);
-await shot(900, '详情抽屉');
-
-const followBtn = await locate('.drawer__actions .btn--primary', 0);
-await moveTo(followBtn.x, followBtn.y, 300);
-await shot(240, '光标移向「去催一下」');
-await clickAt(followBtn.x, followBtn.y);
-await shot(140, '点击');
+await clickAt(conflictCell.x, conflictCell.y);
+await shot(150, '点击');
 await sleep(500);
-await shot(1200, '话术 + 提示');
+await shot(1600, '双向冲突：面试 × 组会');
+
+/* 6. 列表 */
+const listTab = await locate('.nav__item', 2);
+await moveTo(listTab.x, listTab.y, 520);
+await shot(170, '光标移向「列表」');
+await sleep(380);
+await clickAt(listTab.x, listTab.y);
+await shot(150, '点击');
+await sleep(440);
+await shot(1300, '列表：按沉默排序');
+
+/* 7. 全局搜索「小红书」→ 结果直达详情 */
+const searchBox = await locate('.search__input', 0);
+await moveTo(searchBox.x, searchBox.y, 480);
+await shot(170, '光标移向搜索框');
+await sleep(330);
+await clickAt(searchBox.x, searchBox.y);
+await sleep(180);
+await send('Input.insertText', { text: '小红书' });
+await sleep(420);
+await shot(1000, '搜索结果浮层');
+
+const hit = await locate('.search__result', 0);
+await moveTo(hit.x, hit.y, 420);
+await shot(420, '悬停结果');
+await clickAt(hit.x, hit.y);
+await shot(150, '点击');
+await sleep(520);
+await shot(1400, '从搜索直达详情');
 
 /* 收尾：把鼠标挪开，让画面回到干净状态 */
-await moveTo(1050, 640, 380);
-await shot(700, '收尾');
+await evaluate(`document.body.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }))`);
+await sleep(360);
+await moveTo(1020, 640, 520);
+await shot(950, '收尾');
 
 writeFileSync(
   join(OUT, 'manifest.json'),

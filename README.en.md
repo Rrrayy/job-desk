@@ -22,8 +22,8 @@
 
 [⬇️ Download](https://github.com/Rrrayy/job-desk/releases/latest) ｜ [中文](README.md) ｜ [Changelog](CHANGELOG.md)
 
-<img src="assets/demo.gif" alt="Live demo: sample data → Today → Board → Calendar conflict → detail drawer & one-click follow-up" width="100%">
-<sub>Real recording: load sample data → Today → Board → the calendar catching "interview vs. seminar" → one-click follow-up (the "2 stale" badge in the header resets). These 11 seconds are the entire daily loop.</sub>
+<img src="assets/demo.gif" alt="Live demo: sample data → Today → detail drawer & one-click follow-up → Board → Calendar conflict → search-to-detail" width="100%">
+<sub>Real recording: load sample data → open the red to-do's drawer → one-click follow-up (the header's stale badge resets on the spot) → Board → the calendar catching "interview × seminar" both ways → search "小红书" jumping straight to the detail. These 21 seconds are the entire daily loop.</sub>
 
 </div>
 
@@ -93,7 +93,7 @@ channel and the extension share exactly one parser.
 
 ## 📸 Screens
 
-The 11-second demo at the top covers the full "Today → Board → Calendar → Detail" loop; static shots below.
+The 21-second demo at the top covers the full "Today → Detail → Board → Calendar → Search" loop; static shots below.
 
 | 🗂️ Board | 📃 List |
 | :---: | :---: |

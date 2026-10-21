@@ -5,7 +5,7 @@
  * 任何一条变红，都意味着用户可能在某个异常路径上永久丢数据 —— 优先级高于任何新功能。
  */
 
-import { beforeEach, describe, expect, it } from 'vitest';
+import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { emptyDB } from './defaults';
 import { buildSampleDB } from './sample';
 import {
@@ -218,16 +218,25 @@ describe('D7-6 同一份 v1 备份连续导入两次：第二次结果与第一�
   });
 
   it('两次导入的库等价（不重复插入、不自增计数）', () => {
-    const first = importFromText(v1Payload);
-    const second = importFromText(v1Payload);
-    expect(first.ok && second.ok).toBe(true);
-    if (!first.ok || !second.ok) return;
+    // exportJSON 会打上毫秒级 exportedAt：两次真实调用一旦跨毫秒，
+    // 序列化结果必然不同（CI 曾因此在 node 18 / node 20 各随机挂过一次）。
+    // 固定时钟，让「等价」只由库状态决定 —— 这才是幂等要证明的东西。
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date('2026-10-21T00:00:00.000Z'));
+    try {
+      const first = importFromText(v1Payload);
+      const second = importFromText(v1Payload);
+      expect(first.ok && second.ok).toBe(true);
+      if (!first.ok || !second.ok) return;
 
-    expect(second.db.applications).toHaveLength(first.db.applications.length);
-    expect(second.db.companies).toHaveLength(first.db.companies.length);
-    expect(second.db.settings.schemaVersion).toBe(2);
-    // 幂等的真正含义：结果序列化后完全一致
-    expect(exportJSON(second.db)).toBe(exportJSON(first.db));
+      expect(second.db.applications).toHaveLength(first.db.applications.length);
+      expect(second.db.companies).toHaveLength(first.db.companies.length);
+      expect(second.db.settings.schemaVersion).toBe(2);
+      // 幂等的真正含义：结果序列化后完全一致
+      expect(exportJSON(second.db)).toBe(exportJSON(first.db));
+    } finally {
+      vi.useRealTimers();
+    }
   });
 });
 
