@@ -11,8 +11,8 @@
 **把投递当管线管 —— 今日待办 · 看板 · 沉默提醒 · 截止倒计时 · 面经复盘**
 
 [![CI](https://img.shields.io/github/actions/workflow/status/Rrrayy/job-desk/ci.yml?branch=main&style=flat-square&label=CI)](https://github.com/Rrrayy/job-desk/actions/workflows/ci.yml)
-![tests](https://img.shields.io/badge/tests-239%20passed-2ea44f?style=flat-square)
-![bundle](https://img.shields.io/badge/bundle-449%20KB-4c6ef5?style=flat-square)
+![tests](https://img.shields.io/badge/tests-320%20passed-2ea44f?style=flat-square)
+![bundle](https://img.shields.io/badge/bundle-479%20KB-4c6ef5?style=flat-square)
 ![network](https://img.shields.io/badge/network-0%20requests-2ea44f?style=flat-square)
 ![schema](https://img.shields.io/badge/schema-v2-845ef7?style=flat-square)
 [![release](https://img.shields.io/github/v/release/Rrrayy/job-desk?style=flat-square)](https://github.com/Rrrayy/job-desk/releases/latest)
@@ -71,8 +71,11 @@
 - 📥 **课表导入**：从教务系统 / 课表 App 复制粘贴，一行一节课，识别不了的行告诉你原因；重复导入按替换处理，手动记的事不受影响
 - ⚠️ **日程冲突检测**：面试 × 面试 × 课 × 任何急事，同一时间段精确重叠比对（分钟级），撞了谁、几点到几点直接告诉你
 - 🔄 **平台状态同步**：BOSS / 实习僧 / 牛客的列表粘进来，自动比对差异、逐条确认、可撤销
+- 🗑️ **回收站**：删掉的投递留 30 天，第 27 天提醒；面试与沟通记录跟着一起留，恢复后绑定完整
+- 🗄️ **存储自动升级**：双击打开走 localStorage，放到网页上（`http(s)`）自动探测 IndexedDB 并优先使用，突破 5 MB 上限；设置页如实显示当前后端与用量
 - 📚 **面经**：一行一题快记 → 题库按「不会的先复习」排序 → 间隔复习 → 统计「哪类题最容易挂」
-- 💾 JSON 备份 + CSV 投递表 + ICS 日历导出，schema 自动迁移（带回滚点，失败不上锁不覆盖）
+- 💾 JSON 备份 + **便携包（zip，含应用本体）** + CSV 投递表 + ICS 日历导出，schema 自动迁移（带回滚点，失败不上锁不覆盖）
+- 🔀 **导入是增量合并**：只补缺，不覆盖这一周新记的；两边值不同逐条列出差异让你裁决，简历版本 / 优先级永远保留本地值
 
 ## 🚀 30 秒上手
 
@@ -196,8 +199,12 @@ cd app && npm install && npm run dev   # http://localhost:5173
 | `jobdesk.v1.preMigrate.<时间>` | 迁移前的原始数据（回滚点，保留 30 天） |
 | `jobdesk.v1.failedAt.<时间>` | 读取失败时的原始数据副本（最多 3 份，永不被覆盖修改） |
 
+放到网页上（`http(s)`）访问时，同一份数据存在 **IndexedDB** 的 `jobdesk` / `kv` store 里，键名不变。
+双击打开（`file://`）时仍用 localStorage —— 这是主场景，不去试探 IndexedDB。
+
 - 数据**只在这个浏览器里**：正常关闭、刷新、关机重启都在；清浏览器「网站数据」、无痕窗口、换浏览器 / 换设备会丢。
 - **换电脑或清缓存前先导出**：设置 → 数据 → 「导出 JSON」，会下载 `求职工作台-备份-YYYY-MM-DD.json`。只有 JSON 能导入回来（CSV / ICS 是给别的软件看的）。
+- **想把应用一起带走**：设置 → 数据 → 「导出便携包」，下载的 zip 里含 `index.html` + `data.json` + 说明 + 校验和，对方解压双击就能看你的数据。
 - 设置页会显示「上次备份：N 天前」，超 7 天标红。**提醒不阻止你做任何事**，只是不再让你凭记忆。
 - 数据损坏 / 迁移失败时不会白屏也不会丢：应用进入只读锁定态，给你三个出口（下载原始数据、重试、用空数据进入），原始数据**不会被自动修改或删除**。
 
@@ -325,7 +332,7 @@ job-desk/
 | 2 | 单元测试 | `test` | 纯函数全覆盖 |
 | 3 | 零网络扫描 | `check:no-network` | 11 条规则，白名单为空 |
 | 4 | 构建 | `build` | 单文件产物可生成 |
-| 5 | 体积红线 | `check:bundle` | >470 KB 警告 / >540 KB 失败；单次涨幅 >20 KB 也拦 |
+| 5 | 体积红线 | `check:bundle` | >490 KB 警告 / >540 KB 失败；单次涨幅 >20 KB 也拦 |
 | 6 | 版本一致性 | `check:versions` | 主应用 `package.json` / 扩展 `manifest.json` / 产物三处必须一致 |
 | 7 | 社区内容 | `validate:community` | 格式 + 唯一性 + 长度 + 脱敏 |
 
@@ -333,8 +340,10 @@ job-desk/
 
 | 指标 | 数值 |
 | :--- | :--- |
-| 单元测试 | **239 个 / 16 个文件**，全绿（含灾难恢复 9 条） |
-| 产物体积 | **460,142 B（449 KB）**（红线 470 KB 警告 / 540 KB 失败） |
+| 单元测试 | **320 个 / 24 个文件**，全绿（含灾难恢复 9 条） |
+| 产物体积 | **491,558 B（479 KB）**（红线 490 KB 警告 / 540 KB 失败） |
+| 冒烟测试 | **21 项**（CDP 驱动真实 Edge，含导出 ZIP 中央目录解析） |
+| 性能基准 | `npm run bench`：50 / 200 / 500 / 1000 条实测 |
 | 零网络扫描 | 通过，白名单为空 |
 | 独立 QA | 478 断言 0 失败（[`docs/QA-REPORT-v0.2.md`](docs/QA-REPORT-v0.2.md)） |
 | 可复现构建 | 干净目录 `npm ci && npm run build` 产物 sha256 一致 |
@@ -350,7 +359,7 @@ npm run dev              # 开发模式
 npm run typecheck        # tsc --noEmit
 npm test                 # vitest
 npm run build            # 类型检查 + 产出单文件 dist/index.html
-npm run check:bundle     # 产物体积红线：>470KB 警告 / >540KB 失败
+npm run check:bundle     # 产物体积红线：>490KB 警告 / >540KB 失败
 npm run check:no-network # 静态扫描：不许出现网络调用
 npm run check:versions   # 版本号三处一致性
 npm run validate:community
@@ -447,15 +456,16 @@ CSV 是有损的：它只有表格列，装不下面试轮次、时间线、面�
 
 ## ⚠️ 已知限制
 
-- **没有回收站**：删投递是即时的（有二次确认 + 可撤销，但刷新页面后撤销栈就没了）—— 建议定期导出备份。
+- **回收站只覆盖投递**：公司、面试、日程的删除仍走撤销栈（刷新后就没），只有投递是软删除 30 天。
 - **撤销栈是内存态**：刷新页面即清空，这是设计而非缺陷（持久化撤销栈会带来「撤销到哪个版本」的歧义）。
+- **IndexedDB 是「有则优先」而非必需**：浏览器禁用 IDB 或处于私密模式时会安静退回 localStorage，容量仍受 5 MB 限制 —— 设置页会如实显示当前后端。
 - **剪贴板可能不可用**：`file://` 下部分浏览器禁止剪贴板 API，催进话术会自动展开在文本框里让你手抄。
 - **同步是文本解析，不是接口**：平台改版会让解析失效。失效时会明确告诉你「没解析出来」，不会静默丢数据。
 - **列表虚拟滚动**：`Ctrl+A` 只能拿到已渲染的条目，所以「识别 N 条」小于总数是正常的。
 - **移动端只是能用**：窄屏做了适配，但拖拽和键盘快捷键是桌面优先设计的。
 - **单文件产物有体积上限**：超 540 KB 会让 CI 失败 —— 这是刻意的约束，不是 bug。
 - **截止日期只有应用级**：没有「招聘季整体截止」，每条投递要单独填。
-- **大库性能未实测**：200 条以上只做了算法级优化，端到端耗时尚无基准数据。
+- **大库性能有基准但非无限**：`npm run bench` 实测 1000 条可用（列表窗口化只渲染 15 行），但复盘、日历这类全量派生的视图仍随条数线性变慢，尚未做分片。
 - **裸姓名不脱敏**：面经导出能识别「面试官 / 老师 / 总」等称呼锚点，但纯人名需要 NER，正则做不到。
 
 ## 🤝 参与贡献
