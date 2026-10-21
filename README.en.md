@@ -52,11 +52,17 @@ Applies to internships, summer internships, campus and experienced hiring — if
 
 ## Install
 
-**Download (recommended)**
+### Download (recommended)
 
 Grab `index.html` from [Releases](https://github.com/Rrrayy/job-desk/releases/latest) and double-click it. No Node, no server.
 
-**Build from source**
+```
+index.html      one file, about 480 KiB
+  ├─ open it    runs straight over file://
+  └─ move it    copy to a USB stick, mail it to yourself — still opens
+```
+
+### Build from source
 
 ```bash
 git clone https://github.com/Rrrayy/job-desk
@@ -65,17 +71,26 @@ npm install && npm run build
 open dist/index.html        # macOS; on Windows, double-click or `start dist\index.html`
 ```
 
-**Dev mode**
+### Dev mode
 
 ```bash
 cd app && npm install && npm run dev   # http://localhost:5173
 ```
 
-First launch asks whether to load sample data (8 companies, 7 statuses) or start empty. To wipe everything later: Settings → Data → Reset to initial state.
+> First launch asks whether to load sample data (8 companies, 7 statuses) or start empty.
+> To wipe everything later: Settings → Data → Reset to initial state.
 
-**Optional browser extension**
+### Optional browser extension
 
-`extension/` is a zero-build MV3 extension that captures the text of the recruiting page you are already looking at, saving you the `Ctrl+A / Ctrl+V`. It is not on any store — load it unpacked. The extension **does not parse**; it only emits a `{format, url, title, capturedAt, text}` envelope, so the paste channel and the extension share exactly one parser.
+`extension/` is a zero-build MV3 extension that captures the text of the recruiting page you are already looking at, saving you the `Ctrl+A / Ctrl+V`. It is not on any store — load it unpacked.
+
+The extension **does not parse**; it only emits an envelope:
+
+```json5
+{ "format": "boss", "url": "…", "title": "…", "capturedAt": "…", "text": "…" }
+```
+
+That envelope goes through **exactly the same** parser as the paste channel, so there is only one parser to maintain.
 
 ## Features
 
@@ -93,9 +108,22 @@ Cards surface the latest note you wrote (memo / chat / nudge) — no need to ope
 
 ### Judgement and reminders
 
+The four kinds of reminder are not the same thing. They occupy four different cells of one grid:
+
+```
+               deadline far ──────────────────── deadline near
+               ┌────────────────────┬────────────────────┐
+silence short  │ nothing to do        │ normal pipeline      │
+               │ deadline far         │ not yet time         │
+               ├────────────────────┼────────────────────┤
+silence long   │ time to nudge        │ one-click msg        │
+               │ closes today         │ beats muting         │
+               └────────────────────┴────────────────────┘
+```
+
 - **Silence detection** — thresholds scale by channel (referral ×3, official ×2); the offer stage is monitored separately and never scaled; an application with an explicit threshold ignores the multiplier
 - **Deadline countdown** — expired / today / within 3 days; deadline items cannot be checked off in one click
-- **Muting** — expires at "day N, 23:59:59", silences nudges but never a hard deadline
+- **Muting** — expires at "day N, 23:59:59", silences nudges but never a hard deadline — the bottom-right cell above
 - **Collision detection** — interviews × classes × errands in one pool, reported only on the same day with `HH:mm` interval overlap
 - One-click follow-up messages; a company in 3 seconds with just name and role
 
@@ -125,36 +153,41 @@ Feature lists are everywhere; the trade-offs are what this project is. Each choi
 
 "How long since they replied" and "what the outside world demands of me" are different things. Merged, they mask each other.
 
-- **How**: `deadlineAt` uses three-state semantics — unset (inherit) / `null` (explicitly off) / date (override); deadline items are not one-click checkable
-- **Cost**: one more field and one more validator. `??` is a trap here (it collapses `null` and `undefined`, which mean opposite things), so validation must go through `asTriStateDate()`
+> **How**　`deadlineAt` uses three-state semantics — unset (inherit) / `null` (explicitly off) / date (override); deadline items are not one-click checkable
+>
+> **Cost**　one more field and one more validator. `??` is a trap here (it collapses `null` and `undefined`, which mean opposite things), so validation must go through `asTriStateDate()`
 
 ### Muting silences nudges, never hard deadlines
 
 "Not today" is a legitimate request; "the application closes tomorrow" should never be hidden by an algorithm.
 
-- **How**: a mute expires at "day N, 23:59:59", not `now + N×24h`; in todo generation, **deadlines are computed before the mute check**
-- **Cost**: a muted application can still appear in Today if it is about to expire. That is deliberate
+> **How**　a mute expires at "day N, 23:59:59", not `now + N×24h`; in todo generation, **deadlines are computed before the mute check**
+>
+> **Cost**　a muted application can still appear in Today if it is about to expire. That is deliberate
 
 ### The calendar is a general schedule, not an interview calendar
 
 In reality collisions involve more than interviews — lab meetings, appointments, errands.
 
-- **How**: a single `db.events` table holds everything (`kind` separates classes from personal items; `weekly` by weekday, or a single date); a collision is "same day + `HH:mm` interval overlap" (`a.start < b.end && b.start < a.end`), touching endpoints do not collide
-- **Cost**: timetable import is replace-semantics for `course && weekly` rows only; "manual entries are never overwritten" is asserted in tests, not in comments
+> **How**　a single `db.events` table holds everything (`kind` separates classes from personal items; `weekly` by weekday, or a single date); a collision is "same day + `HH:mm` interval overlap" (`a.start < b.end && b.start < a.end`), touching endpoints do not collide
+>
+> **Cost**　timetable import is replace-semantics for `course && weekly` rows only; "manual entries are never overwritten" is asserted in tests, not in comments
 
 ### Undo is a stack, and deletions must be undoable
 
 A single-slot undo is no undo at all: the second slip and you get "nothing to undo".
 
-- **How**: a 10-step stack plus redo; a new action clears the redo stack; a sync merge is undoable but not redoable (its inverse is not a clean inverse); undo snapshots one operation, never the whole database
-- **Cost**: deleting an application must carry the rows it took with it (interviews, timeline, note bindings), and restoring must handle "this note was rebound to another application" — in that case it does not steal it back
+> **How**　a 10-step stack plus redo; a new action clears the redo stack; a sync merge is undoable but not redoable (its inverse is not a clean inverse); undo snapshots one operation, never the whole database
+>
+> **Cost**　deleting an application must carry the rows it took with it (interviews, timeline, note bindings), and restoring must handle "this note was rebound to another application" — in that case it does not steal it back
 
 ### Failure paths must have exits
 
 A render crash, unreadable data, a failed write — the user must never be trapped.
 
-- **How**: `ErrorBoundary` offers three exits (reload / download raw JSON / copy the error); a read failure first stores the raw bytes under `failedAt.*`, then locks persistence so `saveDB` becomes a no-op
-- **Cost**: **automatic repair is forbidden**. Auto-repair turns "recoverable" into "unrecoverable", so that page only offers exits — it never guesses, fixes, or deletes
+> **How**　`ErrorBoundary` offers three exits (reload / download raw JSON / copy the error); a read failure first stores the raw bytes under `failedAt.*`, then locks persistence so `saveDB` becomes a no-op
+>
+> **Cost**　**automatic repair is forbidden**. Auto-repair turns "recoverable" into "unrecoverable", so that page only offers exits — it never guesses, fixes, or deletes
 
 ### One HTML file is a verifiable constraint, not laziness
 
@@ -213,7 +246,7 @@ localStorage / IndexedDB
 Full data model, merge algorithm, and field-ownership rules: [`docs/ARCHITECTURE-v0.2.md`](docs/ARCHITECTURE-v0.2.md).
 
 <details>
-<summary><b>Repository layout</b></summary>
+<summary><b>📁 Repository layout</b></summary>
 
 ```
 job-desk/
@@ -249,7 +282,7 @@ job-desk/
 </details>
 
 <details>
-<summary><b>Core algorithm: silence</b></summary>
+<summary><b>📐 Core algorithm: silence</b></summary>
 
 ```
 lastActivityAt = max(statusChangedAt, all note.touchedAt under this application)
@@ -264,7 +297,7 @@ silenceDays    = calendar-day difference between today(00:00) and lastActivityAt
 </details>
 
 <details>
-<summary><b>Where the data lives, and how to back it up</b></summary>
+<summary><b>🗄️ Where the data lives, and how to back it up</b></summary>
 
 | Key | Contents |
 | :--- | :--- |
@@ -284,7 +317,7 @@ When served over HTTP, the same data lives in the `jobdesk` / `kv` IndexedDB sto
 </details>
 
 <details>
-<summary><b>Platform sync boundaries</b></summary>
+<summary><b>🔄 Platform sync boundaries</b></summary>
 
 Recruiting platforms expose no public API (and would not give one to an individual developer). So this is not scraping — it reads **what is already on your screen**:
 
@@ -306,7 +339,7 @@ See [`docs/adapters/README.md`](docs/adapters/README.md) to add a platform; ever
 </details>
 
 <details>
-<summary><b>Privacy and non-goals</b></summary>
+<summary><b>🔒 Privacy and non-goals</b></summary>
 
 The hardest promise: **when you open the page, the browser makes no request on its behalf.**
 
@@ -351,7 +384,7 @@ Out of scope by design, not by schedule:
 Neither the bench nor the smoke runs on jsdom: it has no layout and no compositor, so the most expensive operations (table reflow, scrolling) cannot be measured realistically. The smoke script self-checks — if data never reached the UI (for example it landed on the failure page) it fails outright instead of printing a row of pretty fake numbers.
 
 <details>
-<summary><b>Development and release commands</b></summary>
+<summary><b>🛠️ Development and release commands</b></summary>
 
 ```bash
 cd app
