@@ -8,17 +8,26 @@ export interface FieldProps {
   value: string;
   onCommit: (value: string) => void;
   placeholder?: string;
-  type?: 'text' | 'date' | 'url' | 'number' | 'time' | 'datetime-local';
+  type?: 'text' | 'date' | 'url' | 'number' | 'time' | 'datetime-local' | 'month';
   hint?: string;
   disabled?: boolean;
   min?: number;
   max?: number;
   narrow?: boolean;
+  /**
+   * v0.9：边打边提交（不等失焦）。
+   *
+   * 简历表单必须开它 —— 右侧 A4 预览要在输入时就跟上（PRD 验收 6「停手 < 200 ms 更新」）。
+   * 写盘压力由 `resume/draft.ts` 的 400 ms 防抖通道吸收，所以这里逐字提交**不等于**
+   * 逐字整库克隆。其余表单保持默认的「失焦提交」：那里没有实时预览，逐字提交只会
+   * 让 `⌘Z` 与校验变吵。
+   */
+  live?: boolean;
 }
 
-/** 文本类字段：本地暂存，失焦或回车时提交 */
+/** 文本类字段：本地暂存，失焦或回车时提交（`live` 时改为输入即提交） */
 export function Field(props: FieldProps) {
-  const { label, value, onCommit, placeholder, type = 'text', hint, disabled, min, max, narrow } = props;
+  const { label, value, onCommit, placeholder, type = 'text', hint, disabled, min, max, narrow, live } = props;
   const [draft, setDraft] = useState(value);
 
   useEffect(() => {
@@ -40,7 +49,11 @@ export function Field(props: FieldProps) {
         max={max}
         disabled={disabled}
         placeholder={placeholder}
-        onChange={(event) => setDraft(event.target.value)}
+        onChange={(event) => {
+          const next = event.target.value;
+          setDraft(next);
+          if (live) onCommit(next);
+        }}
         onBlur={commit}
         onKeyDown={(event) => {
           if (event.key === 'Enter') {

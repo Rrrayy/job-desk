@@ -4961,3 +4961,184 @@ button.chip:hover {
   flex-wrap: wrap;
 }
 
+
+/* ============================================================ v0.9 · 简历表单（T02）
+   类名前缀 `resume-form__*`；根节点同时带 `resume__form`（T03 的打印 CSS 靠它整块隐藏）。
+   正文侧的 `.rs-*` 是 A4 预览的类名，两者不共用 —— 表单和成品长成一样才是灾难。 */
+
+.resume-form {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.resume-form__section {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding: 10px 12px 12px;
+  border: 1px solid var(--line-soft);
+  border-radius: var(--radius);
+  background: var(--surface);
+}
+
+.resume-form__head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.resume-form__title {
+  flex: 1 1 auto;
+  height: 28px;
+  font-weight: 600;
+  font-size: 13.5px;
+  border-color: transparent;
+  background: transparent;
+  padding: 0 6px;
+}
+
+.resume-form__title:hover,
+.resume-form__title:focus {
+  border-color: var(--line);
+  background: var(--surface);
+}
+
+.resume-form__count {
+  flex-shrink: 0;
+  font-size: 11.5px;
+  color: var(--ink-4);
+}
+
+.resume-form__item {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 8px 10px;
+  border: 1px solid var(--line-soft);
+  border-radius: var(--radius-sm);
+  background: #fcfcfe;
+}
+
+.resume-form__item-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.resume-form__item-index {
+  font-size: 11.5px;
+  color: var(--ink-4);
+}
+
+.resume-form__item-acts {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.resume-form__fields {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.resume-form__field {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  min-width: 0;
+}
+
+.resume-form__missing {
+  font-size: 11px;
+  color: var(--amber);
+}
+
+.resume-form__add {
+  align-self: flex-start;
+}
+
+/* ---------- rich_bullets ---------- */
+.bullets {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.bullets__rows {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.bullets__row {
+  display: flex;
+  align-items: flex-start;
+  gap: 6px;
+}
+
+.bullets__text {
+  flex: 1 1 auto;
+  min-height: 46px;
+  font-size: 12.5px;
+}
+
+.bullets__acts {
+  display: flex;
+  align-items: center;
+  gap: 3px;
+  padding-top: 2px;
+}
+
+.bullets__foot {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+/* ---------- tags ---------- */
+.tags {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+}
+
+.tags__chips {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  flex-wrap: wrap;
+}
+
+.tags__chip {
+  padding: 1px 8px;
+  border-radius: 999px;
+  background: var(--indigo-soft);
+  color: var(--indigo-dark);
+  font-size: 11.5px;
+  line-height: 1.7;
+}
+
+/* ---------- photo（T02 只占位） ---------- */
+.photo {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+}
+
+.photo__row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.photo__preview {
+  width: 56px;
+  height: 56px;
+  object-fit: cover;
+  border-radius: var(--radius-sm);
+  border: 1px solid var(--line);
+}

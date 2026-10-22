@@ -19,6 +19,7 @@ import type {
   PlatformId,
   Question,
   QuestionCategory,
+  ResumeContent,
   Status,
 } from '../types';
 import type { MergePlan, PlannedRow } from './sync/types';
@@ -207,6 +208,21 @@ export interface AppApi {
 
   updateCompany: (id: string, patch: Partial<Company>) => void;
   updateSettings: (patch: Partial<AppSettings>) => void;
+
+  /* ---------------- 简历草稿（v0.9 · T02 写入通道） ---------------- */
+  /**
+   * 落库一份草稿内容（**只写 `Resume.content` + `updatedAt`，不入撤销栈**）。
+   *
+   * 为什么单独开一个入口而不是让组件直接 `mutate`：
+   * 1. 编辑期的写盘必须收敛到一个地方 —— 调用方是 `useResumeDraft` 的 400 ms 防抖
+   *    通道（A-07），逐字调 `mutate` 会在 500 条投递时卡出可见掉帧；
+   * 2. 撤销栈的语义是「操作级」（`⌘Z` 回退一次操作，不是回退一次打字），
+   *    所以这里**刻意不 pushUndo**：编辑期不入栈，只有「存为新版本」这类结构操作入栈（T05）。
+   *
+   * 传进来的 `content` 会被深拷贝后写库：草稿对象仍归 React 状态所有，
+   * 库里的那份不能被组件后续的 setState 连带改掉。
+   */
+  updateResumeContent: (id: string, content: ResumeContent) => void;
 
   loadSampleData: () => void;
   clearAllData: () => void;

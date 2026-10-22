@@ -35,6 +35,7 @@ import type {
   NoteType,
   PlatformId,
   Question,
+  ResumeContent,
   Status,
 } from './types';
 import type { NewCalendarEventInput, ParsedCourseInput } from './lib/api';
@@ -822,6 +823,28 @@ export default function App() {
       mutate((draft) => {
         // schemaVersion 声明的是数据格式，不是用户可改项：保留现值（2），绝不回写 1
         draft.settings = { ...draft.settings, ...patch, schemaVersion: draft.settings.schemaVersion };
+      });
+    },
+    [mutate],
+  );
+
+  /**
+   * v0.9 简历草稿落库（T02 写入通道）。
+   *
+   * 三个刻意的边界，改这个函数前先读一遍：
+   * 1. **不 pushUndo**：编辑期不入撤销栈（A-07）。`⌘Z` 是操作级撤销，不是文本撤销；
+   *    每次防抖提交都进栈会把用户的撤销栈冲成几十层「改了一个字」。
+   * 2. **深拷贝写入**：传进来的是 React 状态里的对象，直接塞进库里会让「组件下一次
+   *    setState」和「库里的值」共享引用，两个真相迟早对不上。
+   * 3. **找不到简历就什么都不写**（可能刚被删）：静默返回，不造一条半残的记录。
+   */
+  const updateResumeContent = useCallback(
+    (id: string, content: ResumeContent): void => {
+      mutate((draft) => {
+        const target = draft.resumes.find((item) => item.id === id);
+        if (!target) return;
+        target.content = cloneDB(content);
+        target.updatedAt = new Date().toISOString();
       });
     },
     [mutate],
@@ -2392,6 +2415,7 @@ export default function App() {
     deleteInterview,
     updateCompany,
     updateSettings,
+    updateResumeContent,
     loadSampleData,
     clearAllData,
     addCalendarEvent,
