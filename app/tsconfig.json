@@ -19,5 +19,7 @@
     "forceConsistentCasingInFileNames": true,
     "types": ["vitest/globals", "node"]
   },
-  "include": ["src", "vite.config.ts", "vitest.config.ts"]
+  // scripts/print-harness 是打印门禁的宿主页（v0.9 / T03）：它 import 真组件，
+  // 纳入类型检查后，T04/T05 改组件签名会在这里先炸，而不是等到跑门禁时白等一次浏览器启动
+  "include": ["src", "scripts/print-harness", "vite.config.ts", "vitest.config.ts"]
 }

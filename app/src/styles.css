@@ -5142,3 +5142,235 @@ button.chip:hover {
   border-radius: var(--radius-sm);
   border: 1px solid var(--line);
 }
+
+/* ============================================================ v0.9 · A4 预览（T03）
+   尺寸一律 mm：打印就是物理尺寸，屏幕上只在最外层套一个 transform: scale()。
+   绝不用 zoom（改布局盒、打印路径行为不一致），也绝不写「预览 px / 打印 mm」两套真相。 */
+
+.a4-fit {
+  --a4-scale: 1;
+  /* width/height 都是「真实尺寸 × 缩放」：scale 不改变布局盒，容器必须自己算 */
+  width: calc(210mm * var(--a4-scale));
+  height: calc(var(--a4-h, 297mm) * var(--a4-scale));
+  transform: scale(var(--a4-scale));
+  transform-origin: top left;
+}
+
+.a4 {
+  position: relative;
+  width: 210mm;
+  min-height: 297mm;
+  background: #fff;
+  /* 页边距交给 @page（打印）与 .a4__body 的内边距（屏幕），这里不留 padding */
+  padding: 0;
+  border-radius: 2px;
+  box-shadow: 0 2px 16px rgba(27, 31, 42, 0.12);
+  color: #1b1f2a;
+  font-size: 10.5pt;
+  line-height: 1.55;
+}
+
+.a4__body {
+  /* ★ 必须与 @page margin 完全一致（14mm）：屏幕上看到的留白 = 纸上印出来的留白。
+     差 1mm 就会让「预览里刚好一行、纸上折成两行」，分页线跟着失准。
+     模板之间的页边距差异只许走这里（Q4：不许按模板生成 @page）。 */
+  padding: 14mm;
+}
+
+/* ---------- 分页辅助线 / 页码（打印时整类消失） ---------- */
+.a4__guide {
+  position: absolute;
+  left: 14mm;
+  right: 14mm;
+  border-top: 1px dashed #d9dce7;
+  pointer-events: none;
+}
+
+.a4__page-no {
+  position: absolute;
+  right: 8mm;
+  font-size: 8pt;
+  color: #b6bccd;
+  pointer-events: none;
+}
+
+/* ---------- 正文（.rs-*：打印规则只允许引用这一类与 .a4*） ---------- */
+.rs-section {
+  margin: 0 0 5mm;
+}
+
+.rs-section:last-child {
+  margin-bottom: 0;
+}
+
+.rs-section__title {
+  margin: 0 0 2mm;
+  padding-bottom: 1mm;
+  border-bottom: 1px solid #d9dce7;
+  font-size: 11pt;
+  font-weight: 700;
+  letter-spacing: 0.02em;
+  color: #2b3145;
+}
+
+.rs-item {
+  margin: 0 0 3mm;
+}
+
+.rs-item:last-child {
+  margin-bottom: 0;
+}
+
+.rs-item__head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 4mm;
+}
+
+.rs-item__title {
+  font-weight: 600;
+}
+
+.rs-item__period {
+  flex-shrink: 0;
+  font-size: 9pt;
+  color: #6b7285;
+}
+
+.rs-item__line {
+  margin: 1mm 0 0;
+}
+
+.rs-item__tags {
+  font-size: 9.5pt;
+  color: #454b5c;
+}
+
+.rs-list {
+  margin: 1mm 0 0 4mm;
+  padding: 0 0 0 3mm;
+  list-style: disc;
+}
+
+.rs-bullets {
+  margin: 0.6mm 0;
+  font-size: 10pt;
+}
+
+/* 必填未填的浅色占位（PRD §8.3：不阻止保存，但要让用户看见缺什么） */
+.rs-placeholder {
+  margin: 1mm 0 0;
+  font-size: 9.5pt;
+  color: #b6bccd;
+}
+
+/* ---------- 打印入口 + 提示层 ---------- */
+.print-entry {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.print-hint {
+  max-width: 460px;
+  padding: 16px 18px;
+  gap: 10px;
+}
+
+.print-hint__title {
+  margin: 0;
+  font-size: 15px;
+  font-weight: 600;
+}
+
+.print-hint__list {
+  margin: 0;
+  padding-left: 20px;
+  font-size: 12.5px;
+  color: var(--ink-2);
+  line-height: 1.7;
+}
+
+.print-hint__acts {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+}
+
+/* ==========================================================================
+   打印（v0.9）
+   ★ 全仓唯一一份静态 @page（Q4 裁决）：禁止按模板生成 @page，模板差异走 .a4__body 内边距
+   ========================================================================== */
+@page {
+  size: A4;
+  margin: 14mm;
+}
+
+@media print {
+  /* ① 只留简历：靠 body[data-printing] 限定作用域，不影响「打印当前页」以外的场景 */
+  body[data-printing='1'] {
+    background: #fff;
+  }
+
+  body[data-printing='1'] .topbar,
+  body[data-printing='1'] .todo-bar,
+  body[data-printing='1'] .overlay,
+  body[data-printing='1'] .drawer,
+  body[data-printing='1'] .toast,
+  body[data-printing='1'] .resume__form,
+  body[data-printing='1'] .resume__toolbar,
+  body[data-printing='1'] .print-entry {
+    display: none !important;
+  }
+
+  /* ② 画布装饰全部消失 —— 这是「A4 框被切开」的唯一真实成因（框是 CSS 画的，不是纸） */
+  .a4-fit {
+    transform: none !important;
+    width: auto !important;
+    height: auto !important;
+  }
+
+  .a4 {
+    width: auto !important;
+    min-height: 0 !important;
+    margin: 0 !important;
+    border: 0 !important;
+    border-radius: 0 !important;
+    box-shadow: none !important;
+  }
+
+  /* 页边距由 @page 提供，避免双份留白 */
+  .a4__body {
+    padding: 0 !important;
+  }
+
+  .a4__guide,
+  .a4__page-no {
+    display: none !important;
+  }
+
+  /* ③ 分页不切断：一段经历 / 一条要点不能一半在上一页 */
+  .rs-section,
+  .rs-item {
+    break-inside: avoid;
+    page-break-inside: avoid;
+  }
+
+  .rs-section__title {
+    break-after: avoid;
+    page-break-after: avoid;
+  }
+
+  .rs-list {
+    break-inside: auto;
+  }
+
+  /* ④ 颜色保真（分隔线与色块） */
+  .a4,
+  .rs-item,
+  .rs-section__title {
+    print-color-adjust: exact;
+    -webkit-print-color-adjust: exact;
+  }
+}

@@ -15,20 +15,15 @@
  * 前置：npm run build（需要 dist/index.html）
  */
 
-import { spawn } from 'node:child_process';
 import { existsSync, mkdirSync, writeFileSync } from 'node:fs';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { tmpdir } from 'node:os';
+import { findEdge, sleep, openPage } from './lib/cdp.mjs';
 
 const APP_DIR = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 const DIST = join(APP_DIR, 'dist', 'index.html');
 const OUT_DIR = join(APP_DIR, 'bench-out');
-
-const EDGE_CANDIDATES = [
-  'C:/Program Files (x86)/Microsoft/Edge/Application/msedge.exe',
-  'C:/Program Files/Microsoft/Edge/Application/msedge.exe',
-];
 
 const SIZES = [50, 200, 500, 1000];
 
@@ -37,9 +32,9 @@ if (!existsSync(DIST)) {
   process.exit(1);
 }
 
-const edge = EDGE_CANDIDATES.find((path) => existsSync(path));
+const edge = findEdge();
 if (!edge) {
-  console.error('✗ 找不到 Edge，无法跑基准');
+  console.error('✗ 找不到 Edge，无法跑基准（可用 JOB_DESK_EDGE 指定路径）');
   process.exit(1);
 }
 
@@ -113,105 +108,6 @@ function buildSeed(n) {
   };
 }
 
-/* ------------------------------------------------------------------ CDP */
-
-class Cdp {
-  constructor(ws) {
-    this.ws = ws;
-    this.id = 0;
-    this.pending = new Map();
-    ws.addEventListener('message', (event) => {
-      const msg = JSON.parse(event.data);
-      if (msg.id && this.pending.has(msg.id)) {
-        const { resolve: res, reject } = this.pending.get(msg.id);
-        this.pending.delete(msg.id);
-        if (msg.error) reject(new Error(msg.error.message));
-        else res(msg.result);
-      }
-    });
-  }
-
-  send(method, params = {}) {
-    const id = ++this.id;
-    return new Promise((res, reject) => {
-      this.pending.set(id, { resolve: res, reject });
-      this.ws.send(JSON.stringify({ id, method, params }));
-      setTimeout(() => {
-        if (this.pending.has(id)) {
-          this.pending.delete(id);
-          reject(new Error(`${method} 超时`));
-        }
-      }, 30000);
-    });
-  }
-
-  async eval(expression) {
-    const result = await this.send('Runtime.evaluate', {
-      expression,
-      returnByValue: true,
-      awaitPromise: true,
-    });
-    if (result.exceptionDetails) {
-      throw new Error(result.exceptionDetails.exception?.description || '页面内脚本抛错');
-    }
-    return result.result.value;
-  }
-}
-
-async function sleep(ms) {
-  return new Promise((res) => setTimeout(res, ms));
-}
-
-/** 启动一个干净的 Edge，返回页面目标 */
-async function openPage(profileDir) {
-  const proc = spawn(
-    edge,
-    [
-      '--headless=new',
-      '--disable-gpu',
-      '--no-first-run',
-      '--remote-debugging-port=0',
-      `--user-data-dir=${profileDir}`,
-      '--allow-file-access-from-files',
-      'about:blank',
-    ],
-    { stdio: ['ignore', 'pipe', 'pipe'] },
-  );
-
-  const wsUrl = await new Promise((res, reject) => {
-    let buffer = '';
-    const timer = setTimeout(() => reject(new Error('Edge 启动超时')), 20000);
-    proc.stderr.on('data', (chunk) => {
-      buffer += chunk.toString();
-      const match = /DevTools listening on (ws:\/\/\S+)/.exec(buffer);
-      if (match) {
-        clearTimeout(timer);
-        res(match[1]);
-      }
-    });
-    proc.on('exit', (code) => {
-      clearTimeout(timer);
-      reject(new Error(`Edge 提前退出，code=${code}`));
-    });
-  });
-
-  // 浏览器级 ws → 开一个页面 → 拿到页面级 ws
-  const port = new URL(wsUrl).port;
-  const versionRes = await fetch(`http://127.0.0.1:${port}/json/version`);
-  const version = await versionRes.json();
-  const browserWs = new WebSocket(version.webSocketDebuggerUrl);
-  await new Promise((res) => browserWs.addEventListener('open', res, { once: true }));
-
-  const browser = new Cdp(browserWs);
-  const { targetId } = await browser.send('Target.createTarget', { url: 'about:blank' });
-  const list = await (await fetch(`http://127.0.0.1:${port}/json/list`)).json();
-  const target = list.find((item) => item.id === targetId);
-  const pageWs = new WebSocket(target.webSocketDebuggerUrl);
-  await new Promise((res) => pageWs.addEventListener('open', res, { once: true }));
-
-  return { proc, browser, page: new Cdp(pageWs), browserWs, pageWs, port };
-}
-
 /* ------------------------------------------------------------------ 主流程 */
 
 const results = [];
@@ -219,7 +115,7 @@ const results = [];
 for (const size of SIZES) {
   const profileDir = join(tmpdir(), `jobdesk-bench-${size}-${Date.now()}`);
   process.stdout.write(`跑 ${size} 条… `);
-  const page = await openPage(profileDir);
+  const page = await openPage({ edge, profileDir });
   try {
     await page.page.send('Page.enable');
     await page.page.send('Runtime.enable');
@@ -317,9 +213,7 @@ for (const size of SIZES) {
     console.log(`失败：${error.message}`);
     results.push({ size, error: error.message });
   } finally {
-    page.pageWs.close();
-    page.browserWs.close();
-    page.proc.kill();
+    page.close();
   }
 }
 
