@@ -13,7 +13,7 @@ import type { DB, PlatformId, Status } from '../types';
 import type { InsightsTab } from './api';
 import { BUDGET } from './budget';
 import { defaultSettings, emptyDB } from './defaults';
-import { FORMAT_VERSION_CURRENT, SCHEMA_VERSION_CURRENT, SCHEMA_VERSION_V1, SCHEMA_VERSION_V2, SCHEMA_VERSION_V3, migrateV2ToV3, resolveSchemaVersion } from './migrate';
+import { FORMAT_VERSION_CURRENT, MSG_BACKUP_TOO_NEW_HEAD, MSG_BACKUP_TOO_NEW_MID, SCHEMA_VERSION_CURRENT, SCHEMA_VERSION_V1, SCHEMA_VERSION_V2, SCHEMA_VERSION_V3, migrateV2ToV3, resolveSchemaVersion } from './migrate';
 import {
   BACKUP_KEY_PREFIX,
   readPointer,
@@ -255,7 +255,7 @@ export function validateImport(raw: unknown): ImportResult {
     ok: false,
     error:
       version > SCHEMA_VERSION_CURRENT
-        ? `这份备份来自 v${version} 数据格式的新版本，请先升级工具再导入（当前支持到 ${SCHEMA_VERSION_CURRENT}）`
+        ? `${MSG_BACKUP_TOO_NEW_HEAD}${version}${MSG_BACKUP_TOO_NEW_MID}${SCHEMA_VERSION_CURRENT}）`
         : `无法识别的数据格式版本：${String(version)}`,
   };
 }

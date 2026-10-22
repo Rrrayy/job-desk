@@ -26,6 +26,13 @@ export const SCHEMA_VERSION_CURRENT = SCHEMA_VERSION_V4;
  */
 export const FORMAT_VERSION_CURRENT = 3;
 
+/**
+ * 「备份版本过新」报错的共用字面串（migrate 三个迁移入口 + storage 的导入检查各拼一次）。
+ * 只抽完全相同的串：头段固定，尾段拼版本号，句号留在调用点。
+ */
+export const MSG_BACKUP_TOO_NEW_HEAD = '这份备份来自 v';
+export const MSG_BACKUP_TOO_NEW_MID = ' 数据格式的新版本，请先升级工具再导入（当前支持到 ';
+
 export interface MigrateContext {
   now: string;
 }
@@ -68,7 +75,7 @@ export function migrateV2ToV3(input: unknown, ctx: MigrateContext): MigrateResul
   if (typeof version === 'number' && version > SCHEMA_VERSION_CURRENT) {
     return {
       ok: false,
-      error: `这份备份来自 v${version} 数据格式的新版本，请先升级工具再导入（当前支持到 ${SCHEMA_VERSION_CURRENT}）`,
+      error: `${MSG_BACKUP_TOO_NEW_HEAD}${version}${MSG_BACKUP_TOO_NEW_MID}${SCHEMA_VERSION_CURRENT}）`,
     };
   }
 
@@ -135,7 +142,7 @@ export function migrateV3ToV4(input: unknown, ctx: MigrateContext): MigrateResul
   if (typeof version === 'number' && version > SCHEMA_VERSION_CURRENT) {
     return {
       ok: false,
-      error: `这份备份来自 v${version} 数据格式的新版本，请先升级工具再导入（当前支持到 ${SCHEMA_VERSION_CURRENT}）`,
+      error: `${MSG_BACKUP_TOO_NEW_HEAD}${version}${MSG_BACKUP_TOO_NEW_MID}${SCHEMA_VERSION_CURRENT}）`,
     };
   }
   if (version !== SCHEMA_VERSION_V3) {
@@ -191,7 +198,7 @@ export function migrateV1ToV2(input: unknown, ctx: MigrateContext): MigrateResul
   if (typeof version === 'number' && version > SCHEMA_VERSION_V2) {
     return {
       ok: false,
-      error: `这份备份来自 v${version} 数据格式的新版本，请先升级工具再导入（当前支持到 ${SCHEMA_VERSION_V2}）`,
+      error: `${MSG_BACKUP_TOO_NEW_HEAD}${version}${MSG_BACKUP_TOO_NEW_MID}${SCHEMA_VERSION_V2}）`,
     };
   }
 

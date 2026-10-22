@@ -176,6 +176,9 @@ const UNDO_LIMIT = 10;
 
 const QUESTION_TEXT_LIMIT = 2000;
 
+/** 导出失败的统一提示（JSON / 加密 / CSV / ICS / 便携包五个出口各拼一次，改文案只动这一处） */
+const MSG_EXPORT_BLOCKED = '导出失败，浏览器可能禁止了下载';
+
 interface UIBoot {
   view: ViewKey;
   insightsTab: InsightsTab;
@@ -1625,10 +1628,10 @@ export default function App() {
       showToast(
         ok
           ? `已导出便携包（${current.applications.length} 条投递 + 应用本体）`
-          : '导出失败，浏览器可能禁止了下载',
+          : MSG_EXPORT_BLOCKED,
       );
     } catch {
-      showToast('导出失败，浏览器可能禁止了下载');
+      showToast(MSG_EXPORT_BLOCKED);
     }
   }, [showToast]);
 
@@ -1863,9 +1866,9 @@ export default function App() {
       try {
         const ok = downloadText(text, 'application/json', buildName(false));
         if (ok) markExported();
-        showToast(ok ? '已导出 JSON 备份' : '导出失败，浏览器可能禁止了下载');
+        showToast(ok ? '已导出 JSON 备份' : MSG_EXPORT_BLOCKED);
       } catch {
-        showToast('导出失败，浏览器可能禁止了下载');
+        showToast(MSG_EXPORT_BLOCKED);
       }
     };
 
@@ -1888,7 +1891,7 @@ export default function App() {
         }
         const ok = downloadText(result.value, 'application/json', buildName(true));
         if (ok) markExported();
-        showToast(ok ? '已导出加密备份（记得口令，忘记无法恢复）' : '导出失败，浏览器可能禁止了下载');
+        showToast(ok ? '已导出加密备份（记得口令，忘记无法恢复）' : MSG_EXPORT_BLOCKED);
       })();
       return;
     }
@@ -1911,7 +1914,7 @@ export default function App() {
       'text/csv',
       csvFilename(new Date()),
     );
-    showToast(ok ? `已导出 ${current.applications.length} 条投递（CSV）` : '导出失败，浏览器可能禁止了下载');
+    showToast(ok ? `已导出 ${current.applications.length} 条投递（CSV）` : MSG_EXPORT_BLOCKED);
   }, [showToast]);
 
   const exportIcs = useCallback((): void => {
@@ -1925,7 +1928,7 @@ export default function App() {
       'text/calendar',
       icsFilename(new Date()),
     );
-    showToast(ok ? `已导出 ${current.interviews.length} 场面试（ICS）` : '导出失败，浏览器可能禁止了下载');
+    showToast(ok ? `已导出 ${current.interviews.length} 场面试（ICS）` : MSG_EXPORT_BLOCKED);
   }, [showToast]);
 
   /** 把合并计划落库，并把「撤销这一次导入」挂到撤销栈上 */
