@@ -1812,11 +1812,6 @@ ol {
   margin-bottom: 10px;
 }
 
-.cal__course-item {
-  font-size: 11.5px;
-  color: #5c43b5;
-}
-
 .cal__list {
   display: flex;
   flex-direction: column;
@@ -2713,31 +2708,7 @@ ol {
   padding: 0 2px;
 }
 
-/* 课程与数据卡片（设置页） */
-
-.course-list {
-  display: flex;
-  flex-direction: column;
-  gap: 7px;
-}
-
-.course-item {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  flex-wrap: wrap;
-}
-
-.course-item .input--compact {
-  flex: 0 0 auto;
-  width: 96px;
-}
-
-.course-item .input--compact[placeholder='课程名'] {
-  flex: 1;
-  min-width: 90px;
-  width: auto;
-}
+/* 数据卡片（设置页） */
 
 .data-card {
   display: flex;
