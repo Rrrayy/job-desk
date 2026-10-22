@@ -18,6 +18,7 @@ import type {
   NoteType,
   PlatformId,
   Question,
+  QuestionCategory,
   Status,
 } from '../types';
 import type { MergePlan, PlannedRow } from './sync/types';
@@ -117,6 +118,21 @@ export interface QuickNoteContext {
   round?: number;
   interviewDate?: string;
 }
+
+/**
+ * 快记一条题：文字必填，掌握度 / 分类可选。
+ * 不带这两个字段 = 旧行为（不会 + 未分类），所以老的 `addQuestions(id, ['题干'])` 调用照常成立。
+ */
+export interface NewQuestionInput {
+  text: string;
+  /** 默认 0（不会）—— 快记时多一个必填项就是多一个放弃的理由 */
+  mastery?: Mastery;
+  /** 默认 null（未分类） */
+  category?: QuestionCategory | null;
+}
+
+/** addQuestions 的入参：裸字符串 = 全默认，对象 = 可指定掌握度 / 分类 */
+export type QuestionDraft = string | NewQuestionInput;
 
 /** 新增面经：companyName + interviewDate 必填，其余可空 */
 export interface NewExperienceInput {
@@ -253,9 +269,15 @@ export interface AppApi {
   addExperience: (input: NewExperienceInput) => string;
   updateExperience: (id: string, patch: Partial<InterviewExperience>) => void;
   deleteExperience: (id: string) => void;
-  /** 批量加题（快记用），返回实际写入条数 */
-  addQuestions: (experienceId: string, texts: string[]) => number;
+  /** 批量加题（快记用），返回实际写入条数。裸字符串 = 不会 + 未分类（v0.8 行为不变） */
+  addQuestions: (experienceId: string, items: QuestionDraft[]) => number;
+  /** 静默改字段：不进撤销栈。输入框逐字写库用这个（ExperienceEditor 的实时编辑） */
   updateQuestion: (id: string, patch: Partial<Question>) => void;
+  /**
+   * 表单式编辑：一次 mutate + 一条撤销栈（题库行内编辑「保存」用）。
+   * 与 updateQuestion 分开，是因为后者被实时输入框高频调用，进撤销栈会把栈冲爆。
+   */
+  editQuestion: (id: string, patch: Partial<Question>) => void;
   deleteQuestion: (id: string) => void;
   /** 复习一次：reviewCount+1、lastReviewedAt、nextReviewAt 按新 mastery 重算 */
   reviewQuestion: (id: string, mastery: Mastery) => void;

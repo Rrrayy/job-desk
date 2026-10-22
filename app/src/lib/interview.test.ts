@@ -9,6 +9,7 @@ import {
   nextReviewAtFor,
   pendingReviewInterviews,
   reviewQueue,
+  revertQuestionEdit,
   sortQuestionsForReview,
   statsByCategory,
   statsByCompany,
@@ -253,5 +254,42 @@ describe('统计', () => {
       question({ id: 'c', mastery: 2 }),
     ]);
     expect(counts).toEqual({ 0: 2, 1: 0, 2: 1 });
+  });
+});
+
+describe('题目编辑的撤销（T-QB ③）', () => {
+  it('只回退被改字段，不碰复习调度（nextReviewAt / reviewCount / updatedAt）', () => {
+    const db = emptyDB();
+    db.questions = [
+      question({
+        id: 'q_1',
+        text: '改了之后的题干',
+        category: 'project',
+        mastery: 2,
+        myAnswer: '新回答',
+        nextReviewAt: '2025-03-20',
+        reviewCount: 3,
+        updatedAt: '2025-03-13T00:00:00.000Z',
+      }),
+    ];
+    revertQuestionEdit(db, {
+      questionId: 'q_1',
+      before: { text: '手写 Promise.all', category: 'algo', mastery: 0, myAnswer: undefined },
+    });
+    const target = db.questions[0];
+    expect(target.text).toBe('手写 Promise.all');
+    expect(target.category).toBe('algo');
+    expect(target.mastery).toBe(0);
+    expect(target.myAnswer).toBeUndefined();
+    // 调度字段与审计字段不参与回退
+    expect(target.nextReviewAt).toBe('2025-03-20');
+    expect(target.reviewCount).toBe(3);
+    expect(target.updatedAt).toBe('2025-03-13T00:00:00.000Z');
+  });
+
+  it('题目已被删掉时静默跳过，不抛错', () => {
+    const db = emptyDB();
+    expect(() => revertQuestionEdit(db, { questionId: 'gone', before: { text: 'x' } })).not.toThrow();
+    expect(db.questions).toHaveLength(0);
   });
 });

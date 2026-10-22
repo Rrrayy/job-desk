@@ -2,14 +2,29 @@
  * 快记面经：一行一题，Enter 连记。
  *
  * 关键路径（架构 §4.3）：面完当天从「今日」或详情抽屉点进来，90 秒记 5 题。
- * 所以这里**只做三件事**：带上公司/轮次、一行一题、记完告诉用户「几天后提醒复习」。
- * 分类 / 难度 / 我的回答都留到「面经编辑器」里补 —— 快记时多一个必填项就是多一个放弃的理由。
+ * 所以这里只做四件事：带上公司/轮次、一行一题、**每行两个不必填的小下拉**（掌握度 / 分类）、
+ * 点「记完了」按各自选择一次落库。
+ *
+ * v0.9 / T-QB ①：以前落库全是「不会 + 未分类」，用户没得选。现在下拉就地可改，
+ * 默认仍是「不会 / 未分类」—— 默认值不变 = 快记的最短路径没变长。
+ *
+ * 落库口径：**记完了 / 关闭时一次写入**（`api.addQuestions(id, items)`）。
+ * 所以每行的选择始终是本地状态，改起来没有写库往返。
  */
 
 import { useMemo, useState } from 'react';
-import type { AppApi } from '../../lib/api';
+import type { AppApi, NewQuestionInput } from '../../lib/api';
+import type { Mastery, QuestionCategory } from '../../types';
 import { todayISO } from '../../lib/date';
 import { deriveInitialNextReviewAt } from '../../lib/interview';
+import { MasteryCategoryPicks } from './MasteryCategoryPicks';
+
+/** 快记列表里的一行：题干 + 两个还没落库的选择 */
+interface QuickLine {
+  text: string;
+  mastery: Mastery;
+  category: QuestionCategory | null;
+}
 
 export function QuickNote({ api, onClose }: { api: AppApi; onClose: () => void }) {
   const ctx = api.quickNote ?? {};
@@ -18,7 +33,7 @@ export function QuickNote({ api, onClose }: { api: AppApi; onClose: () => void }
   const [round, setRound] = useState(ctx.round ? String(ctx.round) : '');
   const [interviewDate, setInterviewDate] = useState(ctx.interviewDate ?? todayISO(api.now));
   const [draft, setDraft] = useState('');
-  const [lines, setLines] = useState<string[]>([]);
+  const [lines, setLines] = useState<QuickLine[]>([]);
   const [experienceId, setExperienceId] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
 
@@ -26,6 +41,8 @@ export function QuickNote({ api, onClose }: { api: AppApi; onClose: () => void }
     () => deriveInitialNextReviewAt(interviewDate, api.now.toISOString()),
     [interviewDate, api.now],
   );
+
+  const total = lines.length + (draft.trim() ? 1 : 0);
 
   const ensureExperience = (): string | null => {
     if (experienceId) return experienceId;
@@ -46,43 +63,61 @@ export function QuickNote({ api, onClose }: { api: AppApi; onClose: () => void }
     return id;
   };
 
+  /** Enter：只进本地列表，不落库（落库统一在「记完了」） */
   const commitDraft = (): void => {
     const text = draft.trim();
     if (!text) return;
-    const id = ensureExperience();
-    if (!id) return;
-    const written = api.addQuestions(id, [text]);
-    if (written === 0) {
-      setError('这道题没存进去（可能是重复或超长），换个说法再试');
+    if (!companyName.trim()) {
+      setError('先填公司名 —— 只填这一个也能存');
       return;
     }
     setError(null);
-    setLines((prev) => [...prev, text]);
+    setLines((prev) => [...prev, { text, mastery: 0, category: null }]);
     setDraft('');
   };
 
-  const handleClose = (): void => {
-    // 输入框里还有没按 Enter 的内容 —— 替用户收下，不让他白打一遍
-    if (draft.trim()) {
-      const id = ensureExperience();
-      if (id) {
-        api.addQuestions(id, [draft.trim()]);
-        setLines((prev) => [...prev, draft.trim()]);
-      }
+  const patchLine = (index: number, patch: { mastery?: Mastery; category?: QuestionCategory | null }): void => {
+    setLines((prev) => prev.map((line, i) => (i === index ? { ...line, ...patch } : line)));
+  };
+
+  /**
+   * 落库并关闭。返回 false = 没写成功、浮层留着让用户改（关掉就丢了，不干这事）。
+   * 末尾还没按 Enter 的内容也一起收下（按默认值），不让用户白打一遍。
+   */
+  const flushAndClose = (): void => {
+    const items: NewQuestionInput[] = lines.map((line) => ({
+      text: line.text,
+      mastery: line.mastery,
+      category: line.category,
+    }));
+    const tail = draft.trim();
+    if (tail) items.push({ text: tail });
+    if (items.length === 0) {
+      onClose();
+      return;
     }
-    const count = lines.length + (draft.trim() ? 1 : 0);
-    if (count > 0) {
-      api.toast(`已记 ${count} 题 · ${nextReview} 提醒复习`);
+    const id = ensureExperience();
+    if (!id) return;
+    const written = api.addQuestions(id, items);
+    if (written === 0) {
+      setError('这些题都没存进去（可能是重复或超长），改一下再试');
+      return;
     }
+    const skipped = items.length - written;
+    api.toast(
+      skipped > 0
+        ? `已记 ${written} 题 · ${skipped} 题重复或超长已跳过 · ${nextReview} 提醒复习`
+        : `已记 ${written} 题 · ${nextReview} 提醒复习`,
+    );
     onClose();
   };
 
   return (
-    <div className="quick-note-overlay" onClick={handleClose}>
+    <div className="quick-note-overlay" onClick={flushAndClose}>
       <section className="quick-note" onClick={(event) => event.stopPropagation()}>
         <header className="quick-note__head">
           <h2 className="quick-note__title">记面经</h2>
-          <button type="button" className="icon-btn" onClick={handleClose} title="关闭（Esc）" aria-label="关闭">
+          <button type="button" className="icon-btn" onClick={flushAndClose} title="关闭（Esc）" aria-label="关闭">
             ✕
           </button>
         </header>
@@ -136,9 +171,15 @@ export function QuickNote({ api, onClose }: { api: AppApi; onClose: () => void }
         <div className="quick-note__body">
           <ul className="quick-note__list">
             {lines.map((line, index) => (
-              <li key={`${index}-${line.slice(0, 8)}`} className="quick-note__item">
+              <li key={index} className="quick-note__item">
                 <span className="quick-note__index">{index + 1}</span>
-                <span className="quick-note__text">{line}</span>
+                <span className="quick-note__text">{line.text}</span>
+                <MasteryCategoryPicks
+                  mastery={line.mastery}
+                  category={line.category}
+                  onChange={(patch) => patchLine(index, patch)}
+                  labelPrefix={`第 ${index + 1} 题`}
+                />
               </li>
             ))}
           </ul>
@@ -168,8 +209,8 @@ export function QuickNote({ api, onClose }: { api: AppApi; onClose: () => void }
             <button type="button" className="btn btn--small" onClick={commitDraft} disabled={!draft.trim()}>
               ＋ 再加一题
             </button>
-            <button type="button" className="btn btn--small btn--primary" onClick={handleClose}>
-              记完了（{lines.length + (draft.trim() ? 1 : 0)} 题）
+            <button type="button" className="btn btn--small btn--primary" onClick={flushAndClose}>
+              记完了（{total} 题）
             </button>
           </div>
         </footer>

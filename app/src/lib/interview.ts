@@ -15,6 +15,7 @@ import type {
   QuestionCategory,
   RootCause,
 } from '../types';
+import { clampText } from './budget';
 import { addDays, daysBetween, todayISO, toDateISO } from './date';
 
 export const CATEGORY_LABEL: Record<QuestionCategory, string> = {
@@ -57,6 +58,9 @@ export const SOURCE_LABEL: Record<InterviewExperience['source'], string> = {
 };
 
 export const CATEGORY_OPTIONS: QuestionCategory[] = ['algo', 'concept', 'project', 'behavior', 'reverse', 'hr'];
+
+/** 题干上限（App 的录入/编辑、题库行内编辑的截断提示共用同一个数字） */
+export const QUESTION_TEXT_LIMIT = 2000;
 export const ROOT_CAUSE_OPTIONS: RootCause[] = ['conceptGap', 'forgot', 'nervous', 'misread', 'neverSeen'];
 
 /** 某个 experience 下的题（按录入顺序） */
@@ -294,4 +298,129 @@ export function experienceForInterview(
   return experiences.find(
     (experience) => experience.applicationId === applicationId && (experience.round ?? 0) === round,
   );
+}
+
+/* --------------------------- 题目编辑的撤销 --------------------------- */
+
+/**
+ * 题目编辑的撤销快照：只存被改字段的旧值。
+ * 不存整题快照 —— 那会连 `updatedAt` / `nextReviewAt` 一起回滚，
+ * 而复习调度不归编辑管（R-AI-11 / ④ 掌握度语义不动）。
+ */
+export interface QuestionEditUndo {
+  questionId: string;
+  before: Partial<Pick<Question, 'text' | 'category' | 'mastery' | 'myAnswer' | 'nextTime'>>;
+}
+
+/** 撤销一次题目编辑：把旧值逐字段写回（纯函数，供撤销栈调用） */
+export function revertQuestionEdit(draft: DB, undo: QuestionEditUndo): void {
+  const target = draft.questions.find((question) => question.id === undo.questionId);
+  if (!target) return;
+  Object.assign(target, undo.before);
+}
+
+/* ---------------------- 题目写入口径（R-QB-1 §20.2 / §20.4） ---------------------- */
+
+/** 快记 / 批量录入的入参：裸字符串 = 全默认（不会 + 未分类） */
+export type QuestionDraftInput = string | { text: string; mastery?: Mastery; category?: QuestionCategory | null };
+
+/**
+ * 一次批量录入要写哪些题（纯函数）：
+ * - **默认值必须与历史落库值逐字节一致**：`mastery ?? 0`（不会）、`category ?? null`（未分类）；
+ * - 空题干丢弃、同场重复（忽略大小写与首尾空白）丢弃、题干按 `QUESTION_TEXT_LIMIT` 截断；
+ * - `nextReviewAt` 只看面试日期（掌握度不参与 —— 调度算法本版不动）。
+ *
+ * 供 App.addQuestions / App.addQuickNote 共用，避免两条路径默认值慢慢分叉
+ * （§19 的 R-AI-11 走 applySuggestions 的 meta 写同一批字段，默认值同样必须是 0 / null）。
+ */
+export function buildQuestionRows(params: {
+  experience: InterviewExperience;
+  items: QuestionDraftInput[];
+  now: string;
+  /** 已被占用的题干（小写、已 trim）；同场去重用，函数会就地扩充它 */
+  taken?: Set<string>;
+  /** 生成 id 的函数（注入以便单测确定化） */
+  makeId: (prefix: string) => string;
+}): Question[] {
+  const { experience, items, now, makeId } = params;
+  const taken = params.taken ?? new Set<string>();
+  const rows: Question[] = [];
+  for (const item of items) {
+    const draft = typeof item === 'string' ? { text: item } : item;
+    const text = clampText(draft.text.trim(), QUESTION_TEXT_LIMIT).text;
+    if (!text) continue;
+    const key = text.toLowerCase();
+    if (taken.has(key)) continue;
+    taken.add(key);
+    rows.push({
+      id: makeId('q'),
+      experienceId: experience.id,
+      category: draft.category ?? null,
+      difficulty: 2,
+      text,
+      mastery: draft.mastery ?? 0,
+      tags: [],
+      nextReviewAt: deriveInitialNextReviewAt(experience.interviewDate, now),
+      reviewCount: 0,
+      createdAt: now,
+      updatedAt: now,
+    });
+  }
+  return rows;
+}
+
+/** 编辑题目时可以写的字段（其余一律忽略，见 applyQuestionEdit） */
+const QUESTION_EDITABLE = new Set([
+  'text',
+  'category',
+  'mastery',
+  'difficulty',
+  'myAnswer',
+  'nextTime',
+  'rootCause',
+  'tags',
+]);
+
+/**
+ * 编辑一道题（纯函数）：**只改可编辑字段**，其余字段原样不动。
+ *
+ * ★ 关键：`reviewCount` / `nextReviewAt` / `lastReviewedAt` 三个调度字段
+ *   **就算调用方传进来也会被丢掉** —— 编辑 ≠ 复习了一遍，改个错字不能把题踢进下一档
+ *   复习阶梯（这正是不能用 reviewQuestion 做编辑的原因，见 PRD §20.4）。
+ */
+export function applyQuestionEdit(
+  draft: DB,
+  id: string,
+  patch: Partial<Question>,
+  now: string,
+): void {
+  const target = draft.questions.find((question) => question.id === id);
+  if (!target) return;
+  for (const key of Object.keys(patch) as Array<keyof Question>) {
+    if (!QUESTION_EDITABLE.has(key)) continue;
+    const value = patch[key];
+    if (value === undefined) continue;
+    (target as unknown as Record<string, unknown>)[key] = value;
+  }
+  if (typeof patch.text === 'string') target.text = clampText(patch.text, QUESTION_TEXT_LIMIT).text;
+  target.updatedAt = now;
+}
+
+/** 一批题目的撤销快照（快记一次落库 = 一个撤销单元） */
+export interface QuestionBatchUndo {
+  questionIds: string[];
+  /** 这一批同时新建的 experience 壳；为空表示复用已有场次，撤销时不动它 */
+  createdExperienceId: string | null;
+}
+
+/** 撤销一整批录入：删掉这批题，并（仅当壳是这批建的）删掉空壳 */
+export function revertQuestionBatch(draft: DB, undo: QuestionBatchUndo): void {
+  const ids = new Set(undo.questionIds);
+  draft.questions = draft.questions.filter((question) => !ids.has(question.id));
+  if (!undo.createdExperienceId) return;
+  const stillHasQuestions = draft.questions.some(
+    (question) => question.experienceId === undo.createdExperienceId,
+  );
+  if (stillHasQuestions) return;
+  draft.experiences = draft.experiences.filter((experience) => experience.id !== undo.createdExperienceId);
 }

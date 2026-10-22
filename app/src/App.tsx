@@ -15,6 +15,8 @@ import type {
   NewApplicationInput,
   NewExperienceInput,
   NewInterviewInput,
+  NewQuestionInput,
+  QuestionDraft,
   QuickNoteContext,
   StatusChangeOpts,
   SyncPlanOutcome,
@@ -78,7 +80,7 @@ import {
   csvFilename,
   icsFilename,
 } from './lib/tableExport';
-import { deriveInitialNextReviewAt, nextReviewAtFor } from './lib/interview';
+import { deriveInitialNextReviewAt, nextReviewAtFor, revertQuestionEdit, type QuestionEditUndo } from './lib/interview';
 import { markdownFileName, renderManyMarkdown } from './lib/interviewMarkdown';
 import { applySuggestions, rejectSuggestions, revertAi } from './ai/suggestions';
 import { checkAiReady } from './ai/settings';
@@ -161,7 +163,9 @@ type Undo =
   | { kind: 'import'; previous: DB }
   | { kind: 'sync'; sync: SyncUndo }
   /** v0.8：接受 AI 建议（目标写入 + 状态翻转一体回退，见 ai/suggestions.revertAi） */
-  | { kind: 'ai'; ai: AiUndo };
+  | { kind: 'ai'; ai: AiUndo }
+  /** v0.9 / T-QB：题库行内编辑（只回退被改字段，不碰复习调度） */
+  | { kind: 'question'; question: QuestionEditUndo };
 
 /** 撤销栈里的一格：撤销动作 + 给用户看的名字 +（可选）重做动作 */
 interface UndoEntry {
@@ -325,6 +329,7 @@ export default function App() {
           // 先清空再赋值，保持 draft 的对象身份不变（mutate 依赖它被 recipe 改）
           Object.assign(draft, structuredClone(undo.previous));
         } else if (undo.kind === 'ai') revertAi(draft, undo.ai);
+        else if (undo.kind === 'question') revertQuestionEdit(draft, undo.question);
         else revertSync(draft, undo.sync);
       });
     },
@@ -987,7 +992,7 @@ export default function App() {
   );
 
   const addQuestions = useCallback(
-    (experienceId: string, texts: string[]): number => {
+    (experienceId: string, items: QuestionDraft[]): number => {
       const experience = dbRef.current.experiences.find((item) => item.id === experienceId);
       if (!experience) return 0;
       const nowIso = new Date().toISOString();
@@ -997,19 +1002,22 @@ export default function App() {
           .map((question) => question.text.trim().toLowerCase()),
       );
       const incoming: Question[] = [];
-      for (const raw of texts) {
-        const text = clampText(raw.trim(), QUESTION_TEXT_LIMIT).text;
+      for (const item of items) {
+        // 裸字符串 = v0.8 的老调用（不会 + 未分类）
+        const draft: NewQuestionInput = typeof item === 'string' ? { text: item } : item;
+        const text = clampText(draft.text.trim(), QUESTION_TEXT_LIMIT).text;
         if (!text) continue;
         if (existing.has(text.toLowerCase())) continue;
         existing.add(text.toLowerCase());
         incoming.push({
           id: uid('q'),
           experienceId,
-          category: null,
+          category: draft.category ?? null,
           difficulty: 2,
           text,
-          mastery: 0,
+          mastery: draft.mastery ?? 0,
           tags: [],
+          // 初始复习日只看面试日期（掌握度不参与 —— 调度算法本版不动，见 T-QB ④）
           nextReviewAt: deriveInitialNextReviewAt(experience.interviewDate, nowIso),
           reviewCount: 0,
           createdAt: nowIso,
@@ -1048,6 +1056,32 @@ export default function App() {
       });
     },
     [mutate],
+  );
+
+  /**
+   * 表单式编辑：一次 mutate + 一条撤销栈。
+   * 与 updateQuestion（输入框逐字写库、不进栈）分开，避免打字把撤销栈冲爆。
+   */
+  const editQuestion = useCallback(
+    (id: string, patch: Partial<Question>): void => {
+      const current = dbRef.current.questions.find((item) => item.id === id);
+      if (!current) return;
+      const before: QuestionEditUndo['before'] = {
+        text: current.text,
+        category: current.category,
+        mastery: current.mastery,
+        myAnswer: current.myAnswer,
+        nextTime: current.nextTime,
+      };
+      updateQuestion(id, patch);
+      pushUndo({
+        label: `修改题目「${current.text.slice(0, 12)}${current.text.length > 12 ? '…' : ''}」`,
+        undo: { kind: 'question', question: { questionId: id, before } },
+        redo: () => editQuestion(id, patch),
+      });
+      showToast('已保存 · 点「撤销」可改回', undoLast);
+    },
+    [pushUndo, showToast, undoLast, updateQuestion],
   );
 
   const reviewQuestion = useCallback(
@@ -2342,6 +2376,7 @@ export default function App() {
     deleteExperience,
     addQuestions,
     updateQuestion,
+    editQuestion,
     deleteQuestion,
     reviewQuestion,
     quickNote: quickNoteCtx,
