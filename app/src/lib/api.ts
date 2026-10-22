@@ -19,15 +19,19 @@ import type {
   PlatformId,
   Question,
   QuestionCategory,
+  Resume,
   ResumeContent,
+  ResumeVersion,
   Status,
+  TemplateId,
 } from '../types';
 import type { MergePlan, PlannedRow } from './sync/types';
 import type { FileLinkCapability } from './fileLink/handle';
 import type { PluginPermission, PluginRegistration } from '../plugins/types';
 import type { AiRunInput, AiRunOutcome } from '../ai/types';
+import type { SaveVersionResult } from '../resume/versions';
 
-export type ViewKey = 'today' | 'board' | 'list' | 'calendar' | 'insights';
+export type ViewKey = 'today' | 'board' | 'list' | 'calendar' | 'insights' | 'resume';
 
 export const VIEWS: Array<{ key: ViewKey; label: string; hint: string }> = [
   { key: 'today', label: '今日', hint: '1' },
@@ -35,6 +39,9 @@ export const VIEWS: Array<{ key: ViewKey; label: string; hint: string }> = [
   { key: 'list', label: '列表', hint: '3' },
   { key: 'calendar', label: '日历', hint: '4' },
   { key: 'insights', label: '复盘', hint: '5' },
+  // v0.9：简历排在复盘之后 —— 前面五个是「看进度」，简历是「准备材料」，
+  // 而材料是给复盘之后的动作用的。TopBar 直接遍历 VIEWS，这里加一条就长出第 6 个导航项。
+  { key: 'resume', label: '简历', hint: '6' },
 ];
 
 /** 复盘内的二级 tab（PRD §E.1：不新增一级 tab） */
@@ -170,6 +177,59 @@ export type SyncPlanOutcome =
   | { ok: true; plan: MergePlan; adapterId: PlatformId; adapterStale: boolean }
   | { ok: false; error: string };
 
+/* ---------------- 简历与版本（v0.9 / T05） ---------------- */
+
+/**
+ * 简历页要用到的全部读写动作。
+ *
+ * 分层口径（改这里之前先对齐）：**结构操作入撤销栈，字段编辑不入**。
+ * - 新建 / 复制 / 改名 / 切模板 / 存版本 / 改名版本 / 设主版本 / 删 / 恢复 / 以此版本为草稿
+ *   → 每个都是**一个**撤销点（`⌘Z` 一次退一个操作）；
+ * - 编辑器里逐字改内容 → 走 `updateResumeContent`（400 ms 防抖，A-07），刻意不入栈。
+ *   否则「改了一行字」会占满 10 层撤销栈，用户想撤回「删了版本」时回头无路。
+ */
+export interface ResumeApi {
+  /** 列表态的简历（软删的走 `trashed`） */
+  list: Resume[];
+  /** 回收站里的简历，删得最晚的在前 */
+  trashed: Resume[];
+  /** 正在编辑的简历 id（null = 列表态） */
+  openedId: string | null;
+  open: (id: string) => void;
+  close: () => void;
+
+  create: (input: { name: string; templateId: TemplateId }) => string;
+  /** 复制简历（**不带版本历史**）；源不存在返回 null */
+  duplicate: (id: string) => string | null;
+  rename: (id: string, name: string) => void;
+  setTemplate: (id: string, templateId: TemplateId) => void;
+  softDelete: (id: string) => void;
+  restore: (id: string) => void;
+  /** 永久删除（连同其下全部版本），不可撤销 —— 调用方必须二次确认 */
+  purge: (id: string) => void;
+
+  versionsOf: (resumeId: string) => ResumeVersion[];
+  trashedVersionsOf: (resumeId: string) => ResumeVersion[];
+  /** 接近上限时的灰字（Q12：第 28 个起显示） */
+  quotaHint: (resumeId: string) => string | null;
+  /**
+   * 把当前草稿冻结成版本。**调用方必须先 flush 草稿**（最后 400 ms 的输入不在库里）；
+   * 满 30 个时返回 `{ ok:false }`，不是异常。
+   */
+  saveVersion: (resumeId: string, label: string) => SaveVersionResult;
+  renameVersion: (versionId: string, label: string) => void;
+  setPrimary: (versionId: string) => void;
+  deleteVersion: (versionId: string) => void;
+  restoreVersion: (versionId: string) => void;
+  purgeVersion: (versionId: string) => void;
+  /** 冻结版本 → 草稿（深拷贝，不回写版本）；会覆盖当前草稿，调用方要二次确认 */
+  adoptAsDraft: (versionId: string) => void;
+  /** 引用了这个版本的投递数（删除确认文案要报数字） */
+  referencesOf: (versionId: string) => number;
+  /** 主版本（settings.defaultResumeVersionId）；没设过是 null */
+  primaryVersionId: string | null;
+}
+
 export interface AppApi {
   db: DB;
   now: Date;
@@ -223,6 +283,9 @@ export interface AppApi {
    * 库里的那份不能被组件后续的 setState 连带改掉。
    */
   updateResumeContent: (id: string, content: ResumeContent) => void;
+
+  /* ---------------- 简历页（v0.9 · T05） ---------------- */
+  resume: ResumeApi;
 
   loadSampleData: () => void;
   clearAllData: () => void;

@@ -37,6 +37,7 @@ import type {
   Question,
   ResumeContent,
   Status,
+  TemplateId,
 } from './types';
 import type { NewCalendarEventInput, ParsedCourseInput } from './lib/api';
 import {
@@ -63,7 +64,31 @@ import {
   statusChangeText,
   type StatusUndo,
 } from './lib/rules';
-import { sweepTrash, trashReminder, trashedApps, visibleDB } from './lib/trash';
+import { isDeleted, sweepTrash, trashReminder, trashedApps, trashedResumes, visibleDB } from './lib/trash';
+import {
+  activeVersionsOf,
+  applyResumeSlice,
+  createResume,
+  duplicateResume,
+  purgeResume,
+  purgeVersion,
+  referencingApplications,
+  renameResume,
+  renameVersion,
+  restoreResume,
+  restoreVersion,
+  saveVersion,
+  setPrimaryVersion,
+  snapshotResumes,
+  softDeleteResume,
+  softDeleteVersion,
+  switchTemplate,
+  trashedVersionsOf,
+  adoptVersionAsDraft,
+  versionQuotaHint,
+  type ResumeSlice,
+  type SaveVersionResult,
+} from './resume/versions';
 import { cloneDB, companyFullName, companyLabel, downloadBlob, downloadText, pad2, safeHref, textBytes, uid } from './lib/util';
 import {
   PORTABLE_FILES,
@@ -161,8 +186,15 @@ import { ImportConfirm } from './components/ImportConfirm';
 import { CsvImportDialog } from './components/CsvImportDialog';
 import { QuickNote } from './components/interview/QuickNote';
 import { ExperienceEditor } from './components/interview/ExperienceEditor';
+import { ResumeView } from './components/resume/ResumeView';
 
-const VIEW_KEYS: ViewKey[] = ['today', 'board', 'list', 'calendar', 'insights'];
+/**
+ * 键盘 1..N 与视图的对应关系。
+ * ★ 必须与 `VIEWS`（lib/api.ts）**同序同长** —— TopBar 遍历 VIEWS 生成导航，
+ * 这里少一条就是「导航上有、按 6 没反应」；多一条就是按了跳到不存在的视图。
+ * 不在 lib/api 里放 VIEW_KEYS 是因为那个文件只该有类型与常量，不该知道「键盘」。
+ */
+const VIEW_KEYS: ViewKey[] = ['today', 'board', 'list', 'calendar', 'insights', 'resume'];
 
 /** 一次可撤销的操作。v0.2 起不再只有状态变更，v0.4.1 起加入「删除投递」 */
 type Undo =
@@ -178,7 +210,13 @@ type Undo =
   /** v0.9 / T-QB：题库行内编辑（只回退被改字段，不碰复习调度） */
   | { kind: 'question'; question: QuestionEditUndo }
   /** v0.9 / T-QB：快记一次落库（面经壳 + 一批题，⌘Z 整批回退） */
-  | { kind: 'batch'; batch: QuestionBatchUndo };
+  | { kind: 'batch'; batch: QuestionBatchUndo }
+  /**
+   * v0.9 / T05：简历与版本的结构操作。
+   * 只回滚三块（resumes / resumeVersions / defaultResumeVersionId）——
+   * 删一个版本不该把「刚记的一场面试」一起撤掉。
+   */
+  | { kind: 'resume'; resume: ResumeSlice };
 
 /** 撤销栈里的一格：撤销动作 + 给用户看的名字 +（可选）重做动作 */
 interface UndoEntry {
@@ -344,6 +382,7 @@ export default function App() {
         } else if (undo.kind === 'ai') revertAi(draft, undo.ai);
         else if (undo.kind === 'question') revertQuestionEdit(draft, undo.question);
         else if (undo.kind === 'batch') revertQuestionBatch(draft, undo.batch);
+        else if (undo.kind === 'resume') applyResumeSlice(draft, undo.resume);
         else revertSync(draft, undo.sync);
       });
     },
@@ -848,6 +887,151 @@ export default function App() {
       });
     },
     [mutate],
+  );
+
+  /* ------------------------------------------------------------ 简历与版本（v0.9 / T05） */
+
+  /** 正在编辑的简历 id（null = 列表态）。不记忆到 localStorage：刷新后回列表 */
+  const [resumeOpenedId, setResumeOpenedId] = useState<string | null>(null);
+
+  /** 列表态的简历（软删的在 `trashedResumes(db)` 里，两摞互斥） */
+  const resumeList = useMemo(() => db.resumes.filter((item) => !isDeleted(item)), [db.resumes]);
+
+  /**
+   * 跑一次简历结构操作，并把它变成一个撤销点。
+   *
+   * 三条语义（改之前先读）：
+   * 1. `before` 在 mutate 之前取、`after` 在之后取，两边都是快照 ——
+   *    撤销与重做走同一个 `applyResumeSlice`，不可能只对一半；
+   * 2. recipe 返回 false / null 表示「什么都没改」（目标没了、名字没变、模板没变），
+   *    这种**不入栈**：否则按一次 ⌘Z 撤销一个不存在的操作，看起来像撤销坏了；
+   * 3. `changed` 谓词给「有返回值但可能失败」的操作用（存版本满额时返回 `{ok:false}`）。
+   */
+  const runResumeOp = useCallback(
+    <T,>(label: string, recipe: (draft: DB) => T, changed?: (result: T) => boolean): T => {
+      const before = snapshotResumes(dbRef.current);
+      let result!: T;
+      mutate((draft) => {
+        result = recipe(draft);
+      });
+      const isChanged = changed ? changed(result) : result !== false && result !== null;
+      if (isChanged) {
+        const after = snapshotResumes(dbRef.current);
+        pushUndo({
+          label,
+          undo: { kind: 'resume', resume: before },
+          redo: () => {
+            mutate((draft) => applyResumeSlice(draft, after));
+          },
+        });
+      }
+      return result;
+    },
+    [mutate, pushUndo],
+  );
+
+  const resumeCreate = useCallback(
+    (input: { name: string; templateId: TemplateId }): string =>
+      runResumeOp('新建简历', (draft) =>
+        createResume(draft, { name: input.name, templateId: input.templateId, at: new Date().toISOString() }),
+      ).id,
+    [runResumeOp],
+  );
+
+  const resumeDuplicate = useCallback(
+    (id: string): string | null =>
+      runResumeOp('复制简历', (draft) => duplicateResume(draft, id, new Date().toISOString()))?.id ?? null,
+    [runResumeOp],
+  );
+
+  const resumeRename = useCallback(
+    (id: string, name: string): void => {
+      runResumeOp('重命名简历', (draft) => renameResume(draft, id, name, new Date().toISOString()));
+    },
+    [runResumeOp],
+  );
+
+  const resumeSetTemplate = useCallback(
+    (id: string, templateId: TemplateId): void => {
+      runResumeOp('切换模板', (draft) => switchTemplate(draft, id, templateId, new Date().toISOString()));
+    },
+    [runResumeOp],
+  );
+
+  const resumeSoftDelete = useCallback(
+    (id: string): void => {
+      runResumeOp('删除简历', (draft) => softDeleteResume(draft, id, new Date().toISOString()));
+      // 删掉的正好是打开着的那份 → 编辑器要退回列表，否则会停在一个已不存在的简历上
+      setResumeOpenedId((current) => (current === id ? null : current));
+    },
+    [runResumeOp],
+  );
+
+  const resumeRestore = useCallback(
+    (id: string): void => {
+      runResumeOp('恢复简历', (draft) => restoreResume(draft, id));
+    },
+    [runResumeOp],
+  );
+
+  const resumePurge = useCallback(
+    (id: string): void => {
+      runResumeOp('永久删除简历', (draft) => purgeResume(draft, id));
+      setResumeOpenedId((current) => (current === id ? null : current));
+    },
+    [runResumeOp],
+  );
+
+  const resumeSaveVersion = useCallback(
+    (resumeId: string, label: string): SaveVersionResult =>
+      runResumeOp(
+        '存为新版本',
+        (draft) => saveVersion(draft, resumeId, label, new Date().toISOString()),
+        (result) => result.ok,
+      ),
+    [runResumeOp],
+  );
+
+  const resumeRenameVersion = useCallback(
+    (versionId: string, label: string): void => {
+      runResumeOp('重命名版本', (draft) => renameVersion(draft, versionId, label));
+    },
+    [runResumeOp],
+  );
+
+  const resumeSetPrimary = useCallback(
+    (versionId: string): void => {
+      runResumeOp('设为主版本', (draft) => setPrimaryVersion(draft, versionId));
+    },
+    [runResumeOp],
+  );
+
+  const resumeDeleteVersion = useCallback(
+    (versionId: string): void => {
+      runResumeOp('删除版本', (draft) => softDeleteVersion(draft, versionId, new Date().toISOString()));
+    },
+    [runResumeOp],
+  );
+
+  const resumeRestoreVersion = useCallback(
+    (versionId: string): void => {
+      runResumeOp('恢复版本', (draft) => restoreVersion(draft, versionId));
+    },
+    [runResumeOp],
+  );
+
+  const resumePurgeVersion = useCallback(
+    (versionId: string): void => {
+      runResumeOp('永久删除版本', (draft) => purgeVersion(draft, versionId));
+    },
+    [runResumeOp],
+  );
+
+  const resumeAdoptAsDraft = useCallback(
+    (versionId: string): void => {
+      runResumeOp('以此版本为草稿', (draft) => adoptVersionAsDraft(draft, versionId, new Date().toISOString()));
+    },
+    [runResumeOp],
   );
 
   /* ------------------------------------------------------------ 同步 */
@@ -2327,8 +2511,11 @@ export default function App() {
         openNew();
         return;
       }
-      if (event.key >= '1' && event.key <= '5') {
-        const next = VIEW_KEYS[Number(event.key) - 1];
+      // 数字键按「序号」比，不按字符串比：`'10' <= '6'` 是 false，
+      // 视图涨到两位数那天字符串比较会静默失灵（第 10 项永远按不出来）。
+      const index = Number(event.key);
+      if (Number.isInteger(index) && index >= 1 && index <= VIEW_KEYS.length) {
+        const next = VIEW_KEYS[index - 1];
         if (next) setViewState(next);
       }
     };
@@ -2416,6 +2603,39 @@ export default function App() {
     updateCompany,
     updateSettings,
     updateResumeContent,
+
+    /**
+     * v0.9 / T05：简历页。
+     * 除了 `list` / `versionsOf` 这几个读函数，其余每个动作都在 `runResumeOp` 里包过 ——
+     * 「一次操作 = 一个撤销点」在这里兑现，组件侧不需要知道撤销栈的存在。
+     */
+    resume: {
+      list: resumeList,
+      trashed: trashedResumes(db),
+      openedId: resumeOpenedId,
+      open: setResumeOpenedId,
+      close: () => setResumeOpenedId(null),
+      create: resumeCreate,
+      duplicate: resumeDuplicate,
+      rename: resumeRename,
+      setTemplate: resumeSetTemplate,
+      softDelete: resumeSoftDelete,
+      restore: resumeRestore,
+      purge: resumePurge,
+      versionsOf: (resumeId: string) => activeVersionsOf(db, resumeId),
+      trashedVersionsOf: (resumeId: string) => trashedVersionsOf(db, resumeId),
+      quotaHint: (resumeId: string) => versionQuotaHint(db, resumeId),
+      saveVersion: resumeSaveVersion,
+      renameVersion: resumeRenameVersion,
+      setPrimary: resumeSetPrimary,
+      deleteVersion: resumeDeleteVersion,
+      restoreVersion: resumeRestoreVersion,
+      purgeVersion: resumePurgeVersion,
+      adoptAsDraft: resumeAdoptAsDraft,
+      referencesOf: (versionId: string) => referencingApplications(db, versionId).length,
+      primaryVersionId: db.settings.defaultResumeVersionId ?? null,
+    },
+
     loadSampleData,
     clearAllData,
     addCalendarEvent,
@@ -2618,11 +2838,12 @@ export default function App() {
         {view === 'list' ? <ListView api={api} /> : null}
         {view === 'calendar' ? <CalendarView api={api} /> : null}
         {view === 'insights' ? <InsightsView api={api} /> : null}
+        {view === 'resume' ? <ResumeView api={api} /> : null}
       </main>
 
       <footer className="app-foot">
         <span>{VIEWS.length} 个视图</span>
-        <span>N 新建 · 1-5 切视图 · ⌘K 搜索 · Esc 关闭</span>
+        <span>N 新建 · 1-{VIEW_KEYS.length} 切视图 · ⌘K 搜索 · Esc 关闭</span>
         <span>数据只在本地</span>
       </footer>
 

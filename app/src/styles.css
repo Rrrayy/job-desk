@@ -5438,6 +5438,365 @@ button.chip:hover {
   border-bottom-color: #1b1f2a;
 }
 
+/* ============================================================ v0.9 · 简历页（T05）
+   三块：列表（`resume-home` / `resume-row`）、编辑器（`resume-editor` 三栏）、
+   版本菜单（`ver-*`）。命名与前面的 `resume-form__*`（表单）、`rs-*`（成品）分开，
+   四套前缀各管一段，grep 的时候不会互相串。
+
+   编辑器三栏的宽度顺序是刻意的：模板窄（选择而已）→ 表单宽（真正在干活的地方）→
+   预览按 A4 实宽（它自己会按容器缩，`A4Preview` 量的是父容器宽度）。
+   窄屏竖着堆叠：简历编辑天然是「左手改、右手看」，窗口不够宽宁可不并排，
+   也不要横向滚动去够预览。 */
+
+.resume-home,
+.resume-editor {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+
+/* ---------- 列表 ---------- */
+
+.resume-home__head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.resume-home__title {
+  margin: 0 0 4px;
+  font-size: 17px;
+  font-weight: 650;
+}
+
+.resume-home__new {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-end;
+  gap: 12px;
+  padding: 12px 14px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  background: var(--surface);
+  box-shadow: var(--shadow-1);
+}
+
+.resume-home__new .field {
+  flex: 1 1 220px;
+  min-width: 200px;
+}
+
+.resume-home__new-acts {
+  display: flex;
+  gap: 8px;
+}
+
+.resume-home__empty {
+  margin: 0;
+  padding: 22px 16px;
+  border: 1px dashed var(--line);
+  border-radius: var(--radius);
+  color: var(--ink-3);
+  font-size: 13px;
+  text-align: center;
+}
+
+.resume-rows {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.resume-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 10px 14px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  background: var(--surface);
+  box-shadow: var(--shadow-1);
+}
+
+/* 主版本落在哪一份简历上，用左边一条色带说明（比整行染色安静） */
+.resume-row--primary {
+  border-left: 3px solid var(--indigo);
+}
+
+.resume-row--trash {
+  opacity: 0.72;
+}
+
+.resume-row__main {
+  display: flex;
+  flex: 1 1 auto;
+  flex-direction: column;
+  gap: 3px;
+  min-width: 0;
+}
+
+.resume-row__name {
+  align-self: flex-start;
+  max-width: 100%;
+  overflow: hidden;
+  padding: 0;
+  border: 0;
+  background: none;
+  color: var(--ink);
+  font: inherit;
+  font-size: 14px;
+  font-weight: 600;
+  text-align: left;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  cursor: pointer;
+}
+
+.resume-row__name:hover {
+  color: var(--indigo);
+}
+
+.resume-row__meta {
+  color: var(--ink-3);
+  font-size: 12px;
+}
+
+.resume-row__acts {
+  display: flex;
+  flex: 0 0 auto;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: 6px;
+}
+
+.resume-home__trash,
+.ver-trash {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.res-trash__toggle,
+.ver-trash__toggle {
+  align-self: flex-start;
+  padding: 0;
+  border: 0;
+  background: none;
+  color: var(--ink-3);
+  font: inherit;
+  font-size: 12.5px;
+  cursor: pointer;
+}
+
+.res-trash__toggle:hover,
+.ver-trash__toggle:hover {
+  color: var(--ink-2);
+}
+
+.resume-rows--trash,
+.ver-list--trash {
+  opacity: 0.85;
+}
+
+/* ---------- 编辑器 ---------- */
+
+.resume-editor__bar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 10px;
+}
+
+.resume-editor__name {
+  margin: 0;
+  font-size: 15px;
+  font-weight: 650;
+}
+
+.resume-editor__meta {
+  color: var(--ink-3);
+  font-size: 12px;
+}
+
+.resume-editor__acts {
+  margin-left: auto;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.resume-editor__panes {
+  display: grid;
+  grid-template-columns: 232px minmax(320px, 1fr) auto;
+  align-items: start;
+  gap: 14px;
+}
+
+.resume-editor__col {
+  min-width: 0;
+}
+
+/* 表单列自己滚：不滚的话「写在最上面、预览在最下面」会让人一直上下翻 */
+.resume-editor__col--form {
+  max-height: 76vh;
+  overflow-y: auto;
+  padding-right: 4px;
+}
+
+/* 预览跟着滚（sticky）：改哪一段都能同时看到纸上长什么样 */
+.resume-editor__col--paper {
+  position: sticky;
+  top: 12px;
+  align-self: start;
+}
+
+@media (max-width: 1180px) {
+  .resume-editor__panes {
+    grid-template-columns: 1fr;
+  }
+
+  .resume-editor__col--form {
+    max-height: none;
+    overflow: visible;
+  }
+
+  .resume-editor__col--paper {
+    position: static;
+  }
+}
+
+/* ---------- 版本菜单 ---------- */
+
+.ver-menu {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 12px 14px 14px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  background: var(--surface);
+  box-shadow: var(--shadow-1);
+}
+
+.ver-menu__head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.ver-menu__title {
+  margin: 0;
+  font-size: 13.5px;
+  font-weight: 650;
+}
+
+.ver-menu__count {
+  color: var(--ink-3);
+  font-size: 12px;
+}
+
+.ver-menu__save {
+  display: flex;
+  gap: 8px;
+}
+
+.ver-menu__save .input {
+  flex: 1 1 auto;
+}
+
+/* Q12 的「已 28/30」：只在接近上限时出现，用琥珀色提醒而不是红色 —— 还没到禁止的地步 */
+.ver-menu__quota {
+  margin: 0;
+  padding: 4px 8px;
+  border-radius: var(--radius-sm);
+  background: var(--amber-soft);
+  color: var(--ink-2);
+  font-size: 12px;
+}
+
+.ver-menu__empty {
+  margin: 0;
+  color: var(--ink-3);
+  font-size: 12.5px;
+}
+
+.ver-menu > .field__hint {
+  margin: 0;
+}
+
+.ver-list {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.ver-item {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 8px 10px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-sm);
+}
+
+.ver-item--primary {
+  border-left: 3px solid var(--indigo);
+}
+
+.ver-item__row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.ver-item__label {
+  font-size: 13px;
+  font-weight: 600;
+}
+
+.ver-item__badge {
+  padding: 1px 6px;
+  border-radius: 999px;
+  background: var(--indigo-soft);
+  color: var(--indigo-dark);
+  font-size: 11px;
+}
+
+.ver-item__meta {
+  margin-left: auto;
+  color: var(--ink-3);
+  font-size: 11.5px;
+}
+
+.ver-item__acts {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+/* 二次确认块：淡琥珀底 —— 不是报错，是「停一下，这句话你需要读」 */
+.ver-item__confirm {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 8px 10px;
+  border-radius: var(--radius-sm);
+  background: var(--amber-soft);
+}
+
+.ver-item__confirm p {
+  margin: 0;
+  font-size: 12.5px;
+}
+
 /* ==========================================================================
    打印（v0.9）
    ★ 全仓唯一一份静态 @page（Q4 裁决）：禁止按模板生成 @page，模板差异走 .a4__body 内边距
@@ -5462,6 +5821,34 @@ button.chip:hover {
   body[data-printing='1'] .resume__toolbar,
   body[data-printing='1'] .print-entry {
     display: none !important;
+  }
+
+  /* ★ v0.9 / T05：简历页长在 `.main` 里，而 `.main` 有 24px 左右内边距。
+     留着它，纸上的正文就不是 182mm 宽 —— 断行一变，预览页数与真实打印立刻对不上
+     （这条不是洁癖：页数错一页就是用户多打一张纸）。 */
+  body[data-printing='1'] .main,
+  body[data-printing='1'] .page {
+    padding: 0 !important;
+    margin: 0 !important;
+    max-width: none !important;
+  }
+
+  /* 简历页的界面部分（列表 / 工具条 / 模板选择 / 版本菜单）也都是壳 */
+  body[data-printing='1'] .resume-home,
+  body[data-printing='1'] .resume-editor__bar,
+  body[data-printing='1'] .resume-editor__col--tpl,
+  body[data-printing='1'] .resume-editor__col--form,
+  body[data-printing='1'] .ver-menu {
+    display: none !important;
+  }
+
+  /* 三栏在纸上只剩纸一栏（隐藏的列不许继续占 grid 轨道，否则纸会被挤窄） */
+  body[data-printing='1'] .resume-editor__panes {
+    display: block !important;
+  }
+
+  body[data-printing='1'] .resume-editor__col--paper {
+    position: static !important;
   }
 
   /* ② 画布装饰全部消失 —— 这是「A4 框被切开」的唯一真实成因（框是 CSS 画的，不是纸） */
