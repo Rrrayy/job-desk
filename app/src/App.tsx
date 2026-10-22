@@ -15,9 +15,10 @@ import type {
   NewApplicationInput,
   NewExperienceInput,
   NewInterviewInput,
-  NewQuestionInput,
   QuestionDraft,
   QuickNoteContext,
+  QuickNoteInput,
+  QuickNoteResult,
   StatusChangeOpts,
   SyncPlanOutcome,
   ViewKey,
@@ -80,7 +81,16 @@ import {
   csvFilename,
   icsFilename,
 } from './lib/tableExport';
-import { deriveInitialNextReviewAt, nextReviewAtFor, revertQuestionEdit, type QuestionEditUndo } from './lib/interview';
+import {
+  QUESTION_TEXT_LIMIT,
+  applyQuestionEdit,
+  buildQuestionRows,
+  nextReviewAtFor,
+  revertQuestionBatch,
+  revertQuestionEdit,
+  type QuestionBatchUndo,
+  type QuestionEditUndo,
+} from './lib/interview';
 import { markdownFileName, renderManyMarkdown } from './lib/interviewMarkdown';
 import { applySuggestions, rejectSuggestions, revertAi } from './ai/suggestions';
 import { checkAiReady } from './ai/settings';
@@ -165,7 +175,9 @@ type Undo =
   /** v0.8：接受 AI 建议（目标写入 + 状态翻转一体回退，见 ai/suggestions.revertAi） */
   | { kind: 'ai'; ai: AiUndo }
   /** v0.9 / T-QB：题库行内编辑（只回退被改字段，不碰复习调度） */
-  | { kind: 'question'; question: QuestionEditUndo };
+  | { kind: 'question'; question: QuestionEditUndo }
+  /** v0.9 / T-QB：快记一次落库（面经壳 + 一批题，⌘Z 整批回退） */
+  | { kind: 'batch'; batch: QuestionBatchUndo };
 
 /** 撤销栈里的一格：撤销动作 + 给用户看的名字 +（可选）重做动作 */
 interface UndoEntry {
@@ -178,7 +190,7 @@ interface UndoEntry {
 /** 撤销栈深度：10 步足够覆盖「手滑连点」，全部是字段级快照，不占内存 */
 const UNDO_LIMIT = 10;
 
-const QUESTION_TEXT_LIMIT = 2000;
+/** 题干上限从 lib/interview.ts 引（题库行内编辑的截断提示要报同一个数字，不能两处各写一个） */
 
 /** 导出失败的统一提示（JSON / 加密 / CSV / ICS / 便携包五个出口各拼一次，改文案只动这一处） */
 const MSG_EXPORT_BLOCKED = '导出失败，浏览器可能禁止了下载';
@@ -330,6 +342,7 @@ export default function App() {
           Object.assign(draft, structuredClone(undo.previous));
         } else if (undo.kind === 'ai') revertAi(draft, undo.ai);
         else if (undo.kind === 'question') revertQuestionEdit(draft, undo.question);
+        else if (undo.kind === 'batch') revertQuestionBatch(draft, undo.batch);
         else revertSync(draft, undo.sync);
       });
     },
@@ -991,60 +1004,107 @@ export default function App() {
     [mutate],
   );
 
+  /**
+   * 往已有面经里批量加题（AI 拆分、社区导入等复用这个入口）。
+   * 默认值 / 去重 / 截断全在 `buildQuestionRows` 里 —— 与快记走同一份口径，
+   * 否则「快记录的题」和「别处加的题」会在题库里长得不一样（PRD §20.9）。
+   */
   const addQuestions = useCallback(
     (experienceId: string, items: QuestionDraft[]): number => {
       const experience = dbRef.current.experiences.find((item) => item.id === experienceId);
       if (!experience) return 0;
       const nowIso = new Date().toISOString();
-      const existing = new Set(
+      const taken = new Set(
         dbRef.current.questions
           .filter((question) => question.experienceId === experienceId)
           .map((question) => question.text.trim().toLowerCase()),
       );
-      const incoming: Question[] = [];
-      for (const item of items) {
-        // 裸字符串 = v0.8 的老调用（不会 + 未分类）
-        const draft: NewQuestionInput = typeof item === 'string' ? { text: item } : item;
-        const text = clampText(draft.text.trim(), QUESTION_TEXT_LIMIT).text;
-        if (!text) continue;
-        if (existing.has(text.toLowerCase())) continue;
-        existing.add(text.toLowerCase());
-        incoming.push({
-          id: uid('q'),
-          experienceId,
-          category: draft.category ?? null,
-          difficulty: 2,
-          text,
-          mastery: draft.mastery ?? 0,
-          tags: [],
-          // 初始复习日只看面试日期（掌握度不参与 —— 调度算法本版不动，见 T-QB ④）
-          nextReviewAt: deriveInitialNextReviewAt(experience.interviewDate, nowIso),
-          reviewCount: 0,
-          createdAt: nowIso,
-          updatedAt: nowIso,
-        });
-      }
-      if (incoming.length === 0) return 0;
+      const rows = buildQuestionRows({ experience, items, now: nowIso, taken, makeId: uid });
+      if (rows.length === 0) return 0;
       mutate((draft) => {
-        draft.questions.push(...incoming);
+        draft.questions.push(...rows);
         const target = draft.experiences.find((item) => item.id === experienceId);
         if (target) target.updatedAt = nowIso;
       });
-      return incoming.length;
+      return rows.length;
     },
     [mutate],
   );
 
+  /**
+   * 快记落库（PRD §20.2）：面经壳 + 全部待记题 = **一次 mutate + 一个撤销点**。
+   *
+   * 顺序上先算题再 mutate：一道题都没写进去（全是重复 / 超长 / 空题干）时
+   * 直接返回失败，不留下「0 题的空面经」—— 那东西用户还得自己去删。
+   */
+  const addQuickNote = useCallback(
+    (input: QuickNoteInput): QuickNoteResult => {
+      const nowIso = new Date().toISOString();
+      const experienceId = uid('exp');
+      const experience: InterviewExperience = {
+        id: experienceId,
+        applicationId: input.experience.applicationId ?? null,
+        companyName: input.experience.companyName.trim() || '未知公司',
+        jobTitle: input.experience.jobTitle?.trim() || undefined,
+        round: input.experience.round ?? null,
+        interviewDate: input.experience.interviewDate,
+        result: input.experience.result,
+        overallNote: input.experience.overallNote
+          ? clampText(input.experience.overallNote, 3000).text
+          : undefined,
+        source: input.experience.source ?? 'self',
+        originFile: input.experience.originFile,
+        createdAt: nowIso,
+        updatedAt: nowIso,
+      };
+      const rows = buildQuestionRows({ experience, items: input.items, now: nowIso, makeId: uid });
+      if (rows.length === 0) {
+        return { ok: false, reason: '这些题都没存进去（可能是重复或超长），改一下再试' };
+      }
+      const batch: QuestionBatchUndo = {
+        questionIds: rows.map((question) => question.id),
+        createdExperienceId: experienceId,
+      };
+      mutate((draft) => {
+        draft.experiences.push(experience);
+        draft.questions.push(...rows);
+      });
+      pushUndo({
+        label: `记 ${rows.length} 题面经`,
+        undo: { kind: 'batch', batch },
+        // 重做 = 把同一批（同一批 id）放回去，不生成新 id —— 否则重做后的题目
+        // 和重做前不是同一条，撤销栈会开始漂
+        redo: () => {
+          mutate((draft) => {
+            if (!draft.experiences.some((item) => item.id === experience.id)) {
+              draft.experiences.push(structuredClone(experience));
+            }
+            const known = new Set(draft.questions.map((question) => question.id));
+            for (const row of rows) {
+              if (!known.has(row.id)) draft.questions.push(structuredClone(row));
+            }
+          });
+        },
+      });
+      return {
+        ok: true,
+        experienceId,
+        written: rows.length,
+        skipped: input.items.length - rows.length,
+      };
+    },
+    [mutate, pushUndo],
+  );
+
+  /**
+   * 静默改字段（ExperienceEditor 的「失焦即存」输入框走这里）。
+   * 字段白名单在 `applyQuestionEdit` 里 —— 调度三字段（reviewCount / nextReviewAt /
+   * lastReviewedAt）就算传进来也会被丢掉，编辑永远改不动复习计划（PRD §20.4）。
+   */
   const updateQuestion = useCallback(
     (id: string, patch: Partial<Question>): void => {
       const nowIso = new Date().toISOString();
-      mutate((draft) => {
-        const target = draft.questions.find((item) => item.id === id);
-        if (!target) return;
-        Object.assign(target, patch);
-        if (patch.text) target.text = clampText(patch.text, QUESTION_TEXT_LIMIT).text;
-        target.updatedAt = nowIso;
-      });
+      mutate((draft) => applyQuestionEdit(draft, id, patch, nowIso));
     },
     [mutate],
   );
@@ -1061,6 +1121,9 @@ export default function App() {
   /**
    * 表单式编辑：一次 mutate + 一条撤销栈。
    * 与 updateQuestion（输入框逐字写库、不进栈）分开，避免打字把撤销栈冲爆。
+   *
+   * ★ 撤销快照只存「被改的那几个字段的旧值」：整题快照会连 `updatedAt` /
+   *   `nextReviewAt` 一起回滚，而复习调度不归编辑管。
    */
   const editQuestion = useCallback(
     (id: string, patch: Partial<Question>): void => {
@@ -1073,7 +1136,8 @@ export default function App() {
         myAnswer: current.myAnswer,
         nextTime: current.nextTime,
       };
-      updateQuestion(id, patch);
+      const nowIso = new Date().toISOString();
+      mutate((draft) => applyQuestionEdit(draft, id, patch, nowIso));
       pushUndo({
         label: `修改题目「${current.text.slice(0, 12)}${current.text.length > 12 ? '…' : ''}」`,
         undo: { kind: 'question', question: { questionId: id, before } },
@@ -1081,7 +1145,7 @@ export default function App() {
       });
       showToast('已保存 · 点「撤销」可改回', undoLast);
     },
-    [pushUndo, showToast, undoLast, updateQuestion],
+    [mutate, pushUndo, showToast, undoLast],
   );
 
   const reviewQuestion = useCallback(
@@ -2375,6 +2439,7 @@ export default function App() {
     updateExperience,
     deleteExperience,
     addQuestions,
+    addQuickNote,
     updateQuestion,
     editQuestion,
     deleteQuestion,

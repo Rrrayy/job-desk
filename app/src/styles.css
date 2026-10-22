@@ -3940,6 +3940,12 @@ button.chip:hover {
   color: var(--ink-2);
 }
 
+.quick-note__drop {
+  flex-shrink: 0;
+  font-size: 11.5px;
+  color: var(--ink-4);
+}
+
 .quick-note__input {
   height: 36px;
   font-size: 13px;
@@ -4874,29 +4880,6 @@ button.chip:hover {
   font-variant-numeric: tabular-nums;
 }
 
-.qb__preview {
-  display: flex;
-  flex-direction: column;
-  gap: 3px;
-  padding: 0 10px 8px 28px;
-}
-
-.qb__preview-line {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  margin: 0;
-  font-size: 12px;
-  color: var(--ink-3);
-}
-
-.qb__preview-text {
-  min-width: 0;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
 .qb__rows {
   display: flex;
   flex-direction: column;
@@ -4940,7 +4923,7 @@ button.chip:hover {
   font-size: 11.5px;
 }
 
-.qb__group-more {
+.qb__more {
   padding: 6px 10px;
   margin: 0;
 }

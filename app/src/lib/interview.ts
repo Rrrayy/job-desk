@@ -382,11 +382,26 @@ const QUESTION_EDITABLE = new Set([
 ]);
 
 /**
+ * 可以被「显式 undefined 清空」的字段（都是可选字段）。
+ * 注意 `category` 不在这里 —— 未分类是合法值 `null`，不是「没有这个键」。
+ */
+const QUESTION_CLEARABLE = new Set(['myAnswer', 'nextTime', 'rootCause']);
+
+/**
  * 编辑一道题（纯函数）：**只改可编辑字段**，其余字段原样不动。
  *
  * ★ 关键：`reviewCount` / `nextReviewAt` / `lastReviewedAt` 三个调度字段
  *   **就算调用方传进来也会被丢掉** —— 编辑 ≠ 复习了一遍，改个错字不能把题踢进下一档
  *   复习阶梯（这正是不能用 reviewQuestion 做编辑的原因，见 PRD §20.4）。
+ *
+ * PRD §20.4「用哪个函数」—— 照抄，改之前先读一遍：
+ * | 目的              | 用哪个函数                        | 为什么 |
+ * | 行内编辑掌握度     | updateQuestion(id,{mastery}) / applyQuestionEdit | 只改字段 |
+ * | **禁止**           | reviewQuestion(id, mastery)       | 它会 reviewCount+1、lastReviewedAt=今天、nextReviewAt 按阶梯重算 —— 那是「我又复习了一遍」的语义，拿它做编辑 = 用户改个错字就把题踢进下一档复习阶梯 |
+ * | 撤销              | 调用处显式 pushUndo               | updateQuestion 本身不进栈（被输入框高频调用），只有「保存」才配一个撤销点 |
+ *
+ * 空串 = 清空（`myAnswer` / `nextTime` 允许用户删光），落库时把字段整个删掉，
+ * 保持「没写过」与「清空过」在磁盘上长得一样。
  */
 export function applyQuestionEdit(
   draft: DB,
@@ -397,12 +412,27 @@ export function applyQuestionEdit(
   const target = draft.questions.find((question) => question.id === id);
   if (!target) return;
   for (const key of Object.keys(patch) as Array<keyof Question>) {
+    // 题干单独处理（trim + 截断 + 不允许清空），其余字段走白名单
+    if (key === 'text') continue;
     if (!QUESTION_EDITABLE.has(key)) continue;
     const value = patch[key];
-    if (value === undefined) continue;
+    if (value === undefined) {
+      // 调用方**显式写了** undefined = 清空（ExperienceEditor 的「没标」「删光」
+      // 就是这么传的）。只在可空字段上成立，其余字段忽略。
+      if (QUESTION_CLEARABLE.has(key)) delete target[key];
+      continue;
+    }
     (target as unknown as Record<string, unknown>)[key] = value;
   }
-  if (typeof patch.text === 'string') target.text = clampText(patch.text, QUESTION_TEXT_LIMIT).text;
+  if (typeof patch.text === 'string') {
+    const trimmed = patch.text.trim();
+    // 清空题干不算编辑：题库里留一条「没有题干」的题比留着旧题干更糟
+    if (trimmed) target.text = clampText(trimmed, QUESTION_TEXT_LIMIT).text;
+  }
+  for (const key of ['myAnswer', 'nextTime'] as const) {
+    const value = target[key];
+    if (typeof value === 'string' && value.trim() === '') delete target[key];
+  }
   target.updatedAt = now;
 }
 

@@ -8,12 +8,15 @@
  * v0.9 / T-QB ①：以前落库全是「不会 + 未分类」，用户没得选。现在下拉就地可改，
  * 默认仍是「不会 / 未分类」—— 默认值不变 = 快记的最短路径没变长。
  *
- * 落库口径：**记完了 / 关闭时一次写入**（`api.addQuestions(id, items)`）。
- * 所以每行的选择始终是本地状态，改起来没有写库往返。
+ * 落库口径（PRD §20.2）：待记行**只活在前端 state 里**，可改可删；点「记完了」
+ * 调 `api.addQuickNote({ experience, items })` —— **一次 mutate 写完面经壳 + 全部题，
+ * 只留一个撤销点**（⌘Z 整批回退，不会回退成「0 题的空面经」）。
+ * 关面板（遮罩 / ✕）时若有未提交的行：沿用现状「替用户收下」，同样批量落库 + toast，
+ * 不让用户白打一遍。
  */
 
 import { useMemo, useState } from 'react';
-import type { AppApi, NewQuestionInput } from '../../lib/api';
+import type { AppApi, QuestionDraft } from '../../lib/api';
 import type { Mastery, QuestionCategory } from '../../types';
 import { todayISO } from '../../lib/date';
 import { deriveInitialNextReviewAt } from '../../lib/interview';
@@ -26,6 +29,9 @@ interface QuickLine {
   category: QuestionCategory | null;
 }
 
+/** 公司名是「面经壳」的唯一必填项（岗位/轮次都可以空） */
+const MSG_NEED_COMPANY = '先填公司名 —— 只填这一个也能存';
+
 export function QuickNote({ api, onClose }: { api: AppApi; onClose: () => void }) {
   const ctx = api.quickNote ?? {};
   const [companyName, setCompanyName] = useState(ctx.companyName ?? '');
@@ -34,7 +40,6 @@ export function QuickNote({ api, onClose }: { api: AppApi; onClose: () => void }
   const [interviewDate, setInterviewDate] = useState(ctx.interviewDate ?? todayISO(api.now));
   const [draft, setDraft] = useState('');
   const [lines, setLines] = useState<QuickLine[]>([]);
-  const [experienceId, setExperienceId] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
 
   const nextReview = useMemo(
@@ -44,31 +49,12 @@ export function QuickNote({ api, onClose }: { api: AppApi; onClose: () => void }
 
   const total = lines.length + (draft.trim() ? 1 : 0);
 
-  const ensureExperience = (): string | null => {
-    if (experienceId) return experienceId;
-    if (!companyName.trim()) {
-      setError('先填公司名 —— 只填这一个也能存');
-      return null;
-    }
-    const id = api.addExperience({
-      applicationId: ctx.applicationId ?? null,
-      companyName: companyName.trim(),
-      jobTitle: jobTitle.trim() || undefined,
-      round: round ? Number(round) : null,
-      interviewDate,
-      result: 'pending',
-      source: 'self',
-    });
-    setExperienceId(id);
-    return id;
-  };
-
-  /** Enter：只进本地列表，不落库（落库统一在「记完了」） */
+  /** Enter：只进本地列表，不落库（落库统一在「记完了」/ 关面板） */
   const commitDraft = (): void => {
     const text = draft.trim();
     if (!text) return;
     if (!companyName.trim()) {
-      setError('先填公司名 —— 只填这一个也能存');
+      setError(MSG_NEED_COMPANY);
       return;
     }
     setError(null);
@@ -80,12 +66,16 @@ export function QuickNote({ api, onClose }: { api: AppApi; onClose: () => void }
     setLines((prev) => prev.map((line, i) => (i === index ? { ...line, ...patch } : line)));
   };
 
+  const removeLine = (index: number): void => {
+    setLines((prev) => prev.filter((_, i) => i !== index));
+  };
+
   /**
-   * 落库并关闭。返回 false = 没写成功、浮层留着让用户改（关掉就丢了，不干这事）。
+   * 落库并关闭。写不进库就把浮层留着让用户改（关掉就丢了，不干这事）。
    * 末尾还没按 Enter 的内容也一起收下（按默认值），不让用户白打一遍。
    */
   const flushAndClose = (): void => {
-    const items: NewQuestionInput[] = lines.map((line) => ({
+    const items: QuestionDraft[] = lines.map((line) => ({
       text: line.text,
       mastery: line.mastery,
       category: line.category,
@@ -96,18 +86,31 @@ export function QuickNote({ api, onClose }: { api: AppApi; onClose: () => void }
       onClose();
       return;
     }
-    const id = ensureExperience();
-    if (!id) return;
-    const written = api.addQuestions(id, items);
-    if (written === 0) {
-      setError('这些题都没存进去（可能是重复或超长），改一下再试');
+    if (!companyName.trim()) {
+      setError(MSG_NEED_COMPANY);
       return;
     }
-    const skipped = items.length - written;
+    // ★ 一次调用 = 一次 mutate = 一个撤销点（面经壳与这批题同生同灭）
+    const result = api.addQuickNote({
+      experience: {
+        applicationId: ctx.applicationId ?? null,
+        companyName: companyName.trim(),
+        jobTitle: jobTitle.trim() || undefined,
+        round: round ? Number(round) : null,
+        interviewDate,
+        result: 'pending',
+        source: 'self',
+      },
+      items,
+    });
+    if (!result.ok) {
+      setError(result.reason);
+      return;
+    }
     api.toast(
-      skipped > 0
-        ? `已记 ${written} 题 · ${skipped} 题重复或超长已跳过 · ${nextReview} 提醒复习`
-        : `已记 ${written} 题 · ${nextReview} 提醒复习`,
+      result.skipped > 0
+        ? `已记 ${result.written} 题 · ${result.skipped} 题重复或超长已跳过 · ${nextReview} 提醒复习`
+        : `已记 ${result.written} 题 · ${nextReview} 提醒复习`,
     );
     onClose();
   };
@@ -164,7 +167,8 @@ export function QuickNote({ api, onClose }: { api: AppApi; onClose: () => void }
         </div>
 
         <p className="quick-note__hint">
-          一行一题，敲 <kbd>Enter</kbd> 就记下、光标不动。记不起来的先记个关键词也行 ——
+          一行一题，敲 <kbd>Enter</kbd> 就记下、光标不动。每行可以顺手标「会不会 / 属于哪类」，
+          不标就是「不会 + 未分类」——
           <strong>不记就永远想不起来了</strong>。
         </p>
 
@@ -180,6 +184,14 @@ export function QuickNote({ api, onClose }: { api: AppApi; onClose: () => void }
                   onChange={(patch) => patchLine(index, patch)}
                   labelPrefix={`第 ${index + 1} 题`}
                 />
+                <button
+                  type="button"
+                  className="link-btn quick-note__drop"
+                  aria-label={`删掉第 ${index + 1} 题`}
+                  onClick={() => removeLine(index)}
+                >
+                  删掉
+                </button>
               </li>
             ))}
           </ul>

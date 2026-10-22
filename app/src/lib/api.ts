@@ -147,6 +147,23 @@ export interface NewExperienceInput {
   originFile?: string;
 }
 
+/**
+ * 快记一次落库（PRD §20.2）：**面经壳 + 全部待记题一起写**。
+ *
+ * 为什么合成一个入口而不是 addExperience + addQuestions 串着调：
+ * 那样是两次 mutate、两个撤销点，而用户眼里「记了 3 题」是一次动作 ——
+ * 按一次 ⌘Z 应该整批回退，而不是回退成「一场 0 题的空面经」。
+ */
+export interface QuickNoteInput {
+  experience: NewExperienceInput;
+  items: QuestionDraft[];
+}
+
+/** 快记落库结果：写了几条、跳过几条（重复/超长/空题干），以及落在哪场面经下 */
+export type QuickNoteResult =
+  | { ok: true; experienceId: string; written: number; skipped: number }
+  | { ok: false; reason: string };
+
 /** ① → ② 的结果 */
 export type SyncPlanOutcome =
   | { ok: true; plan: MergePlan; adapterId: PlatformId; adapterStale: boolean }
@@ -271,6 +288,11 @@ export interface AppApi {
   deleteExperience: (id: string) => void;
   /** 批量加题（快记用），返回实际写入条数。裸字符串 = 不会 + 未分类（v0.8 行为不变） */
   addQuestions: (experienceId: string, items: QuestionDraft[]) => number;
+  /**
+   * 快记一次落库：**一次 mutate** 写完面经壳 + 全部待记题 → **一个撤销点**（⌘Z 整批回退）。
+   * 见 QuickNoteInput 注释 —— 拆成两个调用会退化成「回退成空面经」。
+   */
+  addQuickNote: (input: QuickNoteInput) => QuickNoteResult;
   /** 静默改字段：不进撤销栈。输入框逐字写库用这个（ExperienceEditor 的实时编辑） */
   updateQuestion: (id: string, patch: Partial<Question>) => void;
   /**

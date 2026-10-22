@@ -1,13 +1,15 @@
 /**
  * 题库：按场折叠的概览卡 + 5 维筛选（公司 / 分类 / 掌握度 / 是否到期 / 关键词）+ 行内编辑。
  *
- * 排序**只**用 `lib/interview.ts` 的 `sortQuestionsForReview`（单测覆盖），
- * 组件里不许再写一套 sort —— 否则「题库顺序」和「复习队列顺序」会慢慢分叉。
+ * 复习模式（`开始复习` / `考前一分钟`）仍然只用 `lib/interview.ts` 的 `reviewQueue`
+ * 排序（单测覆盖），组件里不另写一套 sort —— 否则「题库顺序」和「复习队列顺序」会慢慢分叉。
+ * 列表模式按 PRD §20.3 的口径排：**场序 = 面试日期倒序，场内 = 录入顺序**。
  *
  * v0.9 / T-QB ②③：
- * - ② 一屏 20 张卡全是重复的公司/日期头 → 改成「每场一张概览卡」，默认收起，
- *   卡内预览前 2 题；展开才逐题渲染。筛选仍然先过题，筛完再按场分组（某场 0 命中 → 整卡不渲染）。
- * - ③ 每题可改：展开后行尾「编辑」进行内编辑态（一次只允许一行），
+ * - ② 一屏 20 张卡全是重复的公司/日期头 → 改成「每场一张概览卡」，默认全折叠，
+ *   折叠态**不渲染任何题干 DOM**（只留一行卡头：公司 · 岗位 · 轮次 · 日期 + 「N 题 · 其中不会 M」）。
+ *   筛选仍然先过题，筛完再按场分组（某场 0 命中 → 整卡不渲染）；上限 30 张卡，展开时该场全量渲染。
+ * - ③ 每题可改：展开后行尾「编辑」进行内编辑态（同时只允许一行），
  *   保存走 `api.editQuestion`（一次 mutate + 一条撤销栈），取消一个字都不改。
  */
 
@@ -19,6 +21,7 @@ import {
   CATEGORY_NONE_LABEL,
   CATEGORY_OPTIONS,
   MASTERY_LABEL,
+  QUESTION_TEXT_LIMIT,
   daysUntilReview,
   isDue,
   reviewQueue,
@@ -34,10 +37,11 @@ export interface QuestionBankProps {
 
 type MasteryFilter = 'all' | Mastery;
 
-/** 展开一场时最多渲染这么多行（防止复制粘贴整包数据把 DOM 撑爆） */
-const PAGE_SIZE = 60;
-/** 收起时卡内预览几题 */
-const PREVIEW_SIZE = 2;
+/** 一屏最多这么多张概览卡（不是「60 题分页」—— 展开某场时该场命中题全量渲染） */
+const CARD_LIMIT = 30;
+
+/** 有未保存改动时拦一下的统一提示（切行 / 收起场次共用同一句） */
+const MSG_UNSAVED = '这一题还有未保存的修改 —— 先保存或取消';
 
 interface QuestionGroup {
   experienceId: string;
@@ -61,8 +65,10 @@ export function QuestionBank({ api, onRecord }: QuestionBankProps) {
   const [reviewIds, setReviewIds] = useState<string[] | null>(null);
   /** 展开的场次（本地 state，不持久化 —— 下次进来还是清爽的概览） */
   const [expanded, setExpanded] = useState<Record<string, boolean>>({});
-  /** 正在编辑的题（一次只允许一行，防误触多处同时编辑） */
+  /** 正在编辑的题：同时只允许一行，避免「两行都没保存、切来切去不知道丢了哪个」 */
   const [editingId, setEditingId] = useState<string | null>(null);
+  /** 当前编辑行有没有改动（切换行 / 收起场次前用来拦一下，不静默丢弃） */
+  const [editingDirty, setEditingDirty] = useState(false);
 
   const experienceById = useMemo(() => new Map(db.experiences.map((item) => [item.id, item])), [db.experiences]);
   const companies = useMemo(() => {
@@ -95,16 +101,18 @@ export function QuestionBank({ api, onRecord }: QuestionBankProps) {
     });
   }, [db.questions, mastery, category, onlyDue, today, company, experienceById, keyword]);
 
+  /** 复习模式用的顺序（「不会的先看」），列表模式不用它 */
   const sorted = useMemo(() => reviewQueue(filtered, nowIso), [filtered, nowIso]);
   const dueCount = db.questions.filter((question) => isDue(question, today)).length;
 
   /**
-   * 分组：单次 O(N) 扫描（不在场次里再 filter 一遍 —— 那是 O(N×场次)）。
-   * 组内顺序沿用 sorted 的顺序，所以「不会的先看」在每张卡里也成立。
+   * 分组：对 `filtered` 单次 O(N) 扫描（不在场次里再 filter 一遍 —— 那是 O(N×场次)）。
+   * `sorted` 保持录入顺序，所以组内顺序 = `questionsOf` 的录入顺序（PRD §20.3）；
+   * 组之间按面试日期倒序，日期相同的保持录入先后（稳定排序）。
    */
   const groups = useMemo(() => {
     const byExperience = new Map<string, Question[]>();
-    for (const question of sorted) {
+    for (const question of filtered) {
       const bucket = byExperience.get(question.experienceId);
       if (bucket) bucket.push(question);
       else byExperience.set(question.experienceId, [question]);
@@ -122,8 +130,14 @@ export function QuestionBank({ api, onRecord }: QuestionBankProps) {
         unknownCount: questions.reduce((count, question) => (question.mastery === 0 ? count + 1 : count), 0),
       });
     }
+    result.sort((a, b) => {
+      if (a.interviewDate === b.interviewDate) return 0;
+      if (a.interviewDate === null) return 1;
+      if (b.interviewDate === null) return -1;
+      return a.interviewDate < b.interviewDate ? 1 : -1;
+    });
     return result;
-  }, [sorted, experienceById]);
+  }, [filtered, experienceById]);
 
   if (mode === 'review') {
     const queue = reviewIds ? sorted.filter((question) => reviewIds.includes(question.id)) : sorted;
@@ -154,14 +168,35 @@ export function QuestionBank({ api, onRecord }: QuestionBankProps) {
     );
   }
 
+  const visibleGroups = groups.slice(0, CARD_LIMIT);
+  const hiddenGroups = groups.length - visibleGroups.length;
+
   const toggleGroup = (experienceId: string): void => {
+    const open = Boolean(expanded[experienceId]);
+    // 收起会把编辑框一起带走 —— 有未保存的改动就先拦一下
+    if (open && editingDirty) {
+      api.toast(MSG_UNSAVED);
+      return;
+    }
     setExpanded((prev) => ({ ...prev, [experienceId]: !prev[experienceId] }));
     // 收起时光标所在的编辑态跟着结束 —— 否则「保存」成了一个找不到行号的悬空按钮
-    setEditingId((current) => {
-      if (!current) return current;
-      const target = db.questions.find((question) => question.id === current);
-      return target && target.experienceId === experienceId ? null : current;
-    });
+    if (!open) return;
+    const target = editingId ? db.questions.find((question) => question.id === editingId) : undefined;
+    if (!target || target.experienceId === experienceId) {
+      setEditingId(null);
+      setEditingDirty(false);
+    }
+  };
+
+  /** 点另一行的「编辑」：有未保存的改动就不许走（一行都不许丢） */
+  const requestEdit = (id: string): void => {
+    if (editingId === id) return;
+    if (editingId && editingDirty) {
+      api.toast(MSG_UNSAVED);
+      return;
+    }
+    setEditingId(id);
+    setEditingDirty(false);
   };
 
   return (
@@ -250,88 +285,81 @@ export function QuestionBank({ api, onRecord }: QuestionBankProps) {
       </div>
 
       <p className="qb__summary">
-        共 {db.questions.length} 题 · 当前筛选 {sorted.length} 题 · {groups.length} 场 · 到期 {dueCount} 题（按「不会的先看」排序）
+        共 {db.questions.length} 题 · 当前筛选 {filtered.length} 题 · 命中 {groups.length} 场 · 到期 {dueCount} 题
       </p>
 
-      {sorted.length === 0 ? (
+      {groups.length === 0 ? (
         <div className="empty-block">
           <div className="empty-block__emoji">🔍</div>
           <div className="empty-block__title">这个筛选下没有题</div>
           <p className="empty-block__text">把「只看到期」关掉，或者换一家公司看看。</p>
         </div>
       ) : (
-        <ul className="qb__list">
-          {groups.map((group) => {
-            const open = Boolean(expanded[group.experienceId]);
-            const rows = group.questions.slice(0, PAGE_SIZE);
-            return (
-              <li key={group.experienceId} className={`qb__group ${open ? 'is-open' : ''}`}>
-                <button
-                  type="button"
-                  className="qb__group-head"
-                  aria-expanded={open}
-                  onClick={() => toggleGroup(group.experienceId)}
-                >
-                  <span className="qb__group-caret" aria-hidden="true">
-                    {open ? '▾' : '▸'}
-                  </span>
-                  <span className="qb__group-title">
-                    {group.companyName}
-                    {group.jobTitle ? ` · ${group.jobTitle}` : ''}
-                    {group.round ? ` · 第 ${group.round} 轮` : ''}
-                    {group.interviewDate ? ` · ${group.interviewDate}` : ''}
-                  </span>
-                  <span className="qb__group-count">
-                    {group.questions.length} 题 · 其中不会 {group.unknownCount}
-                  </span>
-                </button>
+        <>
+          <ul className="qb__list">
+            {visibleGroups.map((group) => {
+              const open = Boolean(expanded[group.experienceId]);
+              return (
+                <li key={group.experienceId} className={`qb__group ${open ? 'is-open' : ''}`}>
+                  <button
+                    type="button"
+                    className="qb__group-head"
+                    aria-expanded={open}
+                    onClick={() => toggleGroup(group.experienceId)}
+                  >
+                    <span className="qb__group-caret" aria-hidden="true">
+                      {open ? '▾' : '▸'}
+                    </span>
+                    <span className="qb__group-title">
+                      {group.companyName}
+                      {group.jobTitle ? ` · ${group.jobTitle}` : ''}
+                      {group.round ? ` · 第 ${group.round} 轮` : ''}
+                      {group.interviewDate ? ` · ${group.interviewDate}` : ''}
+                    </span>
+                    <span className="qb__group-count">
+                      {group.questions.length} 题 · 其中不会 {group.unknownCount}
+                    </span>
+                  </button>
 
-                {open ? (
-                  <ul className="qb__rows">
-                    {rows.map((question) =>
-                      question.id === editingId ? (
-                        <QuestionEditor
-                          key={question.id}
-                          question={question}
-                          onSave={(patch) => {
-                            api.editQuestion(question.id, patch);
-                            setEditingId(null);
-                          }}
-                          onCancel={() => setEditingId(null)}
-                        />
-                      ) : (
-                        <QuestionRow
-                          key={question.id}
-                          question={question}
-                          today={today}
-                          nowIso={nowIso}
-                          onEdit={() => setEditingId(question.id)}
-                        />
-                      ),
-                    )}
-                  </ul>
-                ) : (
-                  <div className="qb__preview">
-                    {group.questions.slice(0, PREVIEW_SIZE).map((question) => (
-                      <p key={question.id} className="qb__preview-line">
-                        <span className={`qb__mastery qb__mastery--${question.mastery}`}>
-                          {MASTERY_LABEL[question.mastery]}
-                        </span>
-                        <span className="qb__preview-text">{question.text}</span>
-                      </p>
-                    ))}
-                  </div>
-                )}
-
-                {open && group.questions.length > PAGE_SIZE ? (
-                  <p className="muted qb__group-more">
-                    这一场只显示前 {PAGE_SIZE} 题（共 {group.questions.length}）。用上面的搜索缩小范围。
-                  </p>
-                ) : null}
-              </li>
-            );
-          })}
-        </ul>
+                  {/* 折叠态刻意什么都不渲染：题干 DOM 一进来，「一屏看清打了哪几场」就没了 */}
+                  {open ? (
+                    <ul className="qb__rows">
+                      {group.questions.map((question) =>
+                        question.id === editingId ? (
+                          <QuestionEditor
+                            key={question.id}
+                            question={question}
+                            onDirty={() => setEditingDirty(true)}
+                            onSave={(patch) => {
+                              api.editQuestion(question.id, patch);
+                              setEditingId(null);
+                              setEditingDirty(false);
+                            }}
+                            onCancel={() => {
+                              setEditingId(null);
+                              setEditingDirty(false);
+                            }}
+                          />
+                        ) : (
+                          <QuestionRow
+                            key={question.id}
+                            question={question}
+                            today={today}
+                            nowIso={nowIso}
+                            onEdit={() => requestEdit(question.id)}
+                          />
+                        ),
+                      )}
+                    </ul>
+                  ) : null}
+                </li>
+              );
+            })}
+          </ul>
+          {hiddenGroups > 0 ? (
+            <p className="muted qb__more">还有 {hiddenGroups} 场没显示 —— 用上面的筛选缩小范围。</p>
+          ) : null}
+        </>
       )}
 
       <p className="qb__summary">点场次展开题目，展开后每行右侧可以「编辑」。</p>
@@ -376,22 +404,37 @@ function QuestionRow(props: {
   );
 }
 
-/** 行内编辑态：题干 / 掌握度 / 分类 / 我的回答（可空），保存一次 mutate + 一条撤销栈 */
+/**
+ * 行内编辑态：题干 / 掌握度 / 分类 / 我的回答（可空）。
+ *
+ * 保存 = 四字段一个 patch（App 侧一次 mutate + 一条撤销栈）；
+ * 取消 = 一个字都不提交。有改动时「取消」先提示一句再确认（不静默丢弃）。
+ * 题干按 `QUESTION_TEXT_LIMIT` 截断，超限时**先说清楚**，不静默截。
+ */
 function QuestionEditor(props: {
   question: Question;
+  onDirty: () => void;
   onSave: (patch: Partial<Question>) => void;
   onCancel: () => void;
 }) {
-  const { question, onSave, onCancel } = props;
+  const { question, onDirty, onSave, onCancel } = props;
   const [text, setText] = useState(question.text);
   const [mastery, setMastery] = useState<Mastery>(question.mastery);
   const [category, setCategory] = useState<QuestionCategory | null>(question.category);
   const [answer, setAnswer] = useState(question.myAnswer ?? '');
+  const [warned, setWarned] = useState(false);
+
+  const dirty =
+    text !== question.text ||
+    mastery !== question.mastery ||
+    category !== question.category ||
+    answer !== (question.myAnswer ?? '');
+  const tooLong = text.trim().length > QUESTION_TEXT_LIMIT;
 
   const save = (): void => {
     const next = text.trim();
     if (!next) return;
-    onSave({ text: next, mastery, category, myAnswer: answer.trim() || undefined });
+    onSave({ text: next, mastery, category, myAnswer: answer.trim() });
   };
 
   return (
@@ -402,7 +445,10 @@ function QuestionEditor(props: {
           className="textarea qb__editor-text"
           value={text}
           aria-label="题干"
-          onChange={(event) => setText(event.target.value)}
+          onChange={(event) => {
+            setText(event.target.value);
+            onDirty();
+          }}
         />
       </label>
 
@@ -413,6 +459,7 @@ function QuestionEditor(props: {
         onChange={(patch) => {
           if (patch.mastery !== undefined) setMastery(patch.mastery);
           if (patch.category !== undefined) setCategory(patch.category);
+          onDirty();
         }}
       />
 
@@ -423,7 +470,10 @@ function QuestionEditor(props: {
           value={answer}
           aria-label="我的回答"
           placeholder="当时怎么答的、卡在哪 —— 这段以后最值钱"
-          onChange={(event) => setAnswer(event.target.value)}
+          onChange={(event) => {
+            setAnswer(event.target.value);
+            onDirty();
+          }}
         />
       </label>
 
@@ -431,9 +481,21 @@ function QuestionEditor(props: {
         <button type="button" className="btn btn--small btn--primary" onClick={save} disabled={!text.trim()}>
           保存
         </button>
-        <button type="button" className="btn btn--small" onClick={onCancel}>
+        <button
+          type="button"
+          className="btn btn--small"
+          onClick={() => {
+            if (dirty && !warned) {
+              setWarned(true);
+              return;
+            }
+            onCancel();
+          }}
+        >
           取消
         </button>
+        {tooLong ? <span className="muted">题干超过 {QUESTION_TEXT_LIMIT} 字，保存后会截断</span> : null}
+        {warned && dirty ? <span className="muted">有未保存的修改 —— 再点一次「取消」就丢掉</span> : null}
       </div>
     </li>
   );

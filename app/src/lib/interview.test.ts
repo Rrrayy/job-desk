@@ -2,6 +2,9 @@ import { describe, expect, it } from 'vitest';
 import type { DB, Interview, InterviewExperience, Question } from '../types';
 import { emptyDB } from './defaults';
 import {
+  QUESTION_TEXT_LIMIT,
+  applyQuestionEdit,
+  buildQuestionRows,
   bumpMastery,
   deriveInitialNextReviewAt,
   isDue,
@@ -9,6 +12,7 @@ import {
   nextReviewAtFor,
   pendingReviewInterviews,
   reviewQueue,
+  revertQuestionBatch,
   revertQuestionEdit,
   sortQuestionsForReview,
   statsByCategory,
@@ -291,5 +295,161 @@ describe('题目编辑的撤销（T-QB ③）', () => {
     const db = emptyDB();
     expect(() => revertQuestionEdit(db, { questionId: 'gone', before: { text: 'x' } })).not.toThrow();
     expect(db.questions).toHaveLength(0);
+  });
+});
+
+describe('题目写入口径（T-QB / PRD §20.2 §20.9）', () => {
+  /** 注入递增 id，单测里不依赖随机数 */
+  function counter(): (prefix: string) => string {
+    let n = 0;
+    return (prefix: string) => `${prefix}_${(n += 1)}`;
+  }
+
+  it('裸字符串入参：默认值与历史落库值逐字节一致（不会 + 未分类 + 难度 2 + 复习 0）', () => {
+    const exp = experience({ id: 'exp_1', interviewDate: '2025-03-12' });
+    const rows = buildQuestionRows({
+      experience: exp,
+      items: ['手写 Promise.all'],
+      now: NOW,
+      makeId: counter(),
+    });
+    expect(rows).toEqual([
+      {
+        id: 'q_1',
+        experienceId: 'exp_1',
+        category: null,
+        difficulty: 2,
+        text: '手写 Promise.all',
+        mastery: 0,
+        tags: [],
+        nextReviewAt: deriveInitialNextReviewAt('2025-03-12', NOW),
+        reviewCount: 0,
+        createdAt: NOW,
+        updatedAt: NOW,
+      },
+    ]);
+  });
+
+  it('对象入参写掌握度与分类；空题干 / 同场重复丢弃；超长题干截断', () => {
+    const exp = experience({ id: 'exp_1' });
+    const rows = buildQuestionRows({
+      experience: exp,
+      items: [
+        { text: '  事件循环  ', mastery: 2, category: 'concept' },
+        { text: '事件循环' }, // 同场重复（大小写与首尾空白无关）
+        { text: '   ' }, // 空题干
+        { text: '长'.repeat(QUESTION_TEXT_LIMIT + 5) },
+      ],
+      now: NOW,
+      makeId: counter(),
+    });
+    expect(rows.map((row) => row.text)).toEqual(['事件循环', '长'.repeat(QUESTION_TEXT_LIMIT)]);
+    expect(rows[0].mastery).toBe(2);
+    expect(rows[0].category).toBe('concept');
+    // 后一条没指定 → 回落到默认值
+    expect(rows[1].mastery).toBe(0);
+    expect(rows[1].category).toBeNull();
+  });
+
+  it('applyQuestionEdit：调度三字段就算传进来也写不进去', () => {
+    const db = emptyDB();
+    db.questions = [
+      question({
+        id: 'q_1',
+        mastery: 0,
+        nextReviewAt: '2025-03-20',
+        lastReviewedAt: '2025-03-12',
+        reviewCount: 3,
+      }),
+    ];
+    applyQuestionEdit(
+      db,
+      'q_1',
+      {
+        text: '  改过的题干  ',
+        mastery: 2,
+        // 下面三个是「我又复习了一遍」才会变的字段，编辑必须丢掉
+        reviewCount: 99,
+        nextReviewAt: '2030-01-01',
+        lastReviewedAt: '2030-01-01',
+      },
+      NOW,
+    );
+    const target = db.questions[0];
+    expect(target.text).toBe('改过的题干');
+    expect(target.mastery).toBe(2);
+    expect(target.reviewCount).toBe(3);
+    expect(target.nextReviewAt).toBe('2025-03-20');
+    expect(target.lastReviewedAt).toBe('2025-03-12');
+    expect(target.updatedAt).toBe(NOW);
+  });
+
+  it('applyQuestionEdit：答案清空 = 字段整个删掉（与「从没写过」长得一样）', () => {
+    const db = emptyDB();
+    db.questions = [question({ id: 'q_1', myAnswer: '以前写的' })];
+    applyQuestionEdit(db, 'q_1', { myAnswer: '   ', mastery: 1 }, NOW);
+    const target = db.questions[0];
+    expect('myAnswer' in target).toBe(false);
+    expect(target.mastery).toBe(1);
+  });
+
+  it('applyQuestionEdit：题目不存在时静默跳过', () => {
+    const db = emptyDB();
+    expect(() => applyQuestionEdit(db, 'gone', { mastery: 1 }, NOW)).not.toThrow();
+    expect(db.questions).toHaveLength(0);
+  });
+
+  it('revertQuestionBatch：撤掉这一批题，并只删「这批自己建的空壳」', () => {
+    const db = emptyDB();
+    db.experiences = [experience({ id: 'exp_new' }), experience({ id: 'exp_old' })];
+    db.questions = [
+      question({ id: 'q_1', experienceId: 'exp_new' }),
+      question({ id: 'q_2', experienceId: 'exp_old' }),
+    ];
+    revertQuestionBatch(db, { questionIds: ['q_1'], createdExperienceId: 'exp_new' });
+    expect(db.questions.map((item) => item.id)).toEqual(['q_2']);
+    expect(db.experiences.map((item) => item.id)).toEqual(['exp_old']);
+  });
+
+  it('revertQuestionBatch：壳里还有别的题就不删壳；复用已有场次时也不碰它', () => {
+    const db = emptyDB();
+    db.experiences = [experience({ id: 'exp_1' })];
+    db.questions = [
+      question({ id: 'q_1', experienceId: 'exp_1' }),
+      question({ id: 'q_2', experienceId: 'exp_1' }),
+    ];
+    // 这批建的壳（虽然理论上不会复用），但里面还有别的题 → 壳留着
+    revertQuestionBatch(db, { questionIds: ['q_1'], createdExperienceId: 'exp_1' });
+    expect(db.questions.map((item) => item.id)).toEqual(['q_2']);
+    expect(db.experiences).toHaveLength(1);
+    // 复用已有场次（createdExperienceId = null）→ 壳一定不动
+    revertQuestionBatch(db, { questionIds: ['q_2'], createdExperienceId: null });
+    expect(db.questions).toHaveLength(0);
+    expect(db.experiences).toHaveLength(1);
+  });
+});
+
+describe('清空语义（显式 undefined = 删掉字段，ExperienceEditor 的「没标 / 删光」依赖它）', () => {
+  it('显式 undefined 清掉可空字段；category 不受影响（null 是合法值不是缺键）', () => {
+    const db = emptyDB();
+    db.questions = [
+      question({ id: 'q_1', myAnswer: '旧回答', nextTime: '先说结论', rootCause: 'forgot' }),
+    ];
+    applyQuestionEdit(db, 'q_1', { myAnswer: undefined, nextTime: undefined, rootCause: undefined }, NOW);
+    const target = db.questions[0];
+    expect('myAnswer' in target).toBe(false);
+    expect('nextTime' in target).toBe(false);
+    expect('rootCause' in target).toBe(false);
+    // 题干传 undefined 不算清空（题库里不能出现没有题干的题）
+    applyQuestionEdit(db, 'q_1', { text: undefined }, NOW);
+    expect(target.text).toBe('手写 Promise.all');
+  });
+
+  it('patch 里没写到的字段不动（undefined 只在显式写入时才算清空）', () => {
+    const db = emptyDB();
+    db.questions = [question({ id: 'q_1', myAnswer: '旧回答', mastery: 2 })];
+    applyQuestionEdit(db, 'q_1', { mastery: 1 }, NOW);
+    expect(db.questions[0].myAnswer).toBe('旧回答');
+    expect(db.questions[0].mastery).toBe(1);
   });
 });

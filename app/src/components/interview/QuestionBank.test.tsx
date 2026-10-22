@@ -3,11 +3,12 @@
  * QuestionBank（v0.9 / T-QB ②③）：按场折叠的概览卡 + 行内编辑。
  *
  * 覆盖：
- * - 默认每场一张概览卡（20 题 1 场 → 1 张卡，预览 2 题，题目行不渲染）
+ * - 默认每场一张概览卡（20 题 1 场 → 1 张卡），**折叠态不渲染任何题干 DOM**
  * - 点卡展开 20 行、再点收回（展开态只存本地 state）
+ * - 场序 = 面试日期倒序；上限 30 张卡，超了给「用上面的筛选缩小范围」
  * - 筛选「会」→ 卡上计数与展开内容只含命中题；某场 0 命中 → 整卡不渲染
- * - 行内编辑：改分类 会→模糊 + 改题干 → editQuestion 收到一次 patch（App 侧一次 mutate + 一条撤销栈）
- * - 取消 → 一个字都不提交
+ * - 行内编辑：改分类 + 改题干 → editQuestion 收到一次 patch（App 侧一次 mutate + 一条撤销栈）
+ * - 同时只允许一行编辑；有未保存改动时切行 / 取消都要先说一声
  */
 
 import { act } from 'react';
@@ -115,16 +116,18 @@ describe('QuestionBank 按场折叠 + 行内编辑（jsdom）', () => {
   const groupHeads = (): HTMLButtonElement[] =>
     Array.from(container.querySelectorAll<HTMLButtonElement>('.qb__group-head'));
   const rows = (): HTMLLIElement[] => Array.from(container.querySelectorAll<HTMLLIElement>('.qb__row'));
+  const buttonByText = (text: string): HTMLButtonElement | undefined =>
+    Array.from(container.querySelectorAll('button')).find((item) => item.textContent === text);
 
-  it('★ 20 题 1 场 → 默认 1 张概览卡，只预览 2 题，展开 20 行，再点收回', async () => {
+  it('★ 20 题 1 场 → 默认 1 张概览卡，折叠态不渲染题干，展开 20 行，再点收回', async () => {
     const questions = Array.from({ length: 20 }, (_, i) => makeQuestion(i + 1));
     await render(makeDb(questions));
 
     expect(container.querySelectorAll('.qb__group')).toHaveLength(1);
     expect(groupHeads()).toHaveLength(1);
-    // 收起态：概览卡里不渲染题目行，只预览前 2 题
+    // 折叠态：一行题目都不渲染，题干文字根本不进 DOM（验收 32 的断言点）
     expect(rows()).toHaveLength(0);
-    expect(container.querySelectorAll('.qb__preview-line')).toHaveLength(2);
+    expect(container.textContent).not.toContain('第 1 题');
     // 卡头：公司 · 岗位 · 轮次 · 日期 + 「20 题 · 其中不会 M」
     const head = groupHeads()[0];
     expect(head.textContent).toContain('字节跳动');
@@ -138,23 +141,58 @@ describe('QuestionBank 按场折叠 + 行内编辑（jsdom）', () => {
     await act(async () => groupHeads()[0].click());
     expect(rows()).toHaveLength(20);
     expect(groupHeads()[0].getAttribute('aria-expanded')).toBe('true');
-    expect(container.querySelectorAll('.qb__preview-line')).toHaveLength(0);
+    expect(container.textContent).toContain('第 1 题');
 
     await act(async () => groupHeads()[0].click());
     expect(rows()).toHaveLength(0);
+    expect(container.textContent).not.toContain('第 1 题');
+  });
+
+  it('场序 = 面试日期倒序（同一天保持录入顺序）', async () => {
+    const db = makeDb(
+      [
+        makeQuestion(1, { experienceId: 'exp-old' }),
+        makeQuestion(2, { experienceId: 'exp-new' }),
+        makeQuestion(3, { experienceId: 'exp-mid' }),
+      ],
+      [
+        makeExperience({ id: 'exp-old', companyName: '老公司', interviewDate: '2026-09-01' }),
+        makeExperience({ id: 'exp-new', companyName: '新公司', interviewDate: '2026-10-22' }),
+        makeExperience({ id: 'exp-mid', companyName: '中间公司', interviewDate: '2026-10-01' }),
+      ],
+    );
+    await render(db);
+    const titles = groupHeads().map((head) => head.textContent ?? '');
+    expect(titles).toHaveLength(3);
+    expect(titles[0]).toContain('新公司');
+    expect(titles[1]).toContain('中间公司');
+    expect(titles[2]).toContain('老公司');
+  });
+
+  it('超过 30 场 → 只渲染 30 张卡，并提示用筛选缩小范围', async () => {
+    const experiences = Array.from({ length: 31 }, (_, i) =>
+      makeExperience({ id: `exp-${i}`, companyName: `公司${i}`, interviewDate: '2026-10-0' + ((i % 9) + 1) }),
+    );
+    const questions = experiences.map((exp, i) => makeQuestion(i + 1, { id: `q-${i}`, experienceId: exp.id }));
+    await render(makeDb(questions, experiences));
+
+    expect(groupHeads()).toHaveLength(30);
+    expect(container.textContent).toContain('还有 1 场没显示');
   });
 
   it('筛选「会」→ 卡上计数与展开内容只含命中题', async () => {
     const questions = Array.from({ length: 20 }, (_, i) => makeQuestion(i + 1));
     await render(makeDb(questions));
 
-    // 掌握度筛选是工具栏第二个 select（公司 / 分类 / 掌握度）
+    // 掌握度筛选是工具栏第三个 select（公司 / 分类 / 掌握度）
     const selects = Array.from(container.querySelectorAll<HTMLSelectElement>('.qb__toolbar select'));
     await act(async () => setSelect(selects[2], '2'));
 
     expect(groupHeads()).toHaveLength(1);
     // mastery 2 的是 2,5,8,11,14,17,20 → 7 题，且这些题里没有「不会」
     expect(groupHeads()[0].textContent).toContain('7 题 · 其中不会 0');
+    // 顶部汇总与卡上口径一致（共 20 · 筛选 7 · 命中 1 场）
+    expect(container.textContent).toContain('共 20 题 · 当前筛选 7 题 · 命中 1 场');
 
     await act(async () => groupHeads()[0].click());
     expect(rows()).toHaveLength(7);
@@ -206,8 +244,7 @@ describe('QuestionBank 按场折叠 + 行内编辑（jsdom）', () => {
     await act(async () => setSelect(category, 'project'));
     await act(async () => setValue(answer, '我当时答的是…'));
 
-    const saveButton = Array.from(container.querySelectorAll('button')).find((b) => b.textContent === '保存')!;
-    await act(async () => saveButton.click());
+    await act(async () => buttonByText('保存')!.click());
 
     expect(api.editQuestion).toHaveBeenCalledTimes(1);
     expect(api.editQuestion).toHaveBeenCalledWith('q-1', {
@@ -216,11 +253,28 @@ describe('QuestionBank 按场折叠 + 行内编辑（jsdom）', () => {
       category: 'project',
       myAnswer: '我当时答的是…',
     });
-    // 保存后退出编辑态
+    // 保存后退出编辑态；也不该走「我又复习了一遍」的入口
     expect(container.querySelectorAll('.qb__editor')).toHaveLength(0);
+    expect(api.reviewQuestion).not.toHaveBeenCalled();
   });
 
-  it('取消 → 不提交任何东西', async () => {
+  it('有未保存改动时点另一行的「编辑」会被拦下（不静默丢弃）', async () => {
+    const api = await render(makeDb([makeQuestion(1, { text: '旧题干' }), makeQuestion(2)]));
+    await act(async () => groupHeads()[0].click());
+    await act(async () => container.querySelector<HTMLButtonElement>('.qb__row-edit')!.click());
+
+    const textarea = container.querySelector<HTMLTextAreaElement>('textarea[aria-label="题干"]')!;
+    await act(async () => setValue(textarea, '改了但没保存'));
+
+    await act(async () => container.querySelector<HTMLButtonElement>('.qb__row-edit')!.click());
+
+    expect(api.toast).toHaveBeenCalledWith(expect.stringContaining('未保存的修改'));
+    expect(container.querySelectorAll('.qb__editor')).toHaveLength(1);
+    expect(container.querySelector<HTMLTextAreaElement>('textarea[aria-label="题干"]')!.value).toBe('改了但没保存');
+    expect(api.editQuestion).not.toHaveBeenCalled();
+  });
+
+  it('取消：第一次点先提示「有未保存的修改」，第二次才真的丢掉', async () => {
     const api = await render(makeDb([makeQuestion(1, { text: '旧题干' })]));
     await act(async () => groupHeads()[0].click());
     await act(async () => container.querySelector<HTMLButtonElement>('.qb__row-edit')!.click());
@@ -228,12 +282,26 @@ describe('QuestionBank 按场折叠 + 行内编辑（jsdom）', () => {
     const textarea = container.querySelector<HTMLTextAreaElement>('textarea[aria-label="题干"]')!;
     await act(async () => setValue(textarea, '改了但不保存'));
 
-    const cancelButton = Array.from(container.querySelectorAll('button')).find((b) => b.textContent === '取消')!;
-    await act(async () => cancelButton.click());
+    await act(async () => buttonByText('取消')!.click());
+    // 第一次点：编辑态还在，并出现一行提示
+    expect(container.querySelectorAll('.qb__editor')).toHaveLength(1);
+    expect(container.textContent).toContain('有未保存的修改');
+
+    await act(async () => buttonByText('取消')!.click());
 
     expect(api.editQuestion).not.toHaveBeenCalled();
     expect(container.querySelectorAll('.qb__editor')).toHaveLength(0);
     expect(container.textContent).toContain('旧题干');
+  });
+
+  it('题干超过上限时就地提示会截断（不静默）', async () => {
+    await render(makeDb([makeQuestion(1)]));
+    await act(async () => groupHeads()[0].click());
+    await act(async () => container.querySelector<HTMLButtonElement>('.qb__row-edit')!.click());
+
+    const textarea = container.querySelector<HTMLTextAreaElement>('textarea[aria-label="题干"]')!;
+    await act(async () => setValue(textarea, '长'.repeat(2001)));
+    expect(container.textContent).toContain('题干超过 2000 字，保存后会截断');
   });
 
   it('题干清空时「保存」置灰（不留空题干进库）', async () => {
@@ -244,7 +312,6 @@ describe('QuestionBank 按场折叠 + 行内编辑（jsdom）', () => {
     const textarea = container.querySelector<HTMLTextAreaElement>('textarea[aria-label="题干"]')!;
     await act(async () => setValue(textarea, '   '));
 
-    const saveButton = Array.from(container.querySelectorAll('button')).find((b) => b.textContent === '保存')!;
-    expect(saveButton.disabled).toBe(true);
+    expect(buttonByText('保存')!.disabled).toBe(true);
   });
 });
