@@ -19,6 +19,14 @@ describe('状态映射：PRD §B.7 的 9 条全覆盖', () => {
     expect(mapPlatformStatus(raw, {}).status).toBe(expected);
   });
 
+  it('v0.8：含「笔试」字样的平台文案 → written（保守规则，PRD Q6）', () => {
+    expect(mapPlatformStatus('笔试', {}).status).toBe('written');
+    expect(mapPlatformStatus('笔试中', {}).status).toBe('written');
+    expect(mapPlatformStatus('已约笔试', {}).status).toBe('written');
+    const mapped = mapPlatformStatus('笔试', {});
+    expect(mapped.confidence).toBe('medium');
+  });
+
   it('「邀请面试」是高置信度且带 todoInterview 动作，但**绝不**映射成 scheduled', () => {
     const mapped = mapPlatformStatus('邀请面试', {});
     expect(mapped.status).toBe('chatting');
@@ -73,16 +81,16 @@ describe('推进次序 SYNC_STATUS_RANK', () => {
   });
 
   it('常规推进顺序单调递增', () => {
-    const order: Status[] = ['wishlist', 'applied', 'chatting', 'scheduled', 'interviewing', 'offer', 'onboarded'];
+    const order: Status[] = ['wishlist', 'applied', 'chatting', 'written', 'scheduled', 'interviewing', 'offer', 'onboarded'];
     for (let i = 1; i < order.length; i += 1) {
       expect(SYNC_STATUS_RANK[order[i]]).toBeGreaterThan(SYNC_STATUS_RANK[order[i - 1]]);
     }
   });
 
-  it('9 个状态都有 rank，且互不相同', () => {
+  it('10 个状态都有 rank，且互不相同（v0.8 加 written）', () => {
     const ranks = Object.values(SYNC_STATUS_RANK);
-    expect(ranks).toHaveLength(9);
-    expect(new Set(ranks).size).toBe(9);
+    expect(ranks).toHaveLength(10);
+    expect(new Set(ranks).size).toBe(10);
   });
 
   it('内置规则顺序即优先级（邀请面试 排在 沟通中 之前）', () => {

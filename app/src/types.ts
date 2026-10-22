@@ -10,17 +10,29 @@
 
 import type { NormalizedRecord } from './adapters/types';
 
-/** 九种投递状态（终态：onboarded / rejected / dropped） */
+/**
+ * 投递状态（终态：onboarded / rejected / dropped）。
+ * v0.8：9 → 10，唯一枚举扩张 —— 加 'written'（已笔试）。
+ * 扩张后必须同步：rules 的 STATUS_LABEL / STATUS_TONE / BOARD_COLUMNS / SILENCE_STATUSES、
+ * sync/statusMap 的 SYNC_STATUS_RANK、csvImport 的 STATUS_ALIASES。
+ */
 export type Status =
   | 'wishlist'
   | 'applied'
   | 'chatting'
+  | 'written'
   | 'scheduled'
   | 'interviewing'
   | 'offer'
   | 'onboarded'
   | 'rejected'
   | 'dropped';
+
+/**
+ * v0.8：面试类型。'written' 仅供笔试记录（round=0）使用；
+ * 其余值与 Interview.round 1..N 搭配。缺省 = 未标注（老数据不动）。
+ */
+export type InterviewKind = 'written' | 'tech' | 'hr' | 'cross' | 'group' | 'director' | 'other';
 
 /** 实习类型：日常 / 暑期 / 校招 */
 export type JobType = 'daily' | 'summer' | 'fulltime';
@@ -174,7 +186,10 @@ export interface Application {
 export interface Interview {
   id: string;
   applicationId: string;
-  /** 第几轮，从 1 开始 */
+  /**
+   * 第几轮。v0.8 起允许 0 = 笔试（与 kind:'written' 共同出现）；
+   * 1..N 为正式面试轮次。
+   */
   round: number;
   totalRounds?: number | null;
   /** 面试时间，ISO */
@@ -184,6 +199,8 @@ export interface Interview {
   locationOrLink?: string;
   interviewer?: string;
   prepChecklist?: { id: string; text: string; done: boolean }[];
+  /** v0.8：面试类型；缺省 = 未标注（老数据不动，不凭空补字段） */
+  kind?: InterviewKind;
   result: InterviewResult;
   notes?: string;
 }
@@ -261,9 +278,21 @@ export interface MigrationRecord {
   backupKey: string;
 }
 
+/** v0.8：AI 客户端设置（settings.ai，additive 与 fileLink/encryption 同模式）。
+ *  缺省 = AI 未配置（入口诚实置灰，不猜默认服务）。 */
+export interface AISettings {
+  /** 含 /v1 的 OpenAI 兼容端点，如 http://127.0.0.1:11434/v1（Ollama） */
+  baseURL: string;
+  /** 明文存 settings；设置页显著警示（口令加密为 P1） */
+  apiKey?: string;
+  model: string;
+  /** 本机端口（127.0.0.1 / localhost）时为 true，预览明示「不出公网」 */
+  isLocal: boolean;
+}
+
 /** 全局设置 */
 export interface AppSettings {
-  schemaVersion: 3;
+  schemaVersion: 4;
   warnAfterDays: number;
   staleAfterDays: number;
   interviewResultWaitDays: number;
@@ -295,6 +324,8 @@ export interface AppSettings {
   fileLink: FileLinkSettings;
   /** v0.6 新增：导出加密开关（默认关闭；用户主动开启） */
   encryption: EncryptionSettings;
+  /** v0.8 新增：AI 客户端设置；缺省 = AI 未配置 */
+  ai?: AISettings;
   /** v2 新增：上一次迁移审计 */
   lastMigration?: MigrationRecord;
 }
@@ -410,6 +441,66 @@ export interface StagedSyncItem {
   capturedAt: string;
 }
 
+/* ===================== v0.8 插件三表（ROADMAP §3.6，纯 additive 空表落库） ===================== */
+
+/**
+ * 插件键值存储。id 是联合主键的物理化：`${pluginId}::${key}`，
+ * validateV2 按此归一并去重。value JSON 可序列化，单条 ≤256 KB（写入侧约束）。
+ */
+export interface PluginStorage {
+  id: string;
+  pluginId: string;
+  key: string;
+  value: unknown;
+  updatedAt: string;
+}
+
+/**
+ * AI 请求审计日志。
+ * ★ 永远不记录请求体与响应体原文（PRD 验收 13）——只有元数据与字段指纹。
+ * 默认不随 exportJSON 导出（导出剥离 requestLog）。
+ */
+export interface RequestLog {
+  id: string;
+  timestamp: string;
+  /** 内置场景用 'builtin:d14' / 'builtin:d15' / 'builtin:d17' */
+  pluginId: string;
+  baseUrl: string;
+  model: string;
+  /** 确认后发送字段的 SHA-256（字段名+值 JSON 规范化后） */
+  sentFieldsHash: string;
+  status: 'ok' | 'error';
+  errorCode?: string;
+}
+
+export type AISuggestionTargetType =
+  | 'question'          // D14：面经新题（targetId 为空 = 新建，接受时才落 Question）
+  | 'application_note'  // D15：话术草稿落成一条 note
+  | 'staging_field';    // D17：staged 行的某个字段建议（枚举只增不改）
+
+export type AISuggestionStatus = 'pending' | 'accepted' | 'rejected';
+
+/**
+ * AI 产出统一走建议制：模型输出先进本表（pending），用户逐条确认才写目标表。
+ * 本文件先落数据模型；ai/ 场景实现（T03）只消费，不另立第二份定义。
+ */
+export interface AISuggestion {
+  id: string;
+  pluginId: string;
+  targetType: AISuggestionTargetType;
+  /** 追加类建议可为 null */
+  targetId: string | null;
+  /** 'text' | 'myAnswer' | 'category' | 'companyName' | …（逐字段制） */
+  fieldPath: string;
+  /** 建议值（一律字符串；结构化由 fieldPath 解释） */
+  content: string;
+  /** D17：证据对照（原文片段） */
+  evidence?: string;
+  status: AISuggestionStatus;
+  createdAt: string;
+  decidedAt?: string;
+}
+
 /** localStorage 里存的整份数据库 */
 export interface DB {
   settings: AppSettings;
@@ -423,4 +514,8 @@ export interface DB {
   staging: StagedSyncItem[];
   /** v0.4：日历上的通用日程（课表导入的课 + 手动记的事） */
   events: CalendarEvent[];
+  /* v0.8 插件三表：迁移 3→4 空表落库，老数据零影响 */
+  pluginStorage: PluginStorage[];
+  requestLog: RequestLog[];
+  aiSuggestions: AISuggestion[];
 }

@@ -515,3 +515,142 @@ describe('latestUserNoteOf', () => {
     expect(latestUserNoteOf(index, 'a2')?.id).toBe('x');
   });
 });
+
+/* ======================= v0.8：笔试（written）进规则层 ======================= */
+
+import {
+  BOARD_COLUMNS,
+  REJECT_ROUND_OPTIONS,
+  STATUS_LABEL,
+  STATUS_TONE,
+  currentRoundOf,
+  interviewKindLabel,
+  rejectedRoundLabel,
+  rejectedRoundShort,
+  stageRankOf,
+  suggestionFor,
+} from './rules';
+
+function makeInterviewAt(overrides: Partial<Interview> = {}): Interview {
+  return {
+    id: overrides.id ?? 'iv-1',
+    applicationId: overrides.applicationId ?? 'app-1',
+    round: overrides.round ?? 1,
+    scheduledAt: overrides.scheduledAt ?? '2026-10-18T10:00:00.000Z',
+    format: overrides.format ?? 'video',
+    kind: overrides.kind,
+    result: overrides.result ?? 'pending',
+    ...overrides,
+  };
+}
+
+describe('v0.8 · written 进五张常量表', () => {
+  it('STATUS_LABEL / STATUS_TONE 都有 written 档', () => {
+    expect(STATUS_LABEL.written).toBe('已笔试');
+    expect(typeof STATUS_TONE.written).toBe('string');
+    expect(STATUS_TONE.written).toMatch(/^#[0-9a-fA-F]{6}$/);
+  });
+
+  it('BOARD_COLUMNS：7 列，written 插在 chatting 与 scheduled 之间', () => {
+    expect(BOARD_COLUMNS).toHaveLength(7);
+    expect(BOARD_COLUMNS.indexOf('written')).toBe(BOARD_COLUMNS.indexOf('chatting') + 1);
+    expect(BOARD_COLUMNS.indexOf('scheduled')).toBe(BOARD_COLUMNS.indexOf('written') + 1);
+  });
+
+  it('SILENCE_STATUSES 含 written；终态仍然不参与', () => {
+    expect(SILENCE_STATUSES).toContain('written');
+    for (const status of ['onboarded', 'rejected', 'dropped'] as Status[]) {
+      expect(SILENCE_STATUSES).not.toContain(status);
+    }
+  });
+
+  it('written 参与沉默计算，文案点明「等笔试结果」', () => {
+    const settings = defaultSettings();
+    const app = appSilentFor(settings.staleAfterDays + 1, { status: 'written' });
+    const state = silenceStateOf(app, [], settings, NOW);
+    expect(state.level).toBe('stale');
+    expect(state.text).toContain('等笔试结果');
+  });
+});
+
+describe('v0.8 · stageRankOf 与漏斗口径', () => {
+  it('stageRankOf(written) = 2.5（落在 chatting 2 与 scheduled 3 之间）', () => {
+    const app = makeApp({ status: 'written' });
+    expect(stageRankOf(app, [])).toBe(2.5);
+    expect(stageRankOf(makeApp({ status: 'chatting' }), [])).toBeLessThan(2.5);
+    expect(stageRankOf(makeApp({ status: 'scheduled' }), [])).toBeGreaterThan(2.5);
+  });
+
+  it('★ 漏斗显示零改动：written 计入「已沟通后」不计入「已约面」', () => {
+    const db = emptyDB();
+    db.companies = [{ id: 'c-1', name: '某某科技', createdAt: '2026-10-01T00:00:00.000Z' }];
+    db.applications = [makeApp({ status: 'written' })];
+    const funnel = (() => {
+      // 直接内联 buildFunnel 的口径断言（避免为了一个断言 import 整个漏斗模块）：
+      // rank >= 2（已沟通后）应含 written；rank >= 3（已约面）不应含 written
+      const rank = stageRankOf(db.applications[0], db.interviews);
+      return { inChatting: rank >= 2, inScheduled: rank >= 3 };
+    })();
+    expect(funnel.inChatting).toBe(true);
+    expect(funnel.inScheduled).toBe(false);
+  });
+});
+
+describe('v0.8 · 挂点扩展（笔试挂 = 0）', () => {
+  it('REJECT_ROUND_OPTIONS 含 {value:0, label:"笔试"}', () => {
+    expect(REJECT_ROUND_OPTIONS).toContainEqual({ value: 0, label: '笔试' });
+  });
+
+  it('rejectedRoundLabel / Short：0 → 笔试（修掉旧版 round<=0 → 轮次未记）', () => {
+    expect(rejectedRoundLabel(0)).toBe('笔试');
+    expect(rejectedRoundShort(0)).toBe('笔试');
+    // 既有语义不回归
+    expect(rejectedRoundLabel(4)).toBe('第 4 轮（HR 面）');
+    expect(rejectedRoundShort(4)).toBe('HR 面');
+    expect(rejectedRoundLabel(2)).toBe('第 2 轮');
+    expect(rejectedRoundLabel(null)).toBe('轮次未记');
+    expect(rejectedRoundShort(undefined)).toBe('轮次未记');
+  });
+
+  it('负数 / 脏值仍然「轮次未记」（0 的语义不被泛化）', () => {
+    expect(rejectedRoundLabel(-1)).toBe('轮次未记');
+    expect(rejectedRoundShort(-1)).toBe('轮次未记');
+  });
+});
+
+describe('v0.8 · 轮次徽章数据源（currentRoundOf）与面试类型', () => {
+  it('取 result=pending 的最新一场（按时间正序的最后一个 pending）', () => {
+    const app = makeApp({ id: 'app-1' });
+    const interviews = [
+      makeInterviewAt({ id: 'iv1', round: 1, result: 'passed', scheduledAt: '2026-10-10T10:00:00.000Z' }),
+      makeInterviewAt({ id: 'iv2', round: 2, kind: 'hr', scheduledAt: '2026-10-22T10:00:00.000Z' }),
+    ];
+    expect(currentRoundOf(app, interviews)?.id).toBe('iv2');
+  });
+
+  it('全是已记结果的 → null（显示状态本名）', () => {
+    const app = makeApp({ id: 'app-1' });
+    const interviews = [makeInterviewAt({ id: 'iv1', result: 'passed' })];
+    expect(currentRoundOf(app, interviews)).toBeNull();
+  });
+
+  it('interviewKindLabel：7 值全有中文，未标注返回空串', () => {
+    expect(interviewKindLabel('written')).toBe('笔试');
+    expect(interviewKindLabel('tech')).toBe('技术面');
+    expect(interviewKindLabel('hr')).toBe('HR 面');
+    expect(interviewKindLabel('cross')).toBe('交叉面');
+    expect(interviewKindLabel('group')).toBe('群面');
+    expect(interviewKindLabel('director')).toBe('总监面');
+    expect(interviewKindLabel('other')).toBe('其他');
+    expect(interviewKindLabel(undefined)).toBe('');
+  });
+});
+
+describe('v0.8 · suggestionFor written 档', () => {
+  it('笔试阶段的建议动作指向「记笔试安排」', () => {
+    const app = makeApp({ status: 'written' });
+    const suggestion = suggestionFor(app, { days: 0, level: null, text: '' });
+    expect(suggestion.kind).toBe('schedule');
+    expect(suggestion.label).toContain('笔试');
+  });
+});

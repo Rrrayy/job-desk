@@ -41,12 +41,14 @@ describe('CSV', () => {
     expect(csv.startsWith('\uFEFF')).toBe(true);
   });
 
-  it('表头与数据列数一致', () => {
+  it('表头与数据列数一致（v0.8 起含「当前轮次」「面试类型」）', () => {
     const csv = buildApplicationsCSV(makeDB([makeApp()]), NOW);
     const [header, first] = csv.replace('\uFEFF', '').trimEnd().split('\r\n');
-    expect(header.split(',')).toHaveLength(15);
+    expect(header.split(',')).toHaveLength(17);
+    expect(header).toContain('当前轮次');
+    expect(header).toContain('面试类型');
     // 末尾一行数据可能因为包含引号内的逗号而"看起来"更长，这里只数一个干净的行
-    expect(first.split(',')).toHaveLength(15);
+    expect(first.split(',')).toHaveLength(17);
   });
 
   it('含逗号 / 引号 / 换行的值被正确包裹并转义', () => {
@@ -74,9 +76,9 @@ describe('CSV', () => {
     const csv = buildApplicationsCSV(makeDB([applied, onboarded]), NOW);
     const lines = csv.replace('\uFEFF', '').trimEnd().split('\r\n');
     const rowOf = (job: string): string[] => (lines.find((line) => line.includes(job)) ?? '').split(',');
-    // 第 10、11 列（索引 9、10）是沉默天数 / 阈值
-    expect(rowOf('进行中')[9]).toBe('0');
-    expect(rowOf('已入职')[9]).toBe('');
+    // v0.8 起第 8、9 列是「当前轮次」「面试类型」，沉默天数 / 阈值后移到索引 11、12
+    expect(rowOf('进行中')[11]).toBe('0');
+    expect(rowOf('已入职')[11]).toBe('');
   });
 
   it('公司名优先取短名', () => {
@@ -87,6 +89,59 @@ describe('CSV', () => {
 
   it('文件名用本地日期', () => {
     expect(csvFilename(NOW)).toBe('求职工作台-投递-2026-10-20.csv');
+  });
+});
+
+describe('CSV · v0.8 轮次与面试类型列', () => {
+  const linesOf = (db: DB): string[] =>
+    buildApplicationsCSV(db, NOW).replace('\uFEFF', '').trimEnd().split('\r\n');
+  const rowOf = (lines: string[], job: string): string[] =>
+    (lines.find((line) => line.includes(job)) ?? '').split(',');
+  // 表头：公司0 岗位1 状态2 渠道3 实习类型4 城市5 投递日期6 截止日期7 当前轮次8 面试类型9 …
+  const ROUND_COL = 8;
+  const KIND_COL = 9;
+
+  it('笔试阶段：轮次列「笔试」、类型列「笔试」', () => {
+    const db = makeDB([makeApp({ status: 'written' })], [
+      { id: 'iv1', applicationId: 'app-1', round: 0, scheduledAt: NOW.toISOString(), format: 'onsite', kind: 'written', result: 'pending' },
+    ]);
+    const row = rowOf(linesOf(db), '前端实习');
+    expect(row[ROUND_COL]).toBe('笔试');
+    expect(row[KIND_COL]).toBe('笔试');
+  });
+
+  it('面试中：轮次列「第 2 轮」、类型列「HR 面」', () => {
+    const db = makeDB([makeApp({ status: 'interviewing' })], [
+      { id: 'iv1', applicationId: 'app-1', round: 1, scheduledAt: '2026-10-10T10:00:00.000Z', format: 'video', kind: 'tech', result: 'passed' },
+      { id: 'iv2', applicationId: 'app-1', round: 2, scheduledAt: '2026-10-22T10:00:00.000Z', format: 'video', kind: 'hr', result: 'pending' },
+    ]);
+    const row = rowOf(linesOf(db), '前端实习');
+    expect(row[ROUND_COL]).toBe('第 2 轮');
+    expect(row[KIND_COL]).toBe('HR 面');
+  });
+
+  it('笔试挂（rejectedAtRound=0）：轮次列「笔试」', () => {
+    const db = makeDB([makeApp({ status: 'rejected', rejectedAtRound: 0 })]);
+    const row = rowOf(linesOf(db), '前端实习');
+    expect(row[ROUND_COL]).toBe('笔试');
+    expect(row[KIND_COL]).toBe('');
+  });
+
+  it('一面挂（rejectedAtRound=1）：轮次列「第 1 轮」', () => {
+    const db = makeDB([makeApp({ status: 'rejected', rejectedAtRound: 1 })]);
+    expect(rowOf(linesOf(db), '前端实习')[ROUND_COL]).toBe('第 1 轮');
+  });
+
+  it('没有轮次数据（老备份形状）：两列都是空串，不造假', () => {
+    const db = makeDB([makeApp({ status: 'scheduled' })]);
+    const row = rowOf(linesOf(db), '前端实习');
+    expect(row[ROUND_COL]).toBe('');
+    expect(row[KIND_COL]).toBe('');
+  });
+
+  it('轮次未记的挂（rejectedAtRound=null）：轮次列「轮次未记」', () => {
+    const db = makeDB([makeApp({ status: 'rejected', rejectedAtRound: null })]);
+    expect(rowOf(linesOf(db), '前端实习')[ROUND_COL]).toBe('轮次未记');
   });
 });
 

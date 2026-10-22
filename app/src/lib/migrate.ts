@@ -7,8 +7,8 @@
  * - 只加不减：4 个既有数组原样透传，不重排、不补默认值、不改 time
  */
 
-import type { AppSettings, CalendarEvent, DB, MigrationRecord } from '../types';
-import { DEFAULT_NEW_SETTINGS, DEFAULT_SYNC_SETTINGS } from './defaults';
+import type { AISettings, AppSettings, CalendarEvent, DB, MigrationRecord } from '../types';
+import { DEFAULT_NEW_SETTINGS, DEFAULT_SYNC_SETTINGS, defaultAiSettings } from './defaults';
 import { isRecord, normalizeV1 } from './validateV1';
 import { validateV2 } from './validateV2';
 
@@ -16,13 +16,15 @@ export const SCHEMA_VERSION_V1 = 1;
 export const SCHEMA_VERSION_V2 = 2;
 /** v0.6：events additive 扩展 + settings 新字段（见 §2.3 冲突 ③） */
 export const SCHEMA_VERSION_V3 = 3;
+/** v0.8：插件三表落库 + settings.ai（全部 additive，见 ARCH-v08 A-10） */
+export const SCHEMA_VERSION_V4 = 4;
 /** 当前支持的最高内部数据版本 */
-export const SCHEMA_VERSION_CURRENT = SCHEMA_VERSION_V3;
+export const SCHEMA_VERSION_CURRENT = SCHEMA_VERSION_V4;
 /**
  * 导出文件格式版本（与内部 schemaVersion **解耦**，见 §2.3 冲突 ②）。
- * v0.4.1 及更早的备份没有这个字段 → 按 1 处理。
+ * v0.4.1 及更早的备份没有这个字段 → 按 1 处理。v0.8：2 → 3（随插件三表）。
  */
-export const FORMAT_VERSION_CURRENT = 2;
+export const FORMAT_VERSION_CURRENT = 3;
 
 export interface MigrateContext {
   now: string;
@@ -45,21 +47,22 @@ export function resolveSchemaVersion(raw: Record<string, unknown>): number | 'un
 }
 
 /**
- * v1/v2 → v3。**幂等**：已是 v3 时 changed=false、原对象一字不改。
+ * 迁移分发入口（名字沿用历史；实际语义是「任意老版本 → 当前版本」）。
+ * **幂等**：输入已是当前版本时 changed=false，原对象一字不改。
  *
- * v3 相对 v2 的差别只有 additive 扩展，所以这一步不需要重建任何数组：
- * - events 的 kind 扩到四种、加 applicationId/color/notes —— 老数据没有这些字段，
- *   缺省即合法（`validateV2` 的可选字段逻辑已经兼容）。
- * - settings 加两个 v0.6 字段：backupReminderDays（备份提醒天数）、
- *   fileLink（文件联动配置，默认关闭）。
+ * 级联结构（与 v0.6 的 v1→v2→v3 同一模式）：
+ * - v1 / unknown → migrateV1ToV2（结构补全）
+ * - v1 / v2 / unknown → 抬到 v3 形状（校验 + 补 v0.6 字段 + lastMigration）
+ * - v3 → migrateV3ToV4（v0.8：插件三表 + settings.ai）
  *
- * **不补 events 的默认值**：老库里的事件保持原样，不凭空添加 color / notes。
+ * 链式迁移只写**一条** lastMigration 审计：v1 直通当前版本记「1 → 4」，
+ * 不把中间步逐条罗列 —— 设置页展示的是「这份数据的来源」，不是迁移日志。
  */
 export function migrateV2ToV3(input: unknown, ctx: MigrateContext): MigrateResult {
   if (!isRecord(input)) return { ok: false, error: '顶层不是一个对象' };
 
   const version = resolveSchemaVersion(input);
-  if (version === SCHEMA_VERSION_V3) {
+  if (version === SCHEMA_VERSION_CURRENT) {
     return { ok: true, db: input as unknown as DB, changed: false };
   }
   if (typeof version === 'number' && version > SCHEMA_VERSION_CURRENT) {
@@ -67,6 +70,11 @@ export function migrateV2ToV3(input: unknown, ctx: MigrateContext): MigrateResul
       ok: false,
       error: `这份备份来自 v${version} 数据格式的新版本，请先升级工具再导入（当前支持到 ${SCHEMA_VERSION_CURRENT}）`,
     };
+  }
+
+  // v3 输入直接进入 v0.8 那一步，不重跑 v2→v3 抬升
+  if (version === SCHEMA_VERSION_V3) {
+    return migrateV3ToV4(input, ctx);
   }
 
   // v1 → v2 的产物是完整的 v2 库；v2 输入本身就按 v2 处理
@@ -84,17 +92,73 @@ export function migrateV2ToV3(input: unknown, ctx: MigrateContext): MigrateResul
   if (!verified.ok) return { ok: false, error: `v2 数据结构不合法：${verified.error}` };
   const from = verified.db;
 
-  const settings: AppSettings = {
+  // 中间态：抬到 v3 形状（lastMigration 记下链的起点），随后由 migrateV3ToV4 收尾。
+  // schemaVersion 的字面量类型是「当前版本 4」，中间态的 3 只能经 unknown 中转 ——
+  // migrateV3ToV4 会立刻把它抬回 4，这个中间值不会出现在任何落库结果里。
+  const settings = {
     ...from.settings,
     schemaVersion: SCHEMA_VERSION_V3,
-    backupReminderDays: normalizeBackupReminderDays(
-      (from.settings as unknown as Record<string, unknown>).backupReminderDays,
-    ),
-    fileLink: normalizeFileLinkSettings((from.settings as unknown as Record<string, unknown>).fileLink),
-    encryption: normalizeEncryptionSettings(
-      (from.settings as unknown as Record<string, unknown>).encryption,
-    ),
-    lastMigration: { from: version === 'unknown' ? SCHEMA_VERSION_V1 : version, to: SCHEMA_VERSION_V3, at: ctx.now, backupKey: '' },
+    lastMigration: {
+      from: version === 'unknown' ? SCHEMA_VERSION_V1 : version,
+      to: SCHEMA_VERSION_V3,
+      at: ctx.now,
+      backupKey: '',
+    },
+  } as unknown as AppSettings;
+  const v3: DB = {
+    ...from,
+    settings,
+    // events 原样透传：v3 的扩展全是可选字段，老事件缺省即合法
+    events: from.events.map((event: CalendarEvent) => ({ ...event })),
+  };
+
+  return migrateV3ToV4(v3, ctx);
+}
+
+/**
+ * v3 → v4（v0.8）。**纯函数、幂等、只加不减**：
+ * - 三张插件表（pluginStorage / requestLog / aiSuggestions）：v3 没有这三张表，
+ *   落库为空表（若手工文件里真有内容，validateV2 校验后原样保留 —— 绝不静默丢行）；
+ * - settings.ai 缺省补齐（「未配置」缺省值，不猜服务地址）；
+ * - schemaVersion 3 → 4 + lastMigration 审计（链式迁移保留最初的 from）。
+ *
+ * 迁移产出里的 `lastMigration.backupKey` 先留空，由调用方（loadDB / validateImport）
+ * 在真正写好回滚点后回填 —— 迁移函数本身不认识 localStorage。
+ */
+export function migrateV3ToV4(input: unknown, ctx: MigrateContext): MigrateResult {
+  if (!isRecord(input)) return { ok: false, error: '顶层不是一个对象' };
+
+  const version = resolveSchemaVersion(input);
+  if (version === SCHEMA_VERSION_CURRENT) {
+    return { ok: true, db: input as unknown as DB, changed: false };
+  }
+  if (typeof version === 'number' && version > SCHEMA_VERSION_CURRENT) {
+    return {
+      ok: false,
+      error: `这份备份来自 v${version} 数据格式的新版本，请先升级工具再导入（当前支持到 ${SCHEMA_VERSION_CURRENT}）`,
+    };
+  }
+  if (version !== SCHEMA_VERSION_V3) {
+    return {
+      ok: false,
+      error: `这一步只接受 v3 数据，收到的是 ${version === 'unknown' ? '未知版本' : `v${version}`}（v1/v2 请走 migrateV2ToV3 分发入口）`,
+    };
+  }
+
+  // 幂等保护：v3 结构必须先过校验，否则「迁移」会掩盖真正的损坏
+  const verified = validateV2(input);
+  if (!verified.ok) return { ok: false, error: `v3 数据结构不合法：${verified.error}` };
+  const from = verified.db;
+
+  // 链式迁移保留最初的 from：v1 直通 v4 仍然记「1 → 4」，不是「3 → 4」
+  const prevFrom = from.settings.lastMigration?.from;
+  const chainFrom = typeof prevFrom === 'number' ? prevFrom : SCHEMA_VERSION_V3;
+
+  const settings: AppSettings = {
+    ...from.settings,
+    schemaVersion: SCHEMA_VERSION_V4,
+    ai: normalizeAiSettings((from.settings as unknown as Record<string, unknown>).ai),
+    lastMigration: { from: chainFrom, to: SCHEMA_VERSION_V4, at: ctx.now, backupKey: '' },
   };
 
   return {
@@ -102,8 +166,10 @@ export function migrateV2ToV3(input: unknown, ctx: MigrateContext): MigrateResul
     db: {
       ...from,
       settings,
-      // events 原样透传：v3 的扩展全是可选字段，老事件缺省即合法
-      events: from.events.map((event: CalendarEvent) => ({ ...event })),
+      // v0.8 三张插件表：validateV2 已保证数组存在（缺失补 []、行内容校验过），这里原样透传
+      pluginStorage: from.pluginStorage,
+      requestLog: from.requestLog,
+      aiSuggestions: from.aiSuggestions,
     },
     changed: true,
   };
@@ -141,9 +207,9 @@ export function migrateV1ToV2(input: unknown, ctx: MigrateContext): MigrateResul
     backupKey: '',
   };
 
-  // AppSettings.schemaVersion 的类型就是「当前版本」，所以这里只能写字面量 3 ——
-  // 这不是漏改：migrateV2ToV3 会立刻把同一份对象抬到 v3 并覆写 lastMigration，
-  // v1 直通 v3 时用户看到的仍然是「from 1 → to 3」。
+  // AppSettings.schemaVersion 的类型就是「当前版本」，所以这里只能写字面量式的当前常量 ——
+  // 这不是漏改：migrateV2ToV3 会立刻级联抬升并覆写 lastMigration，
+  // v1 直通时用户看到的仍然是「from 1 → to 当前版本」。
   const settings: AppSettings = {
     ...v1Settings,
     schemaVersion: SCHEMA_VERSION_CURRENT,
@@ -156,6 +222,7 @@ export function migrateV1ToV2(input: unknown, ctx: MigrateContext): MigrateResul
     backupReminderDays: normalizeBackupReminderDays(undefined),
     fileLink: normalizeFileLinkSettings(undefined),
     encryption: normalizeEncryptionSettings(undefined),
+    ai: defaultAiSettings(),
     lastMigration: migration,
   };
 
@@ -173,9 +240,32 @@ export function migrateV1ToV2(input: unknown, ctx: MigrateContext): MigrateResul
       staging: [],
       // v0.4 日程表：空表起步；v1 的 courseSlots 由 validateV2 的一次性迁移接走
       events: [],
+      // v0.8 插件三表：空表起步（additive，老数据零影响）
+      pluginStorage: [],
+      requestLog: [],
+      aiSuggestions: [],
     },
     changed: true,
   };
+}
+
+/**
+ * AI 设置（v0.8）：白名单式重建，缺字段补「未配置」缺省值。
+ * 同 normalizeEncryptionSettings 的道理：宁可回落到未配置，也绝不把脏值带进运行时。
+ */
+export function normalizeAiSettings(value: unknown): AISettings {
+  if (!isRecord(value)) return defaultAiSettings();
+  const baseURL = typeof value.baseURL === 'string' ? value.baseURL.slice(0, 200) : '';
+  const model = typeof value.model === 'string' ? value.model.slice(0, 100) : '';
+  const out: AISettings = {
+    baseURL,
+    model,
+    isLocal: value.isLocal === true,
+  };
+  if (typeof value.apiKey === 'string' && value.apiKey.length > 0) {
+    out.apiKey = value.apiKey.slice(0, 200);
+  }
+  return out;
 }
 
 /* ==================== v0.6 新字段的清洗（迁移与校验共用） ==================== */

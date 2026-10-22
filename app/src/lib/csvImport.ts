@@ -17,7 +17,7 @@
  * 3. **认不出的列给 reason，不许悄悄丢**。与课表导入同一口径。
  */
 
-import type { Application, Channel, Company, DB, Status } from '../types';
+import type { Application, Channel, Company, DB, InterviewKind, Status } from '../types';
 import { emptyDB } from './defaults';
 
 /* ------------------------------ 表头别名 ------------------------------ */
@@ -42,6 +42,9 @@ export const FIELD_ALIASES = {
   priority: ['优先级', '重要程度', 'priority'],
   notes: ['备注', '说明', '笔记', 'note', 'notes', 'remark', 'comment'],
   note: ['备注', '说明', '笔记', 'note', 'notes', 'remark', 'comment'],
+  // v0.8：轮次与面试类型两列（与 tableExport 的导出表头对齐，保证往返）
+  currentRound: ['当前轮次', '轮次', '当前轮', '进度轮次', 'currentround', 'round'],
+  interviewKind: ['面试类型', '面试轮次类型', '类型', 'interviewkind', 'kind'],
 } as const;
 
 export type MappableField = keyof typeof FIELD_ALIASES;
@@ -90,8 +93,8 @@ const STATUS_ALIASES: Record<string, Status> = {
   已投: 'applied', 已投递: 'applied', 已申请: 'applied', 投递成功: 'applied', applied: 'applied',
   // 沟通中
   沟通中: 'chatting', 已沟通: 'chatting', 已联系: 'chatting', 待回复: 'chatting', chatting: 'chatting',
-  // 笔试 / 测评一律落到「已沟通」（9 状态模型里没有笔试这一档，硬造会破坏静音算法）
-  笔试: 'chatting', 笔试中: 'chatting', 测评: 'chatting',
+  // 笔试 / 测评（v0.8 起 10 状态模型有 written 这一档；旧版落 chatting，现改 written）
+  笔试: 'written', 笔试中: 'written', 笔试通过: 'written', 已笔试: 'written', 测评: 'written', written: 'written',
   // 已约面
   已约面: 'scheduled', 约面: 'scheduled', 待面试: 'scheduled', 已安排面试: 'scheduled', scheduled: 'scheduled',
   // 面试中
@@ -124,6 +127,46 @@ export function normalizeStatus(raw: string): Status | null {
 export function normalizeChannel(raw: string): Channel | null {
   const key = normalizeHeader(raw);
   return CHANNEL_ALIASES[key] ?? null;
+}
+
+/**
+ * v0.8：轮次列的别名表。键经过 normalizeHeader（小写、去空白与标点）。
+ * 0 = 笔试；HR 面按 rules.HR_ROUND 的约定记 4；「不记得 / 未记」给 null。
+ */
+export const ROUND_ALIASES: Record<string, number> = {
+  笔试: 0, 笔试通过: 0, 已笔试: 0,
+  一面: 1, 二面: 2, 三面: 3, 四面: 4, 五面: 5,
+  hr面: 4,
+};
+
+/** 轮次清洗：认得出返回 0..9，认不出（含「不记得」）返回 null —— 由调用方给行级原因 */
+export function normalizeRound(raw: string): number | null {
+  const text = raw.trim();
+  if (!text) return null;
+  const key = normalizeHeader(text);
+  if (ROUND_ALIASES[key] !== undefined) return ROUND_ALIASES[key];
+  const stripped = key.replace(/第|轮/g, '');
+  if (/^\d+$/.test(stripped)) {
+    const value = Number(stripped);
+    if (value >= 0 && value <= 9) return value;
+  }
+  return null;
+}
+
+/** v0.8：面试类型列的别名表（与 InterviewKind 7 值对齐） */
+export const KIND_ALIASES: Record<string, InterviewKind> = {
+  笔试: 'written', 笔试面: 'written',
+  技术面: 'tech', 技术: 'tech',
+  hr面: 'hr', hr: 'hr',
+  交叉面: 'cross', 交叉: 'cross',
+  群面: 'group',
+  总监面: 'director',
+  其他: 'other', other: 'other',
+};
+
+/** 面试类型清洗：认不出返回 null（由调用方给行级原因，不静默猜） */
+export function normalizeKind(raw: string): InterviewKind | null {
+  return KIND_ALIASES[normalizeHeader(raw)] ?? null;
 }
 
 /**
@@ -225,6 +268,10 @@ export interface MappedRow {
   resumeVersion: string;
   priority: number;
   notes: string;
+  /** v0.8：轮次列原文（空串 = 没有该列/没填）；解析在 buildDBFromCSV 里复用 normalizeRound */
+  currentRound: string;
+  /** v0.8：面试类型列原文；解析复用 normalizeKind */
+  interviewKind: string;
 }
 
 export interface MappingPreview {
@@ -316,6 +363,16 @@ export function previewCSV(text: string, todayIso: string): MappingPreview {
       rowIssues.push({ row: rowNumber, reason: `渠道「${rawChannel}」认不出来，已按「其他」处理` });
     }
 
+    // v0.8：轮次 / 面试类型两列 —— 认不出给行级原因，不静默丢
+    const rawRound = cell(line, 'currentRound');
+    if (rawRound && normalizeRound(rawRound) === null) {
+      rowIssues.push({ row: rowNumber, reason: `轮次「${rawRound}」认不出来，已忽略（可写「笔试」「一面」「2」这类写法）` });
+    }
+    const rawKind = cell(line, 'interviewKind');
+    if (rawKind && !normalizeKind(rawKind)) {
+      rowIssues.push({ row: rowNumber, reason: `面试类型「${rawKind}」认不出来，已忽略（可写「技术面」「HR 面」这类写法）` });
+    }
+
     previews.push({
       company,
       jobTitle,
@@ -328,6 +385,8 @@ export function previewCSV(text: string, todayIso: string): MappingPreview {
       resumeVersion: cell(line, 'resumeVersion'),
       priority: Number(cell(line, 'priority')) === 2 || Number(cell(line, 'priority')) === 1 ? 2 : 1,
       notes: cell(line, 'notes') || cell(line, 'note'),
+      currentRound: rawRound,
+      interviewKind: rawKind,
     });
   });
 
@@ -382,6 +441,7 @@ export function buildDBFromCSV(
     companies: [...base.companies],
     applications: [...base.applications],
     notes: [...base.notes],
+    interviews: [...base.interviews],
   };
   const companyByName = new Map<string, Company>();
   for (const company of db.companies) companyByName.set(normalizeCompanyKey(company.name), company);
@@ -441,6 +501,32 @@ export function buildDBFromCSV(
     };
     db.applications.push(application);
     added += 1;
+
+    // v0.8：轮次 / 面试类型列 → 结构化 Interview 行（往返无损失的关键）。
+    // CSV 没有具体时间，笔试/面试记录统一挂投递日当天 00:00，来源靠 id 前缀可追溯。
+    const round = normalizeRound(row.currentRound);
+    const kind = normalizeKind(row.interviewKind);
+    if (application.status === 'written' || round === 0 || kind === 'written') {
+      db.interviews.push({
+        id: `iv_import_${seq}`,
+        applicationId: application.id,
+        round: 0,
+        scheduledAt: `${row.appliedAt}T00:00:00.000Z`,
+        format: 'onsite',
+        kind: 'written',
+        result: 'pending',
+      });
+    } else if (round !== null && round >= 1) {
+      db.interviews.push({
+        id: `iv_import_${seq}`,
+        applicationId: application.id,
+        round,
+        scheduledAt: `${row.appliedAt}T00:00:00.000Z`,
+        format: 'onsite',
+        ...(kind ? { kind } : {}),
+        result: 'pending',
+      });
+    }
 
     if (row.notes) {
       db.notes.push({

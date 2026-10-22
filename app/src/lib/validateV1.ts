@@ -6,8 +6,11 @@
  * 同一份数据迁移两次就得到两个不同的结果，「无损」这条验收无法自动化。
  */
 
-import type { Application, Channel, Company, Interview, Note, PlatformId, Status } from '../types';
+import type { Application, Channel, Company, Interview, InterviewKind, Note, PlatformId, Status } from '../types';
 import { ALL_STATUSES } from './rules';
+
+/** v0.8：面试类型白名单（与 InterviewKind 一致；非法值回落 undefined，模式照 events.kind） */
+const INTERVIEW_KINDS: InterviewKind[] = ['written', 'tech', 'hr', 'cross', 'group', 'director', 'other'];
 
 /** v0.1 的 settings 形状（没有 sync / lastMigration，schemaVersion 固定 1） */
 export interface V1Settings {
@@ -242,10 +245,19 @@ export function normalizeCoreArrays(
           done: point.done === true,
         }))
       : [];
+    // v0.8：round 允许 0（笔试记录，与 kind:'written' 共同出现）；负数/缺失仍回落 1
+    const round = typeof item.round === 'number' && item.round >= 0 ? item.round : 1;
+    // v0.8：kind 合法值校验，非法值回落 undefined（additive 字段不拦老备份）
+    const kind =
+      item.kind === undefined || item.kind === null
+        ? undefined
+        : INTERVIEW_KINDS.includes(item.kind as InterviewKind)
+          ? (item.kind as InterviewKind)
+          : undefined;
     interviews.push({
       id,
       applicationId,
-      round: typeof item.round === 'number' && item.round > 0 ? item.round : 1,
+      round,
       totalRounds: typeof item.totalRounds === 'number' ? item.totalRounds : null,
       scheduledAt,
       durationMin: typeof item.durationMin === 'number' ? item.durationMin : undefined,
@@ -253,6 +265,8 @@ export function normalizeCoreArrays(
       locationOrLink: asOptionalString(item.locationOrLink),
       interviewer: asOptionalString(item.interviewer),
       prepChecklist: checklist,
+      // 缺省 = 未标注：不往老数据里凭空塞 kind 字段（保持 diff 干净）
+      ...(kind ? { kind } : {}),
       result,
       notes: asOptionalString(item.notes),
     });

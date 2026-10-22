@@ -5,7 +5,7 @@
  * 所以 `import { defaultSettings } from './storage'` 这类既有写法不受影响。
  */
 
-import type { AppSettings, AppSettings as Settings, DB, SyncSettings } from '../types';
+import type { AISettings, AppSettings, AppSettings as Settings, DB, SyncSettings } from '../types';
 
 export const DEFAULT_SYNC_SETTINGS: SyncSettings = {
   riskAckAt: undefined,
@@ -13,6 +13,14 @@ export const DEFAULT_SYNC_SETTINGS: SyncSettings = {
   statusMapOverrides: {},
   autoRefreshActivity: true,
 };
+
+/**
+ * v0.8：AI 设置缺省值 —— 「未配置」状态（baseURL/model 为空串）。
+ * 入口据此诚实置灰，绝不预填一个猜出来的本地服务地址。
+ */
+export function defaultAiSettings(): AISettings {
+  return { baseURL: '', model: '', isLocal: false };
+}
 
 /**
  * v0.3 新增的 settings 字段默认值。
@@ -26,10 +34,10 @@ export const DEFAULT_NEW_SETTINGS = {
   dailyActionBudget: 5,
 } as const;
 
-/** 默认设置（schemaVersion 3） */
+/** 默认设置（schemaVersion 4） */
 export function defaultSettings(): Settings {
   return {
-    schemaVersion: 3,
+    schemaVersion: 4,
     warnAfterDays: 3,
     staleAfterDays: 7,
     interviewResultWaitDays: 5,
@@ -52,11 +60,12 @@ export function defaultSettings(): Settings {
     backupReminderDays: 7,
     fileLink: { enabled: false, readOnly: false },
     encryption: { enabled: false },
+    ai: defaultAiSettings(),
     lastMigration: undefined,
   };
 }
 
-/** 空数据库（含 v2 三个新数组 + v0.4 日程表） */
+/** 空数据库（含 v2 三个新数组 + v0.4 日程表 + v0.8 插件三表） */
 export function emptyDB(): DB {
   return {
     settings: defaultSettings(),
@@ -68,6 +77,9 @@ export function emptyDB(): DB {
     questions: [],
     staging: [],
     events: [],
+    pluginStorage: [],
+    requestLog: [],
+    aiSuggestions: [],
   };
 }
 

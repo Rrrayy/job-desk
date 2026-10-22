@@ -743,6 +743,7 @@ function statusLabelOf(status: Status): string {
     wishlist: '想投',
     applied: '已投递',
     chatting: '已沟通',
+    written: '已笔试',
     scheduled: '已约面',
     interviewing: '面试中',
     offer: '已发 Offer',

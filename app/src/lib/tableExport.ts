@@ -8,7 +8,7 @@
  * 所以这里可以做「为了对方好用而牺牲信息」的事（加 BOM、丢掉非标准字段、把 UTC 写死）。
  */
 
-import type { DB, Interview } from '../types';
+import type { Application, DB, Interview } from '../types';
 import { fmtDate, parseFlexible, toDateISO } from './date';
 import {
   CHANNEL_LABEL,
@@ -17,7 +17,10 @@ import {
   SILENCE_STATUSES,
   STATUS_LABEL,
   buildNoteIndex,
+  currentRoundOf,
   effectiveStaleDays,
+  interviewKindLabel,
+  rejectedRoundShort,
   silenceDaysOf,
 } from './rules';
 
@@ -59,6 +62,8 @@ export const APPLICATION_CSV_HEADER = [
   '城市',
   '投递日期',
   '截止日期',
+  '当前轮次',
+  '面试类型',
   '最近互动',
   '沉默天数',
   '沉默阈值',
@@ -69,13 +74,38 @@ export const APPLICATION_CSV_HEADER = [
 ] as const;
 
 /**
+ * 「当前轮次」列：已挂行显示挂点（0 → 笔试），其余显示最新一条 pending 面试的轮次。
+ * 与看板徽章共用 currentRoundOf / rejectedRoundShort 同一口径，导出导入才能对上账。
+ */
+function roundCellOf(app: Application, interviews: Interview[]): string {
+  if (app.status === 'rejected') return rejectedRoundShort(app.rejectedAtRound);
+  const current = currentRoundOf(app, interviews);
+  if (!current) return '';
+  if (current.round === 0 || current.kind === 'written') return '笔试';
+  return `第 ${current.round} 轮`;
+}
+
+/** 「面试类型」列：取当前轮次那场的类型；未标注（老数据）给空串 */
+function roundKindCellOf(app: Application, interviews: Interview[]): string {
+  if (app.status === 'rejected') {
+    const own = interviews.filter((item) => item.applicationId === app.id);
+    const failed = own.find((item) => item.result === 'failed');
+    if (failed) return interviewKindLabel(failed.kind);
+    return '';
+  }
+  const current = currentRoundOf(app, interviews);
+  return current ? interviewKindLabel(current.kind) : '';
+}
+
+/**
  * 投递表 CSV。
  *
  * 口径说明（避免用户拿去算的时候对不上账）：
  * - 「沉默天数」按自然日算，与今日视图完全同一个函数（silenceDaysOf），不另写一份；
  * - 「沉默阈值」是该投递**实际生效**的阈值（已含渠道系数 / 单独覆盖 / offer 规则），
  *   这样用户一眼能看出「为什么这家 12 天没红」；
- * - 人已入职 / 已挂 / 已放弃也照样导出 —— 复盘要的是全量，不是只看进行中的。
+ * - 人已入职 / 已挂 / 已放弃也照样导出 —— 复盘要的是全量，不是只看进行中的；
+ * - v0.8：「当前轮次」「面试类型」两列与 csvImport 的别名表对齐，保证往返无损失。
  */
 export function buildApplicationsCSV(db: DB, now: Date = new Date()): string {
   const companyName = new Map<string, string>();
@@ -103,6 +133,8 @@ export function buildApplicationsCSV(db: DB, now: Date = new Date()): string {
         csvCell(app.city),
         csvCell(app.appliedAt || localDateOf(app.createdAt)),
         csvCell(app.deadlineAt ?? ''),
+        csvCell(roundCellOf(app, db.interviews)),
+        csvCell(roundKindCellOf(app, db.interviews)),
         csvCell(localDateOf(app.lastActivityAt)),
         csvCell(silenced ? silenceDaysOf(app, db.notes, now, noteIndex) : ''),
         csvCell(silenced ? effectiveStaleDays(app, db.settings) : ''),

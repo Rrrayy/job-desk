@@ -260,3 +260,118 @@ describe('回滚点清理的边界', () => {
     expect(rollbackPointsSize()).toBe(0);
   });
 });
+
+/* ====================== v0.8：schema 3→4 迁移的安全三出口 ====================== */
+
+describe('v0.8 迁移（3→4）：v0.7.3 备份导入零损失', () => {
+  /** 一份 v0.7.3 形状的真实备份（无插件三表 / settings.ai / written / kind） */
+  const v073Backup = JSON.stringify({
+    exportedAt: '2026-10-01T00:00:00.000Z',
+    app: 'jobdesk',
+    formatVersion: 2,
+    version: 3,
+    settings: {
+      schemaVersion: 3,
+      warnAfterDays: 3, staleAfterDays: 7, interviewResultWaitDays: 5, wishlistExpireDays: 7,
+      resultPromptHour: 20, offerSilenceDays: 7, deadlineWarnDays: 3, dailyActionBudget: 5,
+      channelFactor: { referral: 3, official: 2, boss: 1, shixiseng: 1, nowcoder: 1, liepin: 1, other: 1 },
+      weeklyApplyGoal: 8, courseSlots: [], defaultResumeVersion: '',
+      backupReminderDays: 7, fileLink: { enabled: false, readOnly: false }, encryption: { enabled: false },
+      sync: { defaultPlatform: 'boss', statusMapOverrides: {}, autoRefreshActivity: true },
+    },
+    companies: [{ id: 'c1', name: '字节跳动', shortName: '字节', createdAt: '2026-09-01T00:00:00.000Z' }],
+    applications: [{
+      id: 'a1', companyId: 'c1', jobTitle: '前端开发实习生', jobType: 'daily', status: 'chatting',
+      statusChangedAt: '2026-09-02T00:00:00.000Z', lastActivityAt: '2026-09-02T00:00:00.000Z',
+      appliedAt: '2026-09-02', createdAt: '2026-09-02T00:00:00.000Z', updatedAt: '2026-09-02T00:00:00.000Z',
+      rejectedAtRound: null, silenceOverride: null, nextActionAt: null, deadlineAt: null, mutedUntil: null, tags: [],
+    }],
+    interviews: [{
+      id: 'iv1', applicationId: 'a1', round: 1, totalRounds: null,
+      scheduledAt: '2026-09-08T14:00:00.000Z', format: 'video', result: 'pending', prepChecklist: [],
+    }],
+    notes: [], experiences: [], questions: [], staging: [], events: [],
+  });
+
+  it('★ 导入零错误零损失：原有数组逐条等价，插件三表为空', () => {
+    const result = importFromText(v073Backup);
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+    const parsed = JSON.parse(v073Backup) as { applications: unknown[]; interviews: unknown[]; companies: unknown[] };
+    expect(result.db.applications).toHaveLength(parsed.applications.length);
+    expect(result.db.applications[0]).toEqual(parsed.applications[0]);
+    expect(result.db.interviews).toEqual(parsed.interviews);
+    expect(result.db.companies).toEqual(parsed.companies);
+    expect(result.db.pluginStorage).toEqual([]);
+    expect(result.db.requestLog).toEqual([]);
+    expect(result.db.aiSuggestions).toEqual([]);
+    expect(result.db.settings.schemaVersion).toBe(SCHEMA_VERSION_CURRENT);
+  });
+
+  it('★ 迁移前回滚点存在且内容 = 原始字节（启动路径）', () => {
+    localStorage.setItem(STORAGE_KEY, v073Backup);
+    const result = loadDB();
+    expect(result.migration).toBeUndefined();
+
+    const keys: string[] = [];
+    for (let i = 0; i < localStorage.length; i += 1) {
+      const key = localStorage.key(i);
+      if (key && key.startsWith(ROLLBACK_PREFIX)) keys.push(key);
+    }
+    expect(keys).toHaveLength(1);
+    expect(localStorage.getItem(keys[0])).toBe(v073Backup);
+  });
+
+  it('★ 同一备份连续导入两次幂等（序列化结果完全一致）', () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date('2026-10-21T00:00:00.000Z'));
+    try {
+      const first = importFromText(v073Backup);
+      const second = importFromText(v073Backup);
+      expect(first.ok && second.ok).toBe(true);
+      if (!first.ok || !second.ok) return;
+      expect(exportJSON(second.db)).toBe(exportJSON(first.db));
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it('坏数据触发迁移失败：原数据字节级不变 + 只读锁定 + 回滚点保留', () => {
+    const broken = v073Backup.replace('"jobTitle":"前端开发实习生"', '"jobTitle2":"字段名坏了"');
+    localStorage.setItem(STORAGE_KEY, broken);
+    const beforeBytes = broken.length;
+
+    const result = loadDB();
+    expect(isFailure(result)).toBe(true);
+    if (!isFailure(result)) return;
+
+    expect(localStorage.getItem(STORAGE_KEY)).toHaveLength(beforeBytes);
+    expect(isPersistenceLocked()).toBe(true);
+    expect(result.migration.backupKey).not.toBeNull();
+    // 上锁后任何写入都是 no-op
+    expect(saveDB(emptyDB())).toBeNull();
+    expect(localStorage.getItem(STORAGE_KEY)).toHaveLength(beforeBytes);
+
+    unlockPersistence();
+  });
+
+  it('导出 JSON 含 pluginStorage / aiSuggestions，但不含 requestLog（验收 13）', () => {
+    const db = emptyDB();
+    db.pluginStorage = [{ id: 'demo::k', pluginId: 'demo', key: 'k', value: 1, updatedAt: '2026-10-01T00:00:00.000Z' }];
+    db.requestLog = [{
+      id: 'r1', timestamp: '2026-10-01T00:00:00.000Z', pluginId: 'builtin:d14',
+      baseUrl: 'http://127.0.0.1:11434/v1', model: 'qwen3:8b', sentFieldsHash: 'abc', status: 'ok',
+    }];
+    db.aiSuggestions = [{
+      id: 's1', pluginId: 'builtin:d14', targetType: 'question', targetId: null,
+      fieldPath: 'text', content: '题干', status: 'pending', createdAt: '2026-10-01T00:00:00.000Z',
+    }];
+    const parsed = JSON.parse(exportJSON(db)) as Record<string, unknown> & {
+      formatVersion: number; pluginStorage: unknown[]; requestLog?: unknown[]; aiSuggestions: unknown[];
+    };
+    expect(parsed.formatVersion).toBe(3);
+    expect(parsed.pluginStorage).toHaveLength(1);
+    expect(parsed.aiSuggestions).toHaveLength(1);
+    expect(parsed.requestLog).toBeUndefined();
+  });
+});

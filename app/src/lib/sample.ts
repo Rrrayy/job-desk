@@ -658,5 +658,9 @@ export function buildSampleDB(now: Date = new Date()): DB {
     questions,
     staging: [],
     events,
+    // v0.8 插件三表：示例库同样空表起步
+    pluginStorage: [],
+    requestLog: [],
+    aiSuggestions: [],
   };
 }

@@ -7,12 +7,15 @@
  */
 
 import { describe, expect, it } from 'vitest';
+import { buildApplicationsCSV } from './tableExport';
 import {
   buildDBFromCSV,
   mapHeaders,
   normalizeChannel,
   normalizeDate,
   normalizeHeader,
+  normalizeKind,
+  normalizeRound,
   normalizeStatus,
   parseCSV,
   previewCSV,
@@ -83,14 +86,37 @@ describe('P1 · 表头映射', () => {
 });
 
 describe('P1 · 取值清洗', () => {
-  it('状态：笔试 / 测评落到「已沟通」（9 状态里没有笔试这一档）', () => {
-    expect(normalizeStatus('笔试')).toBe('chatting');
-    expect(normalizeStatus('测评')).toBe('chatting');
+  it('状态：笔试 / 测评落到 written（v0.8 十状态模型）', () => {
+    expect(normalizeStatus('笔试')).toBe('written');
+    expect(normalizeStatus('笔试通过')).toBe('written');
+    expect(normalizeStatus('已笔试')).toBe('written');
+    expect(normalizeStatus('笔试中')).toBe('written');
+    expect(normalizeStatus('测评')).toBe('written');
     expect(normalizeStatus('已约面')).toBe('scheduled');
     expect(normalizeStatus('等结果')).toBe('interviewing');
     expect(normalizeStatus('已入职')).toBe('onboarded');
     expect(normalizeStatus('归档')).toBe('dropped');
     expect(normalizeStatus('莫名其妙的状态')).toBeNull();
+  });
+
+  it('v0.8：轮次 / 面试类型别名', () => {
+    expect(normalizeRound('笔试')).toBe(0);
+    expect(normalizeRound('已笔试')).toBe(0);
+    expect(normalizeRound('一面')).toBe(1);
+    expect(normalizeRound('二面')).toBe(2);
+    expect(normalizeRound('HR 面')).toBe(4);
+    expect(normalizeRound('第 2 轮')).toBe(2);
+    expect(normalizeRound('2')).toBe(2);
+    expect(normalizeRound('不记得')).toBeNull();
+    expect(normalizeRound('')).toBeNull();
+    expect(normalizeRound('上古轮次')).toBeNull();
+    expect(normalizeKind('技术面')).toBe('tech');
+    expect(normalizeKind('HR面')).toBe('hr');
+    expect(normalizeKind('群面')).toBe('group');
+    expect(normalizeKind('交叉面')).toBe('cross');
+    expect(normalizeKind('总监面')).toBe('director');
+    expect(normalizeKind('笔试')).toBe('written');
+    expect(normalizeKind('玄学面')).toBeNull();
   });
 
   it('渠道别名', () => {
@@ -192,5 +218,73 @@ describe('P1 · 落库（去重键与 JSON 导入一致）', () => {
     const result = buildDBFromCSV(emptyDB(), previewCSV(noNotes, TODAY), '2026-10-21T00:00:00.000Z');
     expect(result.db.notes).toHaveLength(0);
     expect(result.db.events).toHaveLength(0);
+  });
+});
+
+/* ======================= v0.8：轮次 / 面试类型列的往返 ======================= */
+
+describe('v0.8 · 轮次与面试类型', () => {
+  it('「已笔试」导入 → status=written + 笔试 Interview（round=0, kind=written）', () => {
+    const csv = '公司,岗位,状态,投递日期\n字节,前端,已笔试,2026-10-20';
+    const result = buildDBFromCSV(emptyDB(), previewCSV(csv, TODAY), '2026-10-21T00:00:00.000Z');
+    expect(result.added).toBe(1);
+    const app = result.db.applications[0];
+    expect(app.status).toBe('written');
+    expect(result.db.interviews).toHaveLength(1);
+    expect(result.db.interviews[0]).toMatchObject({
+      applicationId: app.id,
+      round: 0,
+      kind: 'written',
+      result: 'pending',
+    });
+  });
+
+  it('「第 2 轮 + HR 面」导入 → status=interviewing + Interview{round:2, kind:hr}', () => {
+    const csv = '公司,岗位,状态,当前轮次,面试类型,投递日期\n腾讯,后端,面试中,二面,HR面,2026-10-19';
+    const result = buildDBFromCSV(emptyDB(), previewCSV(csv, TODAY), '2026-10-21T00:00:00.000Z');
+    const app = result.db.applications[0];
+    expect(app.status).toBe('interviewing');
+    expect(result.db.interviews).toHaveLength(1);
+    expect(result.db.interviews[0]).toMatchObject({ applicationId: app.id, round: 2, kind: 'hr' });
+  });
+
+  it('没有轮次信息的老格式 CSV → 不造假 Interview 行', () => {
+    const csv = '公司,岗位,状态,投递日期\n字节,前端,面试中,2026-10-20';
+    const result = buildDBFromCSV(emptyDB(), previewCSV(csv, TODAY), '2026-10-21T00:00:00.000Z');
+    expect(result.db.interviews).toHaveLength(0);
+  });
+
+  it('认不出的轮次 / 类型给行级原因，不静默丢', () => {
+    const preview = previewCSV('公司,岗位,状态,当前轮次,面试类型\n字节,前端,面试中,上古轮次,玄学面', TODAY);
+    const joined = preview.rowIssues.map((issue) => issue.reason).join('\n');
+    expect(joined).toContain('上古轮次');
+    expect(joined).toContain('玄学面');
+  });
+
+  it('★ 往返：导出带轮次/类型的 CSV 再导入，Interview 记录等价还原', () => {
+    const base = emptyDB();
+    base.companies = [{ id: 'c1', name: '字节', createdAt: '2026-10-01T00:00:00.000Z' }];
+    base.applications = [{
+      id: 'a1', companyId: 'c1', jobTitle: '前端', status: 'written',
+      statusChangedAt: '2026-10-20T00:00:00.000Z', lastActivityAt: '2026-10-20T00:00:00.000Z',
+      appliedAt: '2026-10-20', createdAt: '2026-10-20T00:00:00.000Z', updatedAt: '2026-10-20T00:00:00.000Z',
+    }];
+    base.interviews = [{
+      id: 'iv1', applicationId: 'a1', round: 0, scheduledAt: '2026-10-20T10:00:00.000Z',
+      format: 'onsite', kind: 'written', result: 'pending',
+    }];
+
+    const csv = buildApplicationsCSV(base, new Date(2026, 9, 21, 10, 0, 0));
+    const result = buildDBFromCSV(emptyDB(), previewCSV(csv, TODAY), '2026-10-21T00:00:00.000Z');
+    expect(result.added).toBe(1);
+    const app = result.db.applications[0];
+    expect(app.status).toBe('written');
+    expect(result.db.interviews).toHaveLength(1);
+    expect(result.db.interviews[0]).toMatchObject({ round: 0, kind: 'written', result: 'pending' });
+  });
+
+  it('表头映射：「当前轮次」「面试类型」两列都命中', () => {
+    const mapped = mapHeaders(['公司', '岗位', '状态', '当前轮次', '面试类型']);
+    expect(mapped.map((item) => item.field)).toEqual(['company', 'jobTitle', 'status', 'currentRound', 'interviewKind']);
   });
 });

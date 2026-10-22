@@ -20,6 +20,7 @@ import type {
   DB,
   Interview,
   InterviewFormat,
+  InterviewKind,
   InterviewResult,
   Note,
   NoteType,
@@ -44,6 +45,7 @@ export const STATUS_LABEL: Record<Status, string> = {
   wishlist: '想投',
   applied: '已投递',
   chatting: '已沟通',
+  written: '已笔试',
   scheduled: '已约面',
   interviewing: '面试中',
   offer: '已发 Offer',
@@ -57,6 +59,7 @@ export const STATUS_TONE: Record<Status, string> = {
   wishlist: '#9AA0B4',
   applied: '#4F5BD5',
   chatting: '#3B82F6',
+  written: '#6366F1',
   scheduled: '#7C5CD6',
   interviewing: '#F5A524',
   offer: '#1F9D55',
@@ -65,11 +68,15 @@ export const STATUS_TONE: Record<Status, string> = {
   dropped: '#8A8FA3',
 };
 
-/** 看板上的 6 个进行中列（从左到右＝时间顺序） */
+/**
+ * 看板上的进行中列（从左到右＝时间顺序）。
+ * v0.8：6 → 7，「已笔试」插在「已沟通」与「已约面」之间（免笔直约的场景从已沟通跳已约面）。
+ */
 export const BOARD_COLUMNS: Status[] = [
   'wishlist',
   'applied',
   'chatting',
+  'written',
   'scheduled',
   'interviewing',
   'offer',
@@ -82,8 +89,9 @@ export const ENDED_STATUSES: Status[] = ['onboarded', 'rejected', 'dropped'];
  * 参与沉默计算的状态。
  * v0.3 加入 'offer'：拿到 Offer 之后「等审批 / 等 HR 回信 / 等自己决定」同样会拖，
  * 而且这一环的机会成本最高（拖黄了就是真没了）。之前不覆盖它，是最大的漏报。
+ * v0.8 加入 'written'：「笔试完了等结果」与等面试结果同构，不覆盖同样是最贵的漏报。
  */
-export const SILENCE_STATUSES: Status[] = ['applied', 'chatting', 'interviewing', 'offer'];
+export const SILENCE_STATUSES: Status[] = ['applied', 'chatting', 'written', 'interviewing', 'offer'];
 
 export const ALL_STATUSES: Status[] = [...BOARD_COLUMNS, ...ENDED_STATUSES];
 
@@ -283,6 +291,7 @@ export type SilenceLevel = 'stale' | 'warn' | null;
 /** 沉默文案的「动词」——同一个天数在不同阶段的含义完全不同，不能都用「已沉默」 */
 function silenceVerbOf(status: Status): string {
   if (status === 'interviewing') return '等结果';
+  if (status === 'written') return '等笔试结果';
   if (status === 'offer') return '等 Offer 回复';
   return '已沉默';
 }
@@ -724,7 +733,11 @@ export interface FunnelStage {
   rate: number;
 }
 
-/** 状态映射成「走到第几步」：0 想投 → 5 Offer */
+/**
+ * 状态映射成「走到第几步」：0 想投 → 5 Offer。
+ * v0.8：'written' = 2.5 —— 落在 chatting(2) 与 scheduled(3) 之间，number 不必是整数。
+ * 漏斗显示零改动：written 计入「已沟通之后」（rank >= 2），不计入「已约面」（rank >= 3）。
+ */
 export function stageRankOf(app: Application, interviews: Interview[]): number {
   switch (app.status) {
     case 'wishlist':
@@ -733,6 +746,8 @@ export function stageRankOf(app: Application, interviews: Interview[]): number {
       return 1;
     case 'chatting':
       return 2;
+    case 'written':
+      return 2.5;
     case 'scheduled':
       return 3;
     case 'interviewing':
@@ -1032,6 +1047,9 @@ export function suggestionFor(app: Application, silence: SilenceState): Suggesti
       return silence.level === 'stale'
         ? { label: '去催一下', kind: 'followup' }
         : { label: '约面试', kind: 'schedule' };
+    case 'written':
+      // 笔试阶段的唯一动作是把这场笔试记下来（时间/形式），考完再记结果
+      return { label: '记笔试安排', kind: 'schedule' };
     case 'scheduled':
       return { label: '看准备清单', kind: 'open' };
     case 'interviewing':
@@ -1084,8 +1102,9 @@ export interface RejectRoundOption {
   label: string;
 }
 
-/** 「标为已挂」后的小选择区档位 —— 选完或不选都能保存 */
+/** 「标为已挂」后的小选择区档位 —— 选完或不选都能保存。v0.8：加「笔试」（0） */
 export const REJECT_ROUND_OPTIONS: RejectRoundOption[] = [
+  { value: 0, label: '笔试' },
   { value: 1, label: '第 1 轮' },
   { value: 2, label: '第 2 轮' },
   { value: 3, label: '第 3 轮' },
@@ -1093,18 +1112,49 @@ export const REJECT_ROUND_OPTIONS: RejectRoundOption[] = [
   { value: null, label: '不记得了' },
 ];
 
-/** 挂在第几轮的口语化文案；空值统一显示「轮次未记」 */
+/**
+ * 挂在第几轮的口语化文案；空值统一显示「轮次未记」。
+ * v0.8：0 不再落进「轮次未记」—— 0 = 笔试挂（改掉旧版 `round <= 0 → 未记` 的判断）。
+ */
 export function rejectedRoundLabel(round?: number | null): string {
-  if (round === null || round === undefined || !Number.isFinite(round) || round <= 0) return '轮次未记';
+  if (round === null || round === undefined || !Number.isFinite(round) || round < 0) return '轮次未记';
+  if (round === 0) return '笔试';
   if (round === HR_ROUND) return '第 4 轮（HR 面）';
   return `第 ${round} 轮`;
 }
 
-/** 简短版，给看板角标 / 列表小字用 */
+/** 简短版，给看板角标 / 列表小字用。v0.8：0 → 「笔试」 */
 export function rejectedRoundShort(round?: number | null): string {
-  if (round === null || round === undefined || !Number.isFinite(round) || round <= 0) return '轮次未记';
+  if (round === null || round === undefined || !Number.isFinite(round) || round < 0) return '轮次未记';
+  if (round === 0) return '笔试';
   if (round === HR_ROUND) return 'HR 面';
   return `第 ${round} 轮`;
+}
+
+/* ------------------------------------------------- v0.8：轮次徽章 / 面试类型 */
+
+export const INTERVIEW_KIND_LABEL: Record<InterviewKind, string> = {
+  written: '笔试',
+  tech: '技术面',
+  hr: 'HR 面',
+  cross: '交叉面',
+  group: '群面',
+  director: '总监面',
+  other: '其他',
+};
+
+/** 面试类型的口语化文案；未标注（老数据）返回空串 */
+export function interviewKindLabel(kind?: InterviewKind): string {
+  return kind ? INTERVIEW_KIND_LABEL[kind] : '';
+}
+
+/**
+ * 「当前轮次」徽章的数据源（PRD Q4 裁决口径）：
+ * 该投递 `result='pending'` 的最新一条 Interview；没有则 null（显示状态本名/轮次未记）。
+ * 看板徽章 / 详情抽屉 / CSV 导出三处共用这一个函数，不许各写一份。
+ */
+export function currentRoundOf(app: Application, interviews: Interview[]): Interview | null {
+  return interviewsOf(interviews, app.id).find((item) => item.result === 'pending') ?? null;
 }
 
 /* ---------------------------------------------------------- 状态变更撤销 */

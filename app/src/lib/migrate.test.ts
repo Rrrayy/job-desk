@@ -184,7 +184,7 @@ describe('migrateV1ToV2', () => {
     expect(again.changed).toBe(false);
   });
 
-  it('v1 直通 v3：lastMigration 记的是 1 → 3（不是 1 → 2）', () => {
+  it('v1 直通当前版本：lastMigration 记的是 1 → 当前版本（不是 1 → 2）', () => {
     const result = migrateV2ToV3(buildV1Raw(), { now: NOW });
     if (!result.ok) throw new Error('迁移失败');
     expect(result.db.settings.schemaVersion).toBe(SCHEMA_VERSION_CURRENT);
@@ -221,7 +221,11 @@ describe('migrateV1ToV2', () => {
     expect(result.db.experiences).toEqual([]);
     expect(result.db.questions).toEqual([]);
     expect(result.db.staging).toEqual([]);
-    // v0.6：AppSettings 的类型就是「当前版本」，v1 直通时一步到位写 v3
+    // v0.8：插件三表同样空表起步
+    expect(result.db.pluginStorage).toEqual([]);
+    expect(result.db.requestLog).toEqual([]);
+    expect(result.db.aiSuggestions).toEqual([]);
+    // v0.6：AppSettings 的类型就是「当前版本」，v1 直通时一步到位写当前版本
     expect(result.db.settings.schemaVersion).toBe(SCHEMA_VERSION_CURRENT);
     expect(result.db.settings.sync.defaultPlatform).toBe('boss');
     expect(result.db.settings.sync.autoRefreshActivity).toBe(true);
@@ -369,5 +373,224 @@ describe('v0.7 JD 字段 additive 往返', () => {
     expect(migrated.db.applications[0].jdText).toBeUndefined();
     expect(migrated.db.applications[0].jdCapturedAt).toBeUndefined();
     expect(migrated.db.applications[0].jdLinkDeadAt).toBeUndefined();
+  });
+});
+
+/* ======================= v0.8：schema 3 → 4 迁移 + 校验器扩展 ======================= */
+
+import { migrateV3ToV4 } from './migrate';
+import { validateV2 } from './validateV2';
+
+/** 造一份「v0.7.3 真实导出」形状的 v3 库（没有插件三表 / settings.ai / written / kind） */
+function buildV3Raw(): Record<string, unknown> {
+  return {
+    exportedAt: '2026-10-01T00:00:00.000Z',
+    app: 'jobdesk',
+    formatVersion: 2,
+    version: 3,
+    settings: {
+      schemaVersion: 3,
+      warnAfterDays: 3,
+      staleAfterDays: 7,
+      interviewResultWaitDays: 5,
+      wishlistExpireDays: 7,
+      resultPromptHour: 20,
+      offerSilenceDays: 7,
+      deadlineWarnDays: 3,
+      dailyActionBudget: 5,
+      channelFactor: { referral: 3, official: 2, boss: 1, shixiseng: 1, nowcoder: 1, liepin: 1, other: 1 },
+      weeklyApplyGoal: 8,
+      courseSlots: [],
+      defaultResumeVersion: '',
+      backupReminderDays: 7,
+      fileLink: { enabled: false, readOnly: false },
+      encryption: { enabled: false },
+      sync: { defaultPlatform: 'boss', statusMapOverrides: {}, autoRefreshActivity: true },
+    },
+    companies: [{ id: 'c1', name: '字节跳动', shortName: '字节', createdAt: '2026-09-01T00:00:00.000Z' }],
+    applications: [
+      {
+        id: 'a1', companyId: 'c1', jobTitle: '前端开发实习生', jobType: 'daily', status: 'chatting',
+        statusChangedAt: '2026-09-02T00:00:00.000Z', lastActivityAt: '2026-09-02T00:00:00.000Z',
+        appliedAt: '2026-09-02', createdAt: '2026-09-02T00:00:00.000Z', updatedAt: '2026-09-02T00:00:00.000Z',
+        rejectedAtRound: null, silenceOverride: null, nextActionAt: null, deadlineAt: null, mutedUntil: null,
+        tags: [], priority: 2,
+      },
+      {
+        id: 'a2', companyId: 'c1', jobTitle: '后端开发实习生', jobType: 'daily', status: 'rejected', rejectedAtRound: 2,
+        statusChangedAt: '2026-09-10T00:00:00.000Z', lastActivityAt: '2026-09-10T00:00:00.000Z',
+        appliedAt: '2026-09-05', createdAt: '2026-09-05T00:00:00.000Z', updatedAt: '2026-09-10T00:00:00.000Z',
+        silenceOverride: null, nextActionAt: null, deadlineAt: null, mutedUntil: null, tags: [],
+      },
+    ],
+    interviews: [
+      {
+        id: 'iv1', applicationId: 'a2', round: 2, totalRounds: null,
+        scheduledAt: '2026-09-08T14:00:00.000Z', format: 'video', result: 'failed',
+        prepChecklist: [],
+      },
+    ],
+    notes: [],
+    experiences: [],
+    questions: [],
+    staging: [],
+    events: [],
+  };
+}
+
+describe('v0.8 · migrateV3ToV4', () => {
+  it('v3 → v4：三张插件空表落库 + settings.ai 缺省补齐 + schemaVersion 4', () => {
+    const result = migrateV3ToV4(buildV3Raw(), { now: NOW });
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+    const db = result.db;
+    expect(result.changed).toBe(true);
+    expect(db.pluginStorage).toEqual([]);
+    expect(db.requestLog).toEqual([]);
+    expect(db.aiSuggestions).toEqual([]);
+    expect(db.settings.schemaVersion).toBe(4);
+    expect(db.settings.ai).toEqual({ baseURL: '', model: '', isLocal: false });
+    expect(db.settings.lastMigration).toMatchObject({ from: 3, to: 4, at: NOW });
+  });
+
+  it('★ 只加不减：v0.7.3 形状的既有数据逐字段原样（含面试记录与挂点）', () => {
+    const raw = buildV3Raw();
+    const result = migrateV3ToV4(raw, { now: NOW });
+    if (!result.ok) throw new Error('迁移失败');
+    const db = result.db;
+    expect(db.applications).toHaveLength(2);
+    expect(db.applications[0]).toEqual((raw.applications as unknown[])[0]);
+    expect(db.applications[1].status).toBe('rejected');
+    expect(db.applications[1].rejectedAtRound).toBe(2);
+    expect(db.interviews).toEqual(raw.interviews);
+    expect(db.companies).toEqual(raw.companies);
+  });
+
+  it('★ 幂等：v3 迁移两次，第二次 changed=false 且结果与第一次完全一致', () => {
+    const once = migrateV3ToV4(buildV3Raw(), { now: NOW });
+    expect(once.ok).toBe(true);
+    if (!once.ok) return;
+    const twice = migrateV3ToV4(once.db, { now: '2030-01-01T00:00:00.000Z' });
+    expect(twice.ok).toBe(true);
+    if (!twice.ok) return;
+    expect(twice.changed).toBe(false);
+    expect(twice.db).toEqual(once.db);
+  });
+
+  it('链式迁移：v1 备份直通 v4，lastMigration 仍记「1 → 4」', () => {
+    const result = migrateV2ToV3(buildV1Raw(), { now: NOW });
+    if (!result.ok) throw new Error('迁移失败');
+    expect(result.db.settings.schemaVersion).toBe(SCHEMA_VERSION_CURRENT);
+    expect(result.db.settings.lastMigration?.from).toBe(1);
+    expect(result.db.settings.lastMigration?.to).toBe(SCHEMA_VERSION_CURRENT);
+    expect(result.db.pluginStorage).toEqual([]);
+  });
+
+  it('坏数据：v3 缺关键字段 → 明确报错，不产出半个库', () => {
+    const raw = buildV3Raw();
+    delete (raw.applications as Array<Record<string, unknown>>)[0].jobTitle;
+    const result = migrateV3ToV4(raw, { now: NOW });
+    expect(result.ok).toBe(false);
+    if (result.ok) return;
+    expect(result.error).toContain('jobTitle');
+  });
+
+  it('只接受 v3：直接喂 v1/v2 数据 → 报错并指路分发入口', () => {
+    expect(migrateV3ToV4({ settings: { schemaVersion: 2 }, applications: [] }, { now: NOW }).ok).toBe(false);
+    expect(migrateV3ToV4(null, { now: NOW }).ok).toBe(false);
+    expect(migrateV3ToV4({ settings: { schemaVersion: 99 }, applications: [] }, { now: NOW }).ok).toBe(false);
+  });
+
+  it('settings.ai 已有值时原样保留（不重置成未配置）', () => {
+    const raw = buildV3Raw();
+    (raw.settings as Record<string, unknown>).ai = { baseURL: 'http://127.0.0.1:11434/v1', model: 'qwen3:8b', isLocal: true };
+    const result = migrateV3ToV4(raw, { now: NOW });
+    if (!result.ok) throw new Error('迁移失败');
+    expect(result.db.settings.ai).toEqual({ baseURL: 'http://127.0.0.1:11434/v1', model: 'qwen3:8b', isLocal: true });
+  });
+});
+
+describe('v0.8 · 校验器（written / kind / 三新表）', () => {
+  it('written 进状态白名单；kind 合法值保留、非法值回落 undefined', async () => {
+    const raw = buildV3Raw();
+    const apps = raw.applications as Array<Record<string, unknown>>;
+    apps[0].status = 'written';
+    (raw.interviews as Array<Record<string, unknown>>)[0].kind = 'tech';
+    const result = validateV2(raw);
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+    expect(result.db.applications[0].status).toBe('written');
+    expect(result.db.interviews[0].kind).toBe('tech');
+  });
+
+  it('非法 kind 回落 undefined（模式照 events.kind），不拦导入', async () => {
+    const raw = buildV3Raw();
+    (raw.interviews as Array<Record<string, unknown>>)[0].kind = '玄学面';
+    const result = validateV2(raw);
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+    expect(result.db.interviews[0].kind).toBeUndefined();
+  });
+
+  it('round=0（笔试记录）不再被改成 1', async () => {
+    const raw = buildV3Raw();
+    (raw.interviews as Array<Record<string, unknown>>)[0] = {
+      id: 'iv0', applicationId: 'a1', round: 0, scheduledAt: '2026-09-09T10:00:00.000Z',
+      format: 'onsite', kind: 'written', result: 'pending',
+    };
+    const result = validateV2(raw);
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+    expect(result.db.interviews[0].round).toBe(0);
+    expect(result.db.interviews[0].kind).toBe('written');
+  });
+
+  it('插件三表：缺失补 []，行内容校验，PluginStorage 按联合主键去重', async () => {
+    const raw = buildV3Raw();
+    raw.pluginStorage = [
+      { id: 'p1', pluginId: 'demo', key: 'session', value: { a: 1 }, updatedAt: NOW },
+      { id: 'p2', pluginId: 'demo', key: 'session', value: { a: 2 }, updatedAt: NOW },
+      { id: 'p3', pluginId: 'demo', key: 'other', value: 1, updatedAt: NOW },
+    ];
+    raw.requestLog = [{
+      id: 'r1', timestamp: NOW, pluginId: 'builtin:d14', baseUrl: 'http://127.0.0.1:11434/v1',
+      model: 'qwen3:8b', sentFieldsHash: 'abc123', status: 'ok',
+    }];
+    raw.aiSuggestions = [{
+      id: 's1', pluginId: 'builtin:d17', targetType: 'staging_field', targetId: null,
+      fieldPath: 'companyName', content: '字节跳动', status: 'pending', createdAt: NOW,
+    }];
+    const result = validateV2(raw);
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+    expect(result.db.pluginStorage).toHaveLength(2);
+    expect(result.db.pluginStorage.every((row) => row.id === `${row.pluginId}::${row.key}` || row.id.length > 0)).toBe(true);
+    expect(result.db.requestLog).toHaveLength(1);
+    expect(result.db.aiSuggestions).toHaveLength(1);
+  });
+
+  it('插件三表：行类型错了必须报错（不静默纠错）', async () => {
+    const badLog = buildV3Raw();
+    badLog.requestLog = [{ id: 'r1', status: 'unknown-status' }];
+    expect(validateV2(badLog).ok).toBe(false);
+
+    const badSuggestion = buildV3Raw();
+    badSuggestion.aiSuggestions = [{ id: 's1', targetType: '不存在的目标' }];
+    expect(validateV2(badSuggestion).ok).toBe(false);
+
+    const badStorage = buildV3Raw();
+    badStorage.pluginStorage = [{ key: 'no-plugin-id' }];
+    expect(validateV2(badStorage).ok).toBe(false);
+  });
+
+  it('三表缺失（v0.7.3 备份）→ 补空表，不报错', async () => {
+    const result = validateV2(buildV3Raw());
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+    expect(result.db.pluginStorage).toEqual([]);
+    expect(result.db.requestLog).toEqual([]);
+    expect(result.db.aiSuggestions).toEqual([]);
+    expect(result.db.settings.schemaVersion).toBe(SCHEMA_VERSION_CURRENT);
+    expect(result.db.settings.ai).toEqual({ baseURL: '', model: '', isLocal: false });
   });
 });
