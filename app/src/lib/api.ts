@@ -13,6 +13,7 @@ import type {
   Interview,
   InterviewExperience,
   InterviewFormat,
+  InterviewKind,
   Mastery,
   NoteType,
   PlatformId,
@@ -78,7 +79,10 @@ export interface ParsedCourseInput {
 
 export interface NewInterviewInput {
   applicationId: string;
+  /** v0.8 起允许 0（笔试记录，kind 固定 'written'） */
   round?: number;
+  /** v0.8：面试类型；缺省 = 未标注 */
+  kind?: InterviewKind;
   scheduledAt: string;
   format: InterviewFormat;
   durationMin?: number;
@@ -94,8 +98,13 @@ export interface StatusChangeOpts {
   at?: string;
   /** 备注 */
   note?: string;
-  /** 轮次 */
+  /** 轮次（rejected 时写 rejectedAtRound） */
   round?: number;
+  /**
+   * v0.8 备注：面试段列的轮次/类型**不走**这里 —— DropPanel 直接调
+   * `addInterview`（结构化写入），status 变更与面试记录保持两条独立 mutate，
+   * 与「⌘Z 只回退状态、用户手写内容不丢」的既有撤销语义一致（共享知识 #7）。
+   */
 }
 
 /** 快记的带入上下文（来自投递详情 / 今日待复盘卡片） */

@@ -716,7 +716,8 @@ export default function App() {
         const interview: Interview = {
           id: uid('iv'),
           applicationId: input.applicationId,
-          round: input.round && input.round > 0 ? input.round : 1,
+          // v0.8：0 合法（笔试记录，kind='written'）；缺省/非法回落 1
+          round: input.round !== undefined && input.round >= 0 ? input.round : 1,
           totalRounds: null,
           scheduledAt: input.scheduledAt,
           durationMin: input.durationMin,
@@ -724,6 +725,8 @@ export default function App() {
           locationOrLink: input.locationOrLink,
           interviewer: input.interviewer,
           prepChecklist: [],
+          // v0.8：面试类型 additive，缺省不写字段（保持 diff 干净，与校验器同口径）
+          ...(input.kind ? { kind: input.kind } : {}),
           result: input.result || 'pending',
           notes: input.notes,
         };

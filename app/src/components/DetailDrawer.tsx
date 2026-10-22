@@ -6,7 +6,7 @@
 
 import { useMemo, useState } from 'react';
 import type { AppApi } from '../lib/api';
-import type { Application, Channel, Interview, InterviewFormat, NoteType, Status } from '../types';
+import type { Application, Channel, Interview, InterviewFormat, InterviewKind, NoteType, Status } from '../types';
 import {
   ALL_STATUSES,
   BOARD_COLUMNS,
@@ -19,13 +19,16 @@ import {
   REJECT_ROUND_OPTIONS,
   RESULT_LABEL,
   buildFollowupScript,
+  currentRoundOf,
   deadlineStateOf,
   findConflicts,
+  interviewKindLabel,
   interviewsOf,
   muteRemainDays,
   notesOf,
   rejectedRoundLabel,
   rejectedRoundShort,
+  roundBadgeText,
   silenceStateOf,
 } from '../lib/rules';
 import {
@@ -80,20 +83,23 @@ function DetailBody({ api, app }: { api: AppApi; app: Application }) {
   });
   const [formFormat, setFormFormat] = useState<InterviewFormat>('video');
   const [formRound, setFormRound] = useState(String(nextRound));
+  /** v0.8：面试类型。'' = 未标注；'written' = 笔试（round 固定 0，不可改） */
+  const [formKind, setFormKind] = useState<InterviewKind | ''>('');
   const [formLocation, setFormLocation] = useState('');
+  const isWrittenForm = formKind === 'written';
 
   const draftConflicts = useMemo(() => {
     if (!formOpen || !formAt) return [];
     const draft: Interview = {
       id: 'tmp_preview',
       applicationId: app.id,
-      round: Number(formRound) || 1,
+      round: isWrittenForm ? 0 : Number(formRound) || 1,
       scheduledAt: fromLocalDateTimeInput(formAt),
       format: formFormat,
       result: 'pending',
     };
     return findConflicts(draft, db.interviews, db.applications, db.events);
-  }, [formOpen, formAt, formRound, formFormat, app.id, db.interviews, db.applications, db.events]);
+  }, [formOpen, formAt, formRound, formFormat, isWrittenForm, app.id, db.interviews, db.applications, db.events]);
 
   const update = (patch: Partial<Application>): void => {
     api.updateApplication(app.id, patch);
@@ -132,18 +138,25 @@ function DetailBody({ api, app }: { api: AppApi; app: Application }) {
     if (!formAt) return;
     api.addInterview({
       applicationId: app.id,
-      round: Number(formRound) || nextRound,
+      round: isWrittenForm ? 0 : Number(formRound) || nextRound,
+      kind: isWrittenForm ? 'written' : formKind || undefined,
       scheduledAt: fromLocalDateTimeInput(formAt),
       format: formFormat,
       locationOrLink: formLocation.trim() || undefined,
       durationMin: 45,
       result: 'pending',
     });
-    if (app.status === 'wishlist' || app.status === 'applied' || app.status === 'chatting') {
+    if (isWrittenForm) {
+      // 记笔试 = 进入笔试阶段（PRD Q1：约了就算进入）
+      if (app.status === 'wishlist' || app.status === 'applied' || app.status === 'chatting') {
+        api.changeStatus(app.id, 'written');
+      }
+    } else if (app.status === 'wishlist' || app.status === 'applied' || app.status === 'chatting') {
       api.changeStatus(app.id, 'scheduled');
     }
     setFormOpen(false);
     setFormLocation('');
+    setFormKind('');
     api.toast(draftConflicts.length > 0 ? '面试已加，但存在时间冲突，已标在日历上' : '面试已加入日历');
   };
 
@@ -185,7 +198,7 @@ function DetailBody({ api, app }: { api: AppApi; app: Application }) {
             {app.status === 'rejected' ? (
               <button
                 type="button"
-                className={cx('chip', app.rejectedAtRound ? 'chip--quiet' : 'chip--amber')}
+                className={cx('chip', app.rejectedAtRound !== null && app.rejectedAtRound !== undefined ? 'chip--quiet' : 'chip--amber')}
                 title="点这里补录挂在哪一轮"
                 onClick={() => setRejectPickerOpen(true)}
               >
@@ -467,12 +480,13 @@ function DetailBody({ api, app }: { api: AppApi; app: Application }) {
                   label="其他轮次（可留空）"
                   type="number"
                   min={1}
-                  value={app.rejectedAtRound ? String(app.rejectedAtRound) : ''}
+                  // v0.8：0 = 笔试挂，是已记值，不能因为 falsy 显示成空
+                  value={app.rejectedAtRound !== null && app.rejectedAtRound !== undefined ? String(app.rejectedAtRound) : ''}
                   onCommit={(value) => {
                     const n = Number(value);
                     update({ rejectedAtRound: Number.isFinite(n) && n > 0 ? n : null });
                   }}
-                  hint="HR 面记作第 4 轮"
+                  hint="笔试挂记 0，HR 面记作第 4 轮"
                   narrow
                 />
                 <Field
@@ -494,6 +508,20 @@ function DetailBody({ api, app }: { api: AppApi; app: Application }) {
               {formOpen ? '收起' : '＋ 加一场'}
             </button>
           </div>
+          {/*
+            v0.8：当前轮次口径统一走 currentRoundOf / roundBadgeText。
+            老备份没有轮次数据时显示「轮次未记」，绝不报错（PRD 验收 6）。
+          */}
+          <InfoRow
+            label="当前轮次"
+            value={roundBadgeText(currentRoundOf(app, db.interviews)) || '轮次未记'}
+          />
+          {(app.status === 'scheduled' || app.status === 'interviewing') && interviews.length === 0 ? (
+            // P1 R-PIPE-7：老记录的轮次补录引导。可忽略，不拦截任何操作。
+            <p className="muted">
+              这条停在面试阶段但还没记轮次 —— 想起来了点「＋ 加一场」补一下，不补也不影响使用。
+            </p>
+          ) : null}
 
           {formOpen ? (
             <div className="interview-form">
@@ -508,14 +536,30 @@ function DetailBody({ api, app }: { api: AppApi; app: Application }) {
                   />
                 </label>
                 <label className="field field--narrow">
-                  <span className="field__label">轮次</span>
+                  <span className="field__label">轮次{isWrittenForm ? '（笔试固定第 0 轮）' : ''}</span>
                   <input
                     className="input"
                     type="number"
-                    min={1}
-                    value={formRound}
+                    min={isWrittenForm ? 0 : 1}
+                    value={isWrittenForm ? '0' : formRound}
+                    disabled={isWrittenForm}
                     onChange={(event) => setFormRound(event.target.value)}
                   />
+                </label>
+                <label className="field field--narrow">
+                  <span className="field__label">类型</span>
+                  <select
+                    className="select"
+                    value={formKind}
+                    onChange={(event) => setFormKind(event.target.value as InterviewKind | '')}
+                  >
+                    <option value="">未标注</option>
+                    {(['written', 'tech', 'hr', 'cross', 'group', 'director', 'other'] as const).map((item) => (
+                      <option key={item} value={item}>
+                        {interviewKindLabel(item)}
+                      </option>
+                    ))}
+                  </select>
                 </label>
                 <label className="field field--narrow">
                   <span className="field__label">形式</span>
@@ -795,7 +839,10 @@ function statusLabelOf(status: Status): string {
   return (
     <li className="iv-card">
       <div className="iv-card__head">
-        <span className="iv-card__round">第 {interview.round} 轮</span>
+        {/* v0.8：round=0（kind='written'）是笔试记录，不显示成「第 0 轮」 */}
+        <span className="iv-card__round">
+          {interview.round === 0 || interview.kind === 'written' ? '笔试' : `第 ${interview.round} 轮`}
+        </span>
         <span className="iv-card__time">{fmtDateTime(interview.scheduledAt)}</span>
         <span className="iv-card__format">{FORMAT_LABEL[interview.format]}</span>
       </div>

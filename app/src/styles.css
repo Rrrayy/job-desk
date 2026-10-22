@@ -1139,6 +1139,29 @@ ol {
   flex: 0 0 148px;
 }
 
+/* v0.8：面试段三列收纳（BoardView「收纳面试段」）—— 只留可点击的列头 chip */
+.board__col--folded {
+  width: 76px;
+  flex: 0 0 76px;
+  background: #fbfbfd;
+}
+
+.board__col--folded .board__col-head {
+  flex-direction: column;
+  justify-content: center;
+  gap: 6px;
+  padding: 12px 6px;
+  text-align: center;
+}
+
+.board__col--folded .board__count {
+  align-self: center;
+}
+
+.board-fold-toggle {
+  margin-left: 10px;
+}
+
 /* 卡片 */
 
 .app-card {
@@ -1360,6 +1383,13 @@ ol {
 .badge--interview {
   background: #f0ecfd;
   color: #5c43b5;
+}
+
+/* v0.8：轮次徽章（第 N 轮 · 类型）—— 与列头「已笔试」色同一系，视觉上挂到面试段 */
+.badge--round {
+  background: var(--indigo-soft);
+  color: var(--indigo);
+  font-weight: 600;
 }
 
 .badge--quiet {

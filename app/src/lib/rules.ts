@@ -1157,6 +1157,18 @@ export function currentRoundOf(app: Application, interviews: Interview[]): Inter
   return interviewsOf(interviews, app.id).find((item) => item.result === 'pending') ?? null;
 }
 
+/**
+ * 轮次徽章文案：「第 2 轮 · HR 面」；笔试（round=0 或 kind='written'）显示「笔试」；
+ * 传入 null（没有进行中的轮次）返回空串 —— 调用方回落显示状态本名（PRD Q4）。
+ * 与 CSV 导出、详情抽屉共用同一口径。
+ */
+export function roundBadgeText(current: Interview | null): string {
+  if (!current) return '';
+  if (current.round === 0 || current.kind === 'written') return '笔试';
+  const kind = interviewKindLabel(current.kind);
+  return kind ? `第 ${current.round} 轮 · ${kind}` : `第 ${current.round} 轮`;
+}
+
 /* ---------------------------------------------------------- 状态变更撤销 */
 
 /**

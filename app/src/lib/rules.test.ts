@@ -527,6 +527,8 @@ import {
   interviewKindLabel,
   rejectedRoundLabel,
   rejectedRoundShort,
+  revertStatusChange,
+  roundBadgeText,
   stageRankOf,
   suggestionFor,
 } from './rules';
@@ -652,5 +654,54 @@ describe('v0.8 · suggestionFor written 档', () => {
     const suggestion = suggestionFor(app, { days: 0, level: null, text: '' });
     expect(suggestion.kind).toBe('schedule');
     expect(suggestion.label).toContain('笔试');
+  });
+});
+
+describe('v0.8 · roundBadgeText（徽章口径）', () => {
+  it('第 2 轮 · HR 面 / 纯轮次 / 笔试 / 无轮次空串', () => {
+    expect(roundBadgeText(makeInterviewAt({ round: 2, kind: 'hr' }))).toBe('第 2 轮 · HR 面');
+    expect(roundBadgeText(makeInterviewAt({ round: 3 }))).toBe('第 3 轮');
+    expect(roundBadgeText(makeInterviewAt({ round: 0, kind: 'written' }))).toBe('笔试');
+    expect(roundBadgeText(null)).toBe('');
+  });
+});
+
+describe('v0.8 · written 状态变更可整体撤销（⌘Z 数据层语义）', () => {
+  it('★ revertStatusChange 把 written 恢复成之前的状态，且只删本次那条系统记录', () => {
+    const db = emptyDB();
+    db.companies = [{ id: 'c-1', name: '某某科技', createdAt: '2026-10-01T00:00:00.000Z' }];
+    db.applications = [
+      makeApp({ id: 'app-1', status: 'written', statusChangedAt: '2026-10-20T01:00:00.000Z' }),
+    ];
+    db.notes = [
+      {
+        id: 'n-system',
+        applicationId: 'app-1',
+        type: 'system',
+        content: '状态：已沟通 → 已笔试',
+        auto: true,
+        touchedAt: '2026-10-20T01:00:00.000Z',
+      },
+      {
+        id: 'n-mine',
+        applicationId: 'app-1',
+        type: 'memo',
+        content: '用户后来手写的备注',
+        touchedAt: '2026-10-20T02:00:00.000Z',
+      },
+    ];
+    const draft = structuredClone(db);
+    revertStatusChange(draft, {
+      appId: 'app-1',
+      prevStatus: 'chatting',
+      prevStatusChangedAt: '2026-10-19T01:00:00.000Z',
+      prevLastActivityAt: '2026-10-19T01:00:00.000Z',
+      prevRejectedAtRound: null,
+      createdNoteId: 'n-system',
+    });
+    expect(draft.applications[0].status).toBe('chatting');
+    expect(draft.applications[0].statusChangedAt).toBe('2026-10-19T01:00:00.000Z');
+    // 只删系统记录；用户手写内容不丢（共享知识 #7）
+    expect(draft.notes.map((note) => note.id)).toEqual(['n-mine']);
   });
 });
