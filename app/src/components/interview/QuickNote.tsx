@@ -21,6 +21,7 @@ import type { Mastery, QuestionCategory } from '../../types';
 import { todayISO } from '../../lib/date';
 import { deriveInitialNextReviewAt } from '../../lib/interview';
 import { MasteryCategoryPicks } from './MasteryCategoryPicks';
+import { BulkPastePanel } from './BulkPastePanel';
 
 /** 快记列表里的一行：题干 + 两个还没落库的选择 */
 interface QuickLine {
@@ -41,6 +42,11 @@ export function QuickNote({ api, onClose }: { api: AppApi; onClose: () => void }
   const [draft, setDraft] = useState('');
   const [lines, setLines] = useState<QuickLine[]>([]);
   const [error, setError] = useState<string | null>(null);
+  /**
+   * v0.9 / R-AI-11：默认仍是一行一题（快记的最短路径没变长）；切到「粘贴整段」
+   * 走 BulkPastePanel。头部四个输入是本组件的 state，两个模式共用（Q13 裁决）。
+   */
+  const [mode, setMode] = useState<'line' | 'bulk'>('line');
 
   const nextReview = useMemo(
     () => deriveInitialNextReviewAt(interviewDate, api.now.toISOString()),
@@ -120,6 +126,23 @@ export function QuickNote({ api, onClose }: { api: AppApi; onClose: () => void }
       <section className="quick-note" onClick={(event) => event.stopPropagation()}>
         <header className="quick-note__head">
           <h2 className="quick-note__title">记面经</h2>
+          <div className="quick-note__modes">
+            <button
+              type="button"
+              className={mode === 'line' ? 'btn btn--small btn--primary' : 'btn btn--small'}
+              onClick={() => setMode('line')}
+            >
+              ⌨ 一行一题
+            </button>
+            <button
+              type="button"
+              className={mode === 'bulk' ? 'btn btn--small btn--primary' : 'btn btn--small'}
+              data-testid="quicknote-mode-bulk"
+              onClick={() => setMode('bulk')}
+            >
+              📋 粘贴整段
+            </button>
+          </div>
           <button type="button" className="icon-btn" onClick={flushAndClose} title="关闭（Esc）" aria-label="关闭">
             ✕
           </button>
@@ -166,12 +189,29 @@ export function QuickNote({ api, onClose }: { api: AppApi; onClose: () => void }
           </label>
         </div>
 
-        <p className="quick-note__hint">
-          一行一题，敲 <kbd>Enter</kbd> 就记下、光标不动。每行可以顺手标「会不会 / 属于哪类」，
-          不标就是「不会 + 未分类」——
-          <strong>不记就永远想不起来了</strong>。
-        </p>
+        {mode === 'line' ? (
+          <p className="quick-note__hint">
+            一行一题，敲 <kbd>Enter</kbd> 就记下、光标不动。每行可以顺手标「会不会 / 属于哪类」，
+            不标就是「不会 + 未分类」——
+            <strong>不记就永远想不起来了</strong>。
+          </p>
+        ) : null}
 
+        {mode === 'bulk' ? (
+          <BulkPastePanel
+            api={api}
+            testId="quicknote-bulk"
+            head={{ companyName, jobTitle, round, interviewDate }}
+            onHeadChange={(patch) => {
+              if (patch.companyName !== undefined) setCompanyName(patch.companyName);
+              if (patch.jobTitle !== undefined) setJobTitle(patch.jobTitle);
+              if (patch.round !== undefined) setRound(patch.round);
+              if (patch.interviewDate !== undefined) setInterviewDate(patch.interviewDate);
+            }}
+            onClose={() => setMode('line')}
+            onAdopted={onClose}
+          />
+        ) : (
         <div className="quick-note__body">
           <ul className="quick-note__list">
             {lines.map((line, index) => (
@@ -212,20 +252,23 @@ export function QuickNote({ api, onClose }: { api: AppApi; onClose: () => void }
 
           {error ? <div className="notice notice--danger">{error}</div> : null}
         </div>
+        )}
 
-        <footer className="quick-note__foot">
-          <span className="muted">
-            记完会有 {nextReview} 的复习提醒（+1 / +3 / +7 天里最近的一个）
-          </span>
-          <div className="quick-note__actions">
-            <button type="button" className="btn btn--small" onClick={commitDraft} disabled={!draft.trim()}>
-              ＋ 再加一题
-            </button>
-            <button type="button" className="btn btn--small btn--primary" onClick={flushAndClose}>
-              记完了（{total} 题）
-            </button>
-          </div>
-        </footer>
+        {mode === 'line' ? (
+          <footer className="quick-note__foot">
+            <span className="muted">
+              记完会有 {nextReview} 的复习提醒（+1 / +3 / +7 天里最近的一个）
+            </span>
+            <div className="quick-note__actions">
+              <button type="button" className="btn btn--small" onClick={commitDraft} disabled={!draft.trim()}>
+                ＋ 再加一题
+              </button>
+              <button type="button" className="btn btn--small btn--primary" onClick={flushAndClose}>
+                记完了（{total} 题）
+              </button>
+            </div>
+          </footer>
+        ) : null}
       </section>
     </div>
   );

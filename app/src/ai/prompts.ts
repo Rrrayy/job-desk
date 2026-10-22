@@ -83,6 +83,15 @@ const D20_SYSTEM = [
   '输出必须是 JSON：{"summary":"两句话总评","next_steps":["下一步"],"dimensions":[{"key":"k","label":"维度","verdict":"gap","evidenceFromResume":"依据原句","evidenceFromJd":"JD 原句"}]}，除此之外不要任何文字。',
 ].join('\n');
 
+const D14_BULK_SYSTEM = [
+  T07_PREAMBLE,
+  '你是面经整理助手。输入是一整段面试记录。',
+  '任务① questions：把记录拆成一道道题，每题给出题干与类别（algo/concept/project/behavior/reverse/hr 之一）；候选人当时的回答放 myAnswer，没有就省略。只拆真实出现的题，不编造。',
+  '任务② unmatched：没识别成题目的原文段落原样保留，一段一项，绝不丢弃。',
+  '任务③ head：记录里明确出现的公司名/岗位名/轮次；没有就不要给。',
+  '输出必须是 JSON：{"head":{"companyName":"..."},"questions":[{"text":"...","category":"algo","myAnswer":"..."}],"unmatched":["..."]}，除此之外不要任何文字。',
+].join('\n');
+
 export const AI_SCENARIOS: Record<AiScenarioKey, AiScenarioSpec> = {
   d14: {
     pluginId: 'builtin:d14',
@@ -152,6 +161,19 @@ export const AI_SCENARIOS: Record<AiScenarioKey, AiScenarioSpec> = {
     fields: [
       { name: 'jdText', label: '岗位 JD 原文', value: '', locked: true },
       { name: 'selectedModules', label: '选中的简历模块', value: '', locked: true },
+    ],
+  },
+  /* ---------------- v0.9 / R-AI-11：面经整段极速录入（与 d14 并列，A-14） ---------------- */
+  'd14-bulk': {
+    pluginId: 'builtin:d14-bulk',
+    targetType: 'question',
+    system: D14_BULK_SYSTEM,
+    fields: [
+      // 出境口径与 d14 完全一致（验收 29）：整段原文必发，公司/岗位默认不勾。
+      // interviewDate / round 不在字段表 —— 结构上发不出去，日期永远不由 AI 提供。
+      { name: 'note', label: '面经整段原文', value: '', locked: true },
+      { name: 'companyName', label: '公司名', value: '', defaultChecked: false },
+      { name: 'jobTitle', label: '岗位名', value: '', defaultChecked: false },
     ],
   },
   'd20-analysis': {

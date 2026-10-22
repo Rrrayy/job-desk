@@ -172,6 +172,13 @@ export type QuickNoteResult =
   | { ok: true; experienceId: string; written: number; skipped: number }
   | { ok: false; reason: string };
 
+/**
+ * R-AI-11 一次「全部采用」的入参与结果（实现与撤销配方在 ai/experienceBulk.ts）。
+ * 与 addQuickNote 同构：一次调用 = 一次 mutate = 一个撤销点（⌘Z 整批回退）。
+ */
+export type BulkAdoptInput = import('../ai/experienceBulk').BulkAdoptInput;
+export type BulkAdoptResult = import('../ai/experienceBulk').BulkAdoptResult;
+
 /** ① → ② 的结果 */
 export type SyncPlanOutcome =
   | { ok: true; plan: MergePlan; adapterId: PlatformId; adapterStale: boolean }
@@ -379,6 +386,11 @@ export interface AppApi {
    * 见 QuickNoteInput 注释 —— 拆成两个调用会退化成「回退成空面经」。
    */
   addQuickNote: (input: QuickNoteInput) => QuickNoteResult;
+  /**
+   * R-AI-11 整段录入「全部采用」：单次 mutate 写 1 面经（补录路径复用已有壳）
+   * + N 题 + overallNote 前缀段，复合撤销单元走 AiUndo（createdExperiences + targets）。
+   */
+  adoptBulk: (input: BulkAdoptInput) => BulkAdoptResult;
   /** 静默改字段：不进撤销栈。输入框逐字写库用这个（ExperienceEditor 的实时编辑） */
   updateQuestion: (id: string, patch: Partial<Question>) => void;
   /**

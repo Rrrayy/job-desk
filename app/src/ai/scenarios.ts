@@ -66,6 +66,15 @@ export function buildScenarioMessages(key: AiScenarioKey, checked: Record<string
   const spec = AI_SCENARIOS[key];
   const system: ChatMessage = { role: 'system', content: spec.system };
   if (key === 'd17') return [system, { role: 'user', content: checked.rawSnippet ?? '' }];
+  // d14-bulk（验收 29 等式）：默认勾选只有 note，user 消息必须 === checked.note；
+  // 公司/岗位是显式勾选的例外，勾了才以「标签：值」追在正文后面。
+  if (key === 'd14-bulk') {
+    const extras = [
+      checked.companyName ? `公司名：${checked.companyName.trim()}` : '',
+      checked.jobTitle ? `岗位名：${checked.jobTitle.trim()}` : '',
+    ].filter(Boolean);
+    return [system, { role: 'user', content: [checked.note ?? '', ...extras].filter(Boolean).join('\n') }];
+  }
 
   const parts: string[] = [];
   for (const field of spec.fields) {
@@ -80,8 +89,8 @@ export function scenarioPreviewFields(key: AiScenarioKey, values: Record<string,
   return previewFieldsOf(AI_SCENARIOS[key], values);
 }
 
-/** D14：JSON 解析不出来时的兜底（一行一题，`题干 | 类别`） */
-function parseQuestionLines(text: string): AiItem[] {
+/** D14 / d14-bulk 共用的兜底（一行一题，`题干 | 类别`）；experienceBulk.parseBulkOutput 复用 */
+export function parseQuestionLines(text: string): AiItem[] {
   const items: AiItem[] = [];
   for (const raw of text.split('\n')) {
     const line = raw.replace(/```[a-z]*/gi, '').replace(/^[\s\-*•\d.、)）|]+/, '').trim();
@@ -211,6 +220,11 @@ export function parseScenarioOutput(key: AiScenarioKey, raw: string): ScenarioPa
   if (key === 'd17') return parseStagingFields(raw);
   if (key === 'd19-polish') return parsePolish(raw);
   if (key === 'd19-jd') return parseJdSuggestions(raw);
+  if (key === 'd14-bulk') {
+    // d14-bulk 产出 items + head + unmatched 三样，ScenarioParse 装不下 ——
+    // 必须走 experienceBulk.parseBulkOutput。这里挡一道防误接（同报告场景的理由）。
+    return { ok: false, error: '这个场景要带回未识别段落，请走 experienceBulk.parseBulkOutput' };
+  }
   // 报告类场景不产出建议条目；调用方（App）对它们走 reports.parseReport。
   // 这里挡一道，防止未来有人在建议链路上误接报告场景 —— 静默写错表比报错严重得多。
   return { ok: false, error: '这个场景产出的是报告，不是逐条建议' };

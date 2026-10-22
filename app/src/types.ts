@@ -432,6 +432,11 @@ export interface Question {
   /** 下次怎么改，一句话 */
   nextTime?: string;
   tags: string[];
+  /**
+   * v0.9 / R-AI-11：整段录入的题号 1..N，**由代码按列表顺序生成**（模型自报的 ref
+   * 一律忽略）。只用于展示 `#n` 与「原文第 n 题」对齐；不参与复习调度。
+   */
+  order?: number;
   /** 派生：YYYY-MM-DD。见 lib/interview.ts deriveInitialNextReviewAt */
   nextReviewAt?: string;
   reviewCount: number;
@@ -501,6 +506,24 @@ export type AISuggestionTargetType =
 
 export type AISuggestionStatus = 'pending' | 'accepted' | 'rejected';
 
+/* ===================== v0.9 / R-AI-11 面经整段录入（常量唯一份，禁止散写字面量） ===================== */
+
+/**
+ * 全仓唯一的「未识别段落」备注前缀。这句话会长期留在用户的 overallNote 里，
+ * 改文案必须是一处改（ARCH §2.5）。
+ */
+export const UNMATCHED_NOTE_PREFIX = '// 未识别为题目的原文';
+
+/** R-AI-11 的硬上限（粘贴 20000 / 50 题 / 题干 300 / 回答 5000 / 段落 500×20） */
+export const BULK_LIMITS = {
+  noteChars: 20000,
+  maxQuestions: 50,
+  questionChars: 300,
+  answerChars: 5000,
+  unmatchedChars: 500,
+  maxUnmatched: 20,
+} as const;
+
 /**
  * AI 产出统一走建议制：模型输出先进本表（pending），用户逐条确认才写目标表。
  * 本文件先落数据模型；ai/ 场景实现（T03）只消费，不另立第二份定义。
@@ -520,6 +543,19 @@ export interface AISuggestion {
   status: AISuggestionStatus;
   createdAt: string;
   decidedAt?: string;
+  /**
+   * v0.9 / R-AI-11：仅 targetType==='question' 且来自 d14-bulk 时存在；
+   * 其余场景不写（老快照零变化）。题干在 content，类别与「我的回答」在这里。
+   */
+  meta?: AISuggestionMeta;
+}
+
+/** 一条 question 建议的附加字段（v0.9 / R-AI-11） */
+export interface AISuggestionMeta {
+  /** 6 值枚举经窄校验；非法**落 null**，绝不写非法值 */
+  category?: QuestionCategory | null;
+  /** 「我的回答」原文，≤5000 字（空则整个键省略，不写空串） */
+  myAnswer?: string;
 }
 
 /* ===================== v0.9 简历模块（schemaVersion 4 → 5，纯 additive） =====================

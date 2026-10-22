@@ -111,6 +111,7 @@ import {
 import {
   QUESTION_TEXT_LIMIT,
   applyQuestionEdit,
+  deriveInitialNextReviewAt,
   buildQuestionRows,
   nextReviewAtFor,
   revertQuestionBatch,
@@ -126,6 +127,13 @@ import { buildRequestLogEntry, capRequestLog, fieldsFingerprint } from './ai/req
 import { createSuggestions } from './ai/suggestions';
 import { buildScenarioMessages, parseScenarioOutput, scenarioPluginId, toNewSuggestions } from './ai/scenarios';
 import { capReports, createReport, parseReport } from './ai/reports';
+import {
+  applyBulkAdoption,
+  bulkItemsToSuggestions,
+  parseBulkOutput,
+  type BulkAdoptInput,
+  type BulkAdoptResult,
+} from './ai/experienceBulk';
 import { REPORT_SCENARIO_TYPES } from './ai/types';
 import type { AiRunInput, AiRunOutcome, AiScenarioKey, AiUndo, NewAISuggestion, PreviewField } from './ai/types';
 import { PluginBroker, type SendAiInput } from './plugins/broker';
@@ -1464,6 +1472,34 @@ export default function App() {
     [experienceEditorId, mutate, pushUndo, showToast, undoLast],
   );
 
+  /**
+   * R-AI-11「全部采用」：单次 mutate 写 1 面经（补录复用已有壳）+ N 题 + overallNote 前缀段，
+   * 一个撤销点（⌘Z 整批回退 —— experiences/questions 与操作前 JSON 等价，验收 25）。
+   */
+  const adoptBulk = useCallback(
+    (input: BulkAdoptInput): BulkAdoptResult => {
+      const nowIso = new Date().toISOString();
+      // 结果经 box 中转：闭包内赋值的 let 会被 TS 收窄成初始值（never 陷阱），属性不会被
+      const box: { out: ReturnType<typeof applyBulkAdoption> | null } = { out: null };
+      mutate((draft) => {
+        box.out = applyBulkAdoption(draft, input, { nowIso });
+      });
+      const out = box.out;
+      if (!out) return { ok: false, error: '写入失败' };
+      if (!out.ok) return { ok: false, error: out.error };
+      pushUndo({ label: `录入面经 ${out.created} 题`, undo: { kind: 'ai', ai: out.undo } });
+      const nextReview = deriveInitialNextReviewAt(input.head.interviewDate, nowIso);
+      showToast(
+        `已录入 ${out.created} 题 · ${nextReview} 提醒复习${
+          input.unmatchedDropped > 0 ? ` · 已丢弃 ${input.unmatchedDropped} 段未识别原文` : ''
+        }`,
+        undoLast,
+      );
+      return { ok: true, experienceId: out.experienceId, created: out.created, dropped: input.unmatchedDropped };
+    },
+    [mutate, pushUndo, showToast, undoLast],
+  );
+
   /** 忽略建议：只翻状态、不写目标表，不进撤销栈（7 天后由启动 sweep 清理） */
   const rejectSuggestionsByIds = useCallback(
     (ids: string[]): void => {
@@ -1558,6 +1594,25 @@ export default function App() {
           });
           showToast('报告已生成 —— 本地合成，仅供参考');
           return { ok: true, kind: 'report', reportId: report.id };
+        }
+        // R-AI-11：整段录入要带回 head/unmatched/truncated，ScenarioParse 装不下 —— 独立分支
+        if (input.scenario === 'd14-bulk') {
+          const parsed = parseBulkOutput(result.text);
+          logPluginRequest(pluginId, hash, parsed.ok ? 'ok' : 'error', parsed.ok ? undefined : 'parse');
+          if (!parsed.ok) return { ok: false, error: parsed.error };
+          const list = createSuggestions(bulkItemsToSuggestions(pluginId, parsed.parsed.items), new Date().toISOString());
+          mutate((draft) => {
+            for (const suggestion of list) draft.aiSuggestions.push(suggestion);
+          });
+          showToast(`AI 拆出 ${list.length} 题 —— 勾选后写入，未识别段落不会丢`);
+          return {
+            ok: true,
+            kind: 'suggestions',
+            created: list.length,
+            ...(parsed.parsed.head ? { head: parsed.parsed.head } : {}),
+            ...(parsed.parsed.unmatched.length > 0 ? { unmatched: parsed.parsed.unmatched } : {}),
+            ...(parsed.parsed.truncated > 0 ? { truncated: parsed.parsed.truncated } : {}),
+          };
         }
         const parsed = parseScenarioOutput(input.scenario, result.text);
         logPluginRequest(pluginId, hash, parsed.ok ? 'ok' : 'error', parsed.ok ? undefined : 'parse');
@@ -2770,6 +2825,7 @@ export default function App() {
     deleteExperience,
     addQuestions,
     addQuickNote,
+    adoptBulk,
     updateQuestion,
     editQuestion,
     deleteQuestion,

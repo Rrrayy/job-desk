@@ -25,6 +25,7 @@ import {
 } from '../../lib/interview';
 import { clampText } from '../../lib/budget';
 import { AiScenarioPanel } from '../ai/AiScenarioPanel';
+import { BulkPastePanel } from './BulkPastePanel';
 
 const ANSWER_LIMIT = 5000;
 const NOTE_LIMIT = 3000;
@@ -44,6 +45,8 @@ export function ExperienceEditor({ api, experienceId, onClose }: ExperienceEdito
   const [confirmDelete, setConfirmDelete] = useState(false);
   /** v0.8 / D14：AI 整理面板（浮层，只在用户点了入口后才挂载） */
   const [aiOpen, setAiOpen] = useState(false);
+  /** v0.9 / R-AI-11：整段补录面板（同一 BulkPastePanel 组件的第二个入口，验收 30） */
+  const [bulkOpen, setBulkOpen] = useState(false);
 
   if (!experience) {
     return (
@@ -198,6 +201,16 @@ export function ExperienceEditor({ api, experienceId, onClose }: ExperienceEdito
               >
                 🤖 用 AI 整理这段面经
               </button>
+              <button
+                type="button"
+                className="btn btn--small"
+                data-testid="bulk-paste-entry"
+                disabled={!api.ai.ready}
+                title={api.ai.ready ? '粘一整段记录，AI 拆成题补进这场面经' : api.ai.readyReason ?? 'AI 未配置'}
+                onClick={() => setBulkOpen(true)}
+              >
+                📋 继续粘贴整段
+              </button>
               <span className="field__hint">
                 {api.ai.ready ? '粘贴一段零散记录，AI 拆成题，逐题勾选才写入' : api.ai.readyReason}
               </span>
@@ -245,6 +258,27 @@ export function ExperienceEditor({ api, experienceId, onClose }: ExperienceEdito
 
       {aiOpen ? (
         <AiScenarioPanel api={api} scenario="d14" targetId={experience.id} onClose={() => setAiOpen(false)} />
+      ) : null}
+
+      {bulkOpen ? (
+        <div className="drawer-overlay" onClick={() => setBulkOpen(false)}>
+          <aside className="drawer drawer--exp" onClick={(event) => event.stopPropagation()}>
+            <header className="drawer__head">
+              <h2 className="drawer__title">整段补录 —— {experience.companyName}</h2>
+              <button type="button" className="icon-btn" onClick={() => setBulkOpen(false)} aria-label="关闭">
+                ✕
+              </button>
+            </header>
+            <div className="drawer__body">
+              <BulkPastePanel
+                api={api}
+                existingExperienceId={experience.id}
+                onClose={() => setBulkOpen(false)}
+                onAdopted={() => setBulkOpen(false)}
+              />
+            </div>
+          </aside>
+        </div>
       ) : null}
     </div>
   );

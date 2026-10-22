@@ -272,6 +272,14 @@ function normalizeQuestion(raw: unknown, index: number): { ok: true; value: Ques
       lastReviewedAt: asOptionalString(raw.lastReviewedAt),
       createdAt: asString(raw.createdAt) || new Date().toISOString(),
       updatedAt: asString(raw.updatedAt) || new Date().toISOString(),
+      // v0.9 / R-AI-11：order 只认 1..999 的正整数（代码生成的题号）；非法值省略键，
+      // 绝不写 0 / 负数 / 小数进去 —— 老备份往返后这一项不凭空出现
+      ...(typeof raw.order === 'number' &&
+      Number.isInteger(raw.order) &&
+      raw.order >= 1 &&
+      raw.order <= 999
+        ? { order: raw.order }
+        : {}),
     },
   };
 }
@@ -406,6 +414,26 @@ function normalizeAiSuggestionRow(raw: unknown, index: number): { ok: true; valu
   if (evidence) value.evidence = evidence;
   const decidedAt = asOptionalString(raw.decidedAt);
   if (decidedAt) value.decidedAt = decidedAt;
+  // v0.9 / R-AI-11：meta 白名单式重建 —— 非法 category 省略该键、myAnswer 截断 5000，
+  // 空白名单对象不写键（老备份往返后 meta 不凭空出现）
+  if (isRecord(raw.meta)) {
+    const rawMeta = raw.meta;
+    const category =
+      rawMeta.category === null
+        ? null
+        : typeof rawMeta.category === 'string' && CATEGORIES.includes(rawMeta.category as QuestionCategory)
+          ? (rawMeta.category as QuestionCategory)
+          : undefined;
+    const myAnswer = asOptionalString(rawMeta.myAnswer);
+    if (myAnswer) {
+      value.meta = {
+        ...(category !== undefined ? { category } : {}),
+        myAnswer: myAnswer.slice(0, 5000),
+      };
+    } else if (category !== undefined) {
+      value.meta = { category };
+    }
+  }
   return { ok: true, value };
 }
 

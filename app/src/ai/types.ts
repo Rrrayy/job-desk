@@ -9,6 +9,7 @@
 import type {
   AISettings,
   AISuggestion,
+  AISuggestionMeta,
   AISuggestionStatus,
   AISuggestionTargetType,
   RequestLog,
@@ -54,6 +55,8 @@ export interface NewAISuggestion {
   content: string;
   /** D17：证据对照（原文片段） */
   evidence?: string;
+  /** R-AI-11：question 建议的类别 / 我的回答（窄校验后的值才允许进来） */
+  meta?: AISuggestionMeta;
 }
 
 /**
@@ -61,7 +64,7 @@ export interface NewAISuggestion {
  * 与 StatusUndo/SyncUndo 同构：只记「这次操作改了什么」，不复制整库。
  */
 export interface AiUndoTarget {
-  table: 'questions' | 'notes' | 'staging' | 'resumes';
+  table: 'questions' | 'notes' | 'staging' | 'resumes' | 'experiences';
   id: string;
   /** 被改的字段名（新建行为空串） */
   field: string;
@@ -82,15 +85,36 @@ export interface AiUndo {
   /** 参与本次确认的建议原值（revert 时恢复 status='pending'） */
   suggestions: AISuggestion[];
   targets: AiUndoTarget[];
+  /**
+   * ★ R-AI-11：本次「全部采用」新建的 experience id。与 targets 分工（A-16）：
+   * **删行走这里，字段回写走 targets**，两条通道不重叠 —— 删掉一整条面经
+   * 连带它的题目一起消失，值得一个显式的名字，而不是混进「字段被改」的语义里。
+   */
+  createdExperiences?: string[];
 }
 
 /* ---------------------- 内置场景运行时（v0.8 / T05；v0.9 / T07 扩四个） ---------------------- */
 
 /** 内置场景键；与 prompts.ts 的 AI_SCENARIOS 一一对应 */
-export type AiScenarioKey = 'd14' | 'd15' | 'd17' | 'd19-diag' | 'd19-polish' | 'd19-jd' | 'd20-analysis';
+export type AiScenarioKey =
+  | 'd14'
+  | 'd15'
+  | 'd17'
+  | 'd19-diag'
+  | 'd19-polish'
+  | 'd19-jd'
+  | 'd20-analysis'
+  | 'd14-bulk'; // ★ R-AI-11：与 d14 并列但独立，不动 d14 的输出契约（A-14）
 
 /** 产出建议的场景（写 AISuggestion）；报告类场景（d19-diag / d20-analysis）不在此列 */
-export const SUGGESTION_SCENARIOS: readonly AiScenarioKey[] = ['d14', 'd15', 'd17', 'd19-polish', 'd19-jd'];
+export const SUGGESTION_SCENARIOS: readonly AiScenarioKey[] = [
+  'd14',
+  'd15',
+  'd17',
+  'd19-polish',
+  'd19-jd',
+  'd14-bulk',
+];
 
 /** 报告类场景 → AIReport.targetType 的映射（写报告，不写建议） */
 export const REPORT_SCENARIO_TYPES = {
@@ -142,8 +166,23 @@ export interface AiRunInput {
  * 断网 / 模型胡说八道都只该换来一句内联人话，不该是错误弹窗）。
  * 成功两分支：建议类 = 入库条数；报告类 = 报告 id（卡片区负责展示）。
  */
+/** R-AI-11：AI 对头部信息的建议 —— 只做 chip 提示，不覆盖用户已填；日期永远不会来自 AI */
+export interface BulkHeadSuggestion {
+  companyName?: string;
+  jobTitle?: string;
+  round?: number | null;
+}
+
 export type AiRunOutcome =
-  | { ok: true; kind: 'suggestions'; created: number }
+  | {
+      ok: true;
+      kind: 'suggestions';
+      created: number;
+      /** 仅 d14-bulk：头部建议 / 未识别段落 / 被省略条数。其余场景不写（Q11 裁决） */
+      head?: BulkHeadSuggestion;
+      unmatched?: string[];
+      truncated?: number;
+    }
   | { ok: true; kind: 'report'; reportId: string }
   | { ok: false; error: string };
 

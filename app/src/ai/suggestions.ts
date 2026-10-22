@@ -21,6 +21,7 @@ import type {
 import { uid } from '../lib/util';
 import { FIELD_META } from '../resume/templates/base';
 import type { AiUndo, AiUndoTarget, NewAISuggestion } from './types';
+import type { AISuggestionMeta } from '../types';
 
 /** 简历行是否在回收站（与 lib/trash.isDeleted 同口径；就地实现避免 trash ↔ ai 循环导入） */
 function resumeGone(resume: { deletedAt?: string | null }): boolean {
@@ -65,6 +66,7 @@ export function createSuggestions(inputs: NewAISuggestion[], nowIso: string): AI
     fieldPath: input.fieldPath,
     content: input.content,
     ...(input.evidence ? { evidence: input.evidence } : {}),
+    ...(input.meta ? { meta: input.meta } : {}),
     status: 'pending' as const,
     createdAt: nowIso,
   }));
@@ -141,13 +143,16 @@ function writeTarget(
       // 新建题：targetId 为空，接受时才落 Question 行
       const experienceId = opts.resolveQuestionExperienceId?.(suggestion) ?? null;
       if (!experienceId) return null;
+      const meta: AISuggestionMeta = suggestion.meta ?? {};
       const row: Question = {
         id: uid('q'),
         experienceId,
-        category: null,
+        // R-AI-11：类别/我的回答随建议的 meta 落行（已过窄校验，非法值到不了这里）
+        category: meta.category ?? null,
         difficulty: 2,
         text: suggestion.fieldPath === 'myAnswer' ? '' : suggestion.content,
         ...(suggestion.fieldPath === 'myAnswer' ? { myAnswer: suggestion.content } : {}),
+        ...(meta.myAnswer && suggestion.fieldPath !== 'myAnswer' ? { myAnswer: meta.myAnswer } : {}),
         mastery: 0,
         tags: [],
         reviewCount: 0,
@@ -264,7 +269,12 @@ export function rejectSuggestions(db: DB, ids: ReadonlySet<string>, nowIso: stri
  * 这里回退的正是用户**确认过的** AI 写入，不存在误伤手写内容。
  */
 export function revertAi(db: DB, undo: AiUndo): void {
-  // 建议状态恢复（按原值覆盖，连 decidedAt 一起抹掉）
+  // ① R-AI-11：先按 createdExperiences 整行移除新建的面经壳
+  //（连带它的题目由下面 targets 的既有 questions 分支逐条移除 —— A-16 分工）
+  for (const experienceId of undo.createdExperiences ?? []) {
+    db.experiences = db.experiences.filter((item) => item.id !== experienceId);
+  }
+  // ② 建议状态恢复（按原值覆盖，连 decidedAt 一起抹掉）
   for (const original of undo.suggestions) {
     const current = db.aiSuggestions.find((item) => item.id === original.id);
     if (!current) continue;
@@ -285,7 +295,14 @@ export function revertAi(db: DB, undo: AiUndo): void {
       // resumes 没有「新建行」形态（AI 只改字段，不建简历）——防御到这里就够了
       continue;
     }
-    if (target.table === 'staging') {
+    if (target.table === 'experiences') {
+      // R-AI-11 补录路径：还原已有面经的 overallNote 原值（rowExisted 恒 true）。
+      // 新建路径下这个壳已被 ① 删掉 —— find 不到就跳过，不要复活它。
+      const experience = db.experiences.find((item) => item.id === target.id);
+      if (!experience) continue;
+      if (target.prevValue === undefined) delete experience.overallNote;
+      else experience.overallNote = target.prevValue;
+    } else if (target.table === 'staging') {
       const item = db.staging.find((entry) => entry.id === target.id);
       if (!item) continue;
       const parsed = item.parsed as unknown as Record<string, unknown>;
