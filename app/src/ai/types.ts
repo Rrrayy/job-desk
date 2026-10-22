@@ -79,4 +79,9 @@ export interface PreviewField {
   value: string;
   /** 锁定字段：必须发送，勾选框禁用（如 D17 的用户粘贴原文） */
   locked?: boolean;
+  /**
+   * 显式默认勾选（v0.8 插件字段用）。缺省时按 SEND_PREVIEW_DEFAULT_CHECKED 基线；
+   * 内置场景不传 —— 新增出境字段必须默认不勾（PRD 验收 8）。
+   */
+  defaultChecked?: boolean;
 }

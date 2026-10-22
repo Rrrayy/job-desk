@@ -27,7 +27,13 @@ export const SEND_PREVIEW_DEFAULT_CHECKED: ReadonlySet<string> = new Set([
 function initialChecked(fields: PreviewField[]): Set<string> {
   const checked = new Set<string>();
   for (const field of fields) {
-    if (field.locked || SEND_PREVIEW_DEFAULT_CHECKED.has(field.name)) checked.add(field.name);
+    if (
+      field.locked ||
+      field.defaultChecked === true ||
+      (field.defaultChecked === undefined && SEND_PREVIEW_DEFAULT_CHECKED.has(field.name))
+    ) {
+      checked.add(field.name);
+    }
   }
   return checked;
 }

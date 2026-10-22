@@ -50,6 +50,18 @@
  *   SyncDrawer.handleManualStatus（约 2 KB）及样式，实测 +13 KB（531→544），越过 WARN，
  *   离 FAIL 仍有 16 KB。红线不动，构成在此留痕。
  *
+ * ★ v0.8（插件框架 + AI 基础版 + 求职管线扩展）：WARN 540→575、FAIL 560→590。
+ *   这是**产品决策**，不是技术顺手。用户 2026-10-22 明确批准抬线（"不用砍功能 可以抬线"）。
+ *   实际构成（T01–T05 累计，实测而非估算）：
+ *     管线数据层与迁移 3→4      ≈ +6.5 KB
+ *     管线 UI（7 列/徽章/面板）  ≈ +3.3 KB
+ *     AI 核心（gateway/suggestions/日志） ≈ +3.7 KB
+ *     插件宿主（broker/sandbox/storage/manifest）+ 管理面板 ≈ +18 KB
+ *       —— 这一项远超 ARCH 的 3 KB 预估：五项强制校验 + 逐条 RPC 错误码 + 面板 UI 都是老实代码
+ *   T03 时 gateway/预览被 tree-shake 掉，T04 接线后才真正进产物，所以数字是台阶式的。
+ *   落点预计 584–586 KB，FAIL 590 只留 4–6 KB 余量 —— 下一版若还要加功能，必须先做体积优化，
+ *   不能再抬线。不抬到 600 的空白支票承诺继续有效。
+ *
  * ★ 改动阈值必须写进 docs/RELEASE-NOTES：涨红线不是技术决策，是产品决策。
  */
 
@@ -57,8 +69,8 @@ import { existsSync, statSync } from 'node:fs';
 import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
-const WARN_BYTES = 540 * 1024;
-const FAIL_BYTES = 560 * 1024;
+const WARN_BYTES = 575 * 1024;
+const FAIL_BYTES = 590 * 1024;
 
 /**
  * 当前版本的体积基线（每次发版更新，用来在 CI 里显示「这次改动胖了多少」）。

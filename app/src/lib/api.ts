@@ -22,6 +22,7 @@ import type {
 } from '../types';
 import type { MergePlan, PlannedRow } from './sync/types';
 import type { FileLinkCapability } from './fileLink/handle';
+import type { PluginPermission, PluginRegistration } from '../plugins/types';
 
 export type ViewKey = 'today' | 'board' | 'list' | 'calendar' | 'insights';
 
@@ -286,6 +287,19 @@ export interface AppApi {
     clearRequestLog: () => void;
   };
 
-  /** v0.8：插件宿主分组。T04 落 broker/sandbox 后补齐 —— 占位防止场景提前接线 */
-  plugins: Record<string, never>;
+  /** v0.8：插件宿主分组（T04）。协议在 plugins/broker，存储在 plugins/storage */
+  plugins: {
+    /** 注册表（持久化在 pluginStorage 的 host 命名空间） */
+    list: () => PluginRegistration[];
+    setEnabled: (pluginId: string, enabled: boolean) => void;
+    uninstall: (pluginId: string) => void;
+    /** 逐项授权（granted 是清单声明的子集） */
+    setPermission: (pluginId: string, permission: PluginPermission, granted: boolean) => void;
+    /** 一键清空请求日志（同 ai.clearRequestLog） */
+    clearLogs: () => void;
+    /** 加载插件包（单 html，内联 manifest）；返回错误文案或 null */
+    loadPackageFile: (file: File) => Promise<string | null>;
+    /** 沙箱 iframe 挂载后注册 contentWindow（broker 来源校验用） */
+    registerWindow: (pluginId: string, win: Window | null) => void;
+  };
 }

@@ -12,6 +12,7 @@ import { cx, companyLabel } from '../lib/util';
 import { PLATFORM_LABEL } from '../adapters/registry';
 import { CommunityImport } from './interview/CommunityImport';
 import { FileLinkPanel } from './FileLinkPanel';
+import { PluginsPanel } from './plugins/PluginsPanel';
 
 const PLATFORMS: PlatformId[] = ['boss', 'shixiseng', 'nowcoder', 'liepin', 'custom'];
 
@@ -508,6 +509,20 @@ export function SettingsDrawer({ api, onClose, importError, onDismissError, tras
               onSaveAs={() => void api.fileLink.saveAs()}
               onReplay={() => void api.fileLink.replayPending()}
               onToggleEncryption={api.fileLink.toggleEncryption}
+            />
+          </section>
+
+          <section className="drawer__section">
+            <div className="drawer__section-head">
+              <h3 className="drawer__section-title">插件</h3>
+            </div>
+            <PluginsPanel
+              plugins={api.plugins.list()}
+              onEnable={api.plugins.setEnabled}
+              onGrant={api.plugins.setPermission}
+              onUninstall={api.plugins.uninstall}
+              onLoadFile={api.plugins.loadPackageFile}
+              requestLogs={api.db.requestLog}
             />
           </section>
 

@@ -82,7 +82,24 @@ import { deriveInitialNextReviewAt, nextReviewAtFor } from './lib/interview';
 import { markdownFileName, renderManyMarkdown } from './lib/interviewMarkdown';
 import { applySuggestions, rejectSuggestions, revertAi } from './ai/suggestions';
 import { checkAiReady } from './ai/settings';
-import type { AiUndo } from './ai/types';
+import { chatCompletions, GatewayError } from './ai/gateway';
+import { buildRequestLogEntry, capRequestLog, fieldsFingerprint } from './ai/requestLog';
+import { createSuggestions } from './ai/suggestions';
+import type { AiUndo, NewAISuggestion, PreviewField } from './ai/types';
+import { PluginBroker, type SendAiInput } from './plugins/broker';
+import { parseManifest } from './plugins/manifest';
+import {
+  PLUGIN_HTML_KEY,
+  pluginIdForName,
+  readRegistry,
+  storageGet,
+  storagePurgePlugin,
+  storageSet,
+  writeRegistry,
+} from './plugins/storage';
+import { RPC_VERSION, type PluginPermission, type PluginRegistration, type RpcEnvelope, type RpcErrorCode } from './plugins/types';
+import { PluginFrame } from './components/plugins/PluginsPanel';
+import { SendPreviewDialog } from './components/ai/SendPreviewDialog';
 import { detectCapture, pickAdapter, toAdapterInput } from './lib/sync/capture';
 import {
   bindHandle,
@@ -1108,6 +1125,230 @@ export default function App() {
     showToast('请求日志已清空');
   }, [mutate, showToast]);
 
+  /* ------------------------------------------------------------ 插件宿主（v0.8 / T04） */
+
+  const pluginWindowsRef = useRef<Map<string, Window>>(new Map());
+  const [aiPreviewRequest, setAiPreviewRequest] = useState<null | {
+    pluginId: string;
+    scenario: string;
+    fields: PreviewField[];
+    resolve: (checked: Record<string, string> | null) => void;
+  }>(null);
+
+  const registerPluginWindow = useCallback((pluginId: string, win: Window | null): void => {
+    if (win) pluginWindowsRef.current.set(pluginId, win);
+    else pluginWindowsRef.current.delete(pluginId);
+  }, []);
+
+  const postToPlugin = useCallback((pluginId: string, envelope: RpcEnvelope): void => {
+    pluginWindowsRef.current.get(pluginId)?.postMessage(envelope, '*');
+  }, []);
+
+  /** RequestLog 记账：只在真实发送/拒绝时写，且永不落原文（字段白名单在 buildRequestLogEntry） */
+  const logPluginRequest = useCallback(
+    (pluginId: string, hash: string, status: 'ok' | 'error', errorCode?: string): void => {
+      const ai = dbRef.current.settings.ai;
+      mutate((draft) => {
+        const entry = buildRequestLogEntry(
+          {
+            pluginId,
+            baseUrl: ai?.baseURL ?? '',
+            model: ai?.model ?? '',
+            sentFieldsHash: hash,
+            status,
+            ...(errorCode ? { errorCode } : {}),
+          },
+          new Date().toISOString(),
+        );
+        draft.requestLog = capRequestLog([...draft.requestLog, entry]);
+      });
+    },
+    [mutate],
+  );
+
+  /** 真实 AI 发送（插件 ai_request 的数据面）：指纹 → gateway → 日志 → 流推送 */
+  const sendAiForPlugin = useCallback(
+    async (input: SendAiInput): Promise<{ text: string } | null> => {
+      const ai = dbRef.current.settings.ai;
+      if (!ai?.baseURL || !ai.model) throw new Error('AI 服务未配置');
+      const hash = await fieldsFingerprint(input.checked);
+      try {
+        const result = await chatCompletions(ai, {
+          messages: input.messages,
+          stream: input.stream,
+          onDelta: input.stream
+            ? (delta) =>
+                postToPlugin(input.pluginId, {
+                  v: RPC_VERSION,
+                  id: input.requestId,
+                  pluginId: input.pluginId,
+                  type: 'ai_chunk',
+                  payload: { requestId: input.requestId, delta },
+                })
+            : undefined,
+        });
+        if (input.stream) {
+          postToPlugin(input.pluginId, {
+            v: RPC_VERSION,
+            id: input.requestId,
+            pluginId: input.pluginId,
+            type: 'ai_done',
+            payload: { requestId: input.requestId, ...(result.finishReason ? { finishReason: result.finishReason } : {}) },
+          });
+        }
+        logPluginRequest(input.pluginId, hash, 'ok');
+        return input.stream ? null : { text: result.text };
+      } catch (error) {
+        const code = error instanceof GatewayError ? error.code : 'ai_failed';
+        logPluginRequest(input.pluginId, hash, 'error', code);
+        if (input.stream) {
+          // 流式失败走 result.ok=false（ARCH：ai_done 只表正常结束）
+          postToPlugin(input.pluginId, {
+            v: RPC_VERSION,
+            id: input.requestId,
+            pluginId: input.pluginId,
+            type: 'result',
+            payload: { ok: false, code: 'ai_failed', message: error instanceof Error ? error.message : String(error) },
+          });
+          return null;
+        }
+        throw error;
+      }
+    },
+    [logPluginRequest, postToPlugin],
+  );
+
+  const reportPluginSuggestions = useCallback(
+    (_pluginId: string, list: NewAISuggestion[]): void => {
+      mutate((draft) => {
+        for (const suggestion of createSuggestions(list, new Date().toISOString())) draft.aiSuggestions.push(suggestion);
+      });
+      showToast(`插件提交了 ${list.length} 条 AI 建议（待你确认）`);
+    },
+    [mutate, showToast],
+  );
+
+  const broker = useMemo(
+    () =>
+      new PluginBroker({
+        listPlugins: () => readRegistry(dbRef.current),
+        windowOf: (pluginId) => pluginWindowsRef.current.get(pluginId) ?? null,
+        post: postToPlugin,
+        storageGet: (pluginId, key) => storageGet(dbRef.current, pluginId, key),
+        storageSet: (pluginId, key, value) => storageSet(dbRef.current, pluginId, key, value, new Date().toISOString()),
+        storageDelete: (pluginId, key) => {
+          mutate((draft) => {
+            const prefix = `${pluginId}::`;
+            draft.pluginStorage = draft.pluginStorage.filter((row) => !(row.id.startsWith(prefix) && row.key === key));
+          });
+        },
+        storageKeys: (pluginId) => {
+          const prefix = `${pluginId}::`;
+          return dbRef.current.pluginStorage.filter((row) => row.id.startsWith(prefix)).map((row) => row.key);
+        },
+        aiReady: () => checkAiReady(dbRef.current.settings.ai).ready,
+        aiConfig: () => {
+          const ai = dbRef.current.settings.ai;
+          return ai?.baseURL && ai.model ? { baseURL: ai.baseURL, model: ai.model, isLocal: ai.isLocal } : null;
+        },
+        openPreview: (input) =>
+          new Promise<Record<string, string> | null>((resolve) => {
+            setAiPreviewRequest({ ...input, resolve });
+          }),
+        sendAi: sendAiForPlugin,
+        logRefusal: (pluginId: string, _scenario: string, errorCode: RpcErrorCode) =>
+          logPluginRequest(pluginId, 'refused', 'error', errorCode),
+        reportSuggestions: reportPluginSuggestions,
+      }),
+    [postToPlugin, sendAiForPlugin, reportPluginSuggestions, logPluginRequest, mutate],
+  );
+
+  // 插件 → 宿主 的唯一入口：window message（来源/信封校验都在 broker 内）
+  useEffect(() => {
+    const handler = (event: MessageEvent): void => broker.handleEvent(event);
+    window.addEventListener('message', handler);
+    return () => window.removeEventListener('message', handler);
+  }, [broker]);
+
+  const setPluginEnabled = useCallback(
+    (pluginId: string, enabled: boolean): void => {
+      mutate((draft) => {
+        const next = readRegistry(draft).map((item) => (item.pluginId === pluginId ? { ...item, enabled } : item));
+        writeRegistry(draft, next, new Date().toISOString());
+      });
+    },
+    [mutate],
+  );
+
+  const grantPluginPermission = useCallback(
+    (pluginId: string, permission: PluginPermission, granted: boolean): void => {
+      mutate((draft) => {
+        const next = readRegistry(draft).map((item) => {
+          if (item.pluginId !== pluginId) return item;
+          const grantedSet = new Set(item.granted);
+          if (granted) grantedSet.add(permission);
+          else grantedSet.delete(permission);
+          return { ...item, granted: [...grantedSet] };
+        });
+        writeRegistry(draft, next, new Date().toISOString());
+      });
+    },
+    [mutate],
+  );
+
+  const uninstallPlugin = useCallback(
+    (pluginId: string): void => {
+      mutate((draft) => {
+        writeRegistry(
+          draft,
+          readRegistry(draft).filter((item) => item.pluginId !== pluginId),
+          new Date().toISOString(),
+        );
+        storagePurgePlugin(draft, pluginId);
+      });
+      pluginWindowsRef.current.delete(pluginId);
+      showToast('插件已卸载（其存储数据一并清除）');
+    },
+    [mutate, showToast],
+  );
+
+  const loadPluginPackage = useCallback(
+    async (file: File): Promise<string | null> => {
+      const html = await file.text();
+      const parsed = parseManifest(html);
+      if (!parsed.ok) return parsed.error;
+      const manifest = parsed.manifest;
+      const pluginId = pluginIdForName(manifest.name);
+      let error: string | null = null;
+      mutate((draft) => {
+        const list = readRegistry(draft);
+        const existing = list.find((item) => item.pluginId === pluginId);
+        const registration: PluginRegistration = {
+          pluginId,
+          name: manifest.name,
+          version: manifest.version,
+          permissions: manifest.permissions,
+          enabled: existing?.enabled ?? false,
+          granted: existing?.granted ?? [],
+        };
+        const next = existing
+          ? list.map((item) => (item.pluginId === pluginId ? registration : item))
+          : [...list, registration];
+        writeRegistry(draft, next, new Date().toISOString());
+        // html 存进插件自己的命名空间（reload 后面板/宿主能重建 iframe）
+        const storageError = storageSet(draft, pluginId, PLUGIN_HTML_KEY, html, new Date().toISOString());
+        // storageError 有两种：包体超限（quota）与包体不合规（bad_envelope，如 key 非法/不可序列化）
+        if (storageError) {
+          error = storageError === 'storage_quota' ? '插件包过大（超过 256 KB 上限）' : '插件包格式不合规，无法保存';
+        }
+      });
+      if (error) return error;
+      showToast(`插件「${manifest.name}」已加载：默认不授任何权限，请逐项授权后启用`);
+      return null;
+    },
+    [mutate, showToast],
+  );
+
   const exportExperienceMarkdown = useCallback(
     (experiences: InterviewExperience[], opts: { desensitize: boolean }): void => {
       if (experiences.length === 0) {
@@ -1970,6 +2211,9 @@ export default function App() {
   /** AI 就绪状态（baseURL+model 已配置）。false 时入口置灰 + 内联原因，不弹错误轰炸 */
   const aiReadiness = useMemo(() => checkAiReady(db.settings.ai), [db.settings.ai]);
 
+  /** 插件注册表（pluginStorage 的 host 命名空间，reload 后原样恢复） */
+  const pluginRegistry = useMemo<PluginRegistration[]>(() => readRegistry(db), [db]);
+
   const api: AppApi = {
     // ★ 视图拿到的是**已摘掉回收站**的库；回收站页与设置页直接读 `db`（含已删除）。
     db: viewDB,
@@ -2066,7 +2310,15 @@ export default function App() {
       rejectSuggestions: rejectSuggestionsByIds,
       clearRequestLog,
     },
-    plugins: {} as Record<string, never>, // T04 落 broker/sandbox 后补齐
+    plugins: {
+      list: () => pluginRegistry,
+      setEnabled: setPluginEnabled,
+      uninstall: uninstallPlugin,
+      setPermission: grantPluginPermission,
+      clearLogs: clearRequestLog,
+      loadPackageFile: loadPluginPackage,
+      registerWindow: registerPluginWindow,
+    },
   };
 
   const showWelcome = db.applications.length === 0 && db.companies.length === 0 && !welcomeDismissed;
@@ -2302,6 +2554,47 @@ export default function App() {
           setToast(null);
         }}
       />
+
+      {/*
+        v0.8：已启用插件的沙箱 iframe（宿主统一挂载，面板关闭后仍存活，
+        broker 才能一直校验 message 来源）。隐藏容器 —— 插件 v0.8 只经 RPC 交互。
+      */}
+      {pluginRegistry
+        .filter((plugin) => plugin.enabled)
+        .map((plugin) => {
+          const html = storageGet(db, plugin.pluginId, PLUGIN_HTML_KEY);
+          if (typeof html !== 'string') return null;
+          return (
+            <div key={plugin.pluginId} style={{ display: 'none' }}>
+              <PluginFrame
+                pluginId={plugin.pluginId}
+                html={html}
+                name={plugin.name}
+                registerWindow={registerPluginWindow}
+              />
+            </div>
+          );
+        })}
+
+      {/* v0.8：插件 ai_request 触发的 D13 发送预览（强制弹层，取消 = 拒发） */}
+      {aiPreviewRequest ? (
+        <SendPreviewDialog
+          title={`插件 AI 请求 · ${aiPreviewRequest.scenario}`}
+          pluginId={aiPreviewRequest.pluginId}
+          baseURL={db.settings.ai?.baseURL ?? ''}
+          model={db.settings.ai?.model ?? ''}
+          isLocal={db.settings.ai?.isLocal ?? false}
+          fields={aiPreviewRequest.fields}
+          onConfirm={(checked) => {
+            aiPreviewRequest.resolve(checked);
+            setAiPreviewRequest(null);
+          }}
+          onCancel={() => {
+            aiPreviewRequest.resolve(null);
+            setAiPreviewRequest(null);
+          }}
+        />
+      ) : null}
 
       {showWelcome ? (
         <Welcome

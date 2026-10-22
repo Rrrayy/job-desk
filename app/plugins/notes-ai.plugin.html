@@ -1,0 +1,131 @@
+<!doctype html>
+<!--
+  插件示例包（v0.8 / T04）：笔记 AI 助手。
+  单 html 自包含：内联 manifest + RPC client（≈2 KB），演示三能力：
+  storage（读写本插件命名空间）、ai_request（经 D13 预览代理发送）、
+  suggestion_report（建议制入库）。
+
+  ★ 本文件不进核心 bundle，独立分发（双击即可在浏览器里单独打开 ——
+    自带 CSP meta，即使脱离宿主沙箱也发不出任何网络请求）。
+-->
+<html lang="zh-CN">
+  <head>
+    <meta charset="utf-8" />
+    <title>notes-ai 插件</title>
+    <!-- 自带 CSP（宿主会剥掉重注入自己那份，这里保底）：connect-src 'none' = 零网络 -->
+    <meta
+      http-equiv="Content-Security-Policy"
+      content="default-src 'none'; script-src 'unsafe-inline'; style-src 'unsafe-inline'; img-src data:; connect-src 'none'"
+    />
+    <style>
+      body { font: 13px/1.6 sans-serif; margin: 8px; color: #222; background: #fff; }
+      button { margin: 2px; padding: 2px 8px; }
+      pre { background: #f5f5f5; padding: 4px; white-space: pre-wrap; }
+    </style>
+  </head>
+  <body>
+    <h3>笔记 AI 助手（示例插件）</h3>
+    <div>
+      <button id="btn-storage">存一条键值</button>
+      <button id="btn-ai">发起 AI 请求（走宿主预览）</button>
+      <button id="btn-suggest">提交一条 AI 建议</button>
+      <button id="btn-probe">尝试直连网络（应被 CSP 拦截）</button>
+    </div>
+    <pre id="out">尚未握手。</pre>
+
+    <script type="application/json" id="plugin-manifest">
+      {
+        "name": "笔记 AI 助手",
+        "version": "1.0.0",
+        "permissions": ["storage", "network:notes-cleanup", "suggest:application_note"]
+      }
+    </script>
+
+    <script>
+      (function () {
+        var out = document.getElementById('out');
+        var log = function (text) { out.textContent += '\n' + text; };
+        var manifest = JSON.parse(document.getElementById('plugin-manifest').textContent);
+        var pluginId = '?'; // 握手后由宿主告知真实 id
+        var seq = 0;
+        var pending = {};
+
+        window.addEventListener('message', function (event) {
+          var msg = event.data;
+          if (!msg || msg.v !== 1) return;
+          if (msg.type === 'ready') {
+            pluginId = msg.payload.pluginId;
+            log('已握手：' + pluginId + '，授权 ' + JSON.stringify(msg.payload.grantedPermissions));
+            return;
+          }
+          if (msg.type === 'result' && pending[msg.id]) {
+            pending[msg.id](msg.payload);
+            delete pending[msg.id];
+          }
+        });
+
+        function call(type, payload) {
+          var id = 'req' + ++seq;
+          return new Promise(function (resolve) {
+            pending[id] = resolve;
+            parent.postMessage({ v: 1, id: id, pluginId: pluginId, type: type, payload: payload }, '*');
+          });
+        }
+
+        window.addEventListener('load', function () {
+          parent.postMessage(
+            { v: 1, id: 'hello', pluginId: pluginId, type: 'hello',
+              payload: { name: manifest.name, version: manifest.version, permissions: manifest.permissions } },
+            '*'
+          );
+        });
+
+        document.getElementById('btn-storage').onclick = function () {
+          call('storage_set', { key: 'last-run', value: { at: new Date().toISOString() } }).then(function (r) {
+            if (!r.ok) return log('storage_set 失败：' + r.code);
+            call('storage_get', { key: 'last-run' }).then(function (r2) {
+              log(r2.ok ? 'storage 往返成功：' + JSON.stringify(r2.data) : 'storage_get 失败：' + r2.code);
+            });
+          });
+        };
+
+        document.getElementById('btn-ai').onclick = function () {
+          call('ai_request', {
+            requestId: 'req' + ++seq,
+            scenario: 'notes-cleanup',
+            fields: [
+              { key: 'note', label: '我的笔记片段', value: '今天面试问了事件循环……', defaultChecked: false, locked: true }
+            ],
+            messages: [
+              { role: 'user', content: '帮我整理这段笔记：{{field:note}}' }
+            ]
+          }).then(function (r) {
+            log(r.ok ? 'AI 返回：' + JSON.stringify(r.data).slice(0, 200) : 'AI 请求失败：' + r.code + ' ' + r.message);
+          });
+        };
+
+        document.getElementById('btn-suggest').onclick = function () {
+          call('suggestion_report', [
+            { targetType: 'application_note', targetId: null, fieldPath: 'content', content: '示例：可以补一条跟进消息草稿' }
+          ]).then(function (r) {
+            log(r.ok ? '建议已入库（pending）×' + r.data.count : '建议被拒：' + r.code + ' ' + r.message);
+          });
+        };
+
+        // D16 第 2 类自检：直连必须被 CSP 拦截（结果给 smoke 脚本断言）
+        document.getElementById('btn-probe').onclick = function () {
+          fetch('http://127.0.0.1:59999/exfil', { mode: 'no-cors' }).then(
+            function () { window.__NET = 'SENT'; log('★ 越权：请求发出去了！'); },
+            function (e) { window.__NET = 'BLOCKED:' + e.name; log('直连被拦截：' + e.name); }
+          );
+        };
+        // 页面加载即自检一次（smoke 不点按钮也能断言）
+        fetch('http://127.0.0.1:59999/exfil', { mode: 'no-cors' }).then(
+          function () { window.__NET = 'SENT'; },
+          function (e) { window.__NET = 'BLOCKED:' + e.name; }
+        );
+        window.__ORIGIN = String(self.origin);
+      })();
+    </script>
+  </body>
+</html>
