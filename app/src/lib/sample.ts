@@ -662,5 +662,9 @@ export function buildSampleDB(now: Date = new Date()): DB {
     pluginStorage: [],
     requestLog: [],
     aiSuggestions: [],
+    // v0.9 简历三表：示例库同样空表起步（示例数据不含简历，不替用户编一份）
+    resumes: [],
+    resumeVersions: [],
+    aiReports: [],
   };
 }

@@ -150,7 +150,10 @@ function DataTab({ api }: { api: AppApi }) {
           ) : (
             <ul className="stat-list">
               {resumes.map((stat) => (
-                <li key={stat.version} className="stat-row">
+                // v0.9：聚合键从「版本名」改成了「版本 id」，两个版本可以同名、
+                // 被删的版本还共用同一段兜底文案 —— 用 id 当 key 才不会撞键。
+                // 没有 id 的两类桶（旧数据 / 未标注）文案天然不同，退回用文案即可。
+                <li key={stat.versionId ?? stat.label} className="stat-row">
                   <span className="stat-row__label">{stat.version}</span>
                   <div className="stat-row__track">
                     <div

@@ -251,3 +251,132 @@ describe('到期提醒', () => {
     });
   });
 });
+
+/* ====================== v0.9：简历 / 版本的软删与保留 ====================== */
+
+import type { AIReport, Resume, ResumeVersion } from '../types';
+import { capAiReports, sweepTrashResumes, trashedResumes, visibleResumeVersions } from './trash';
+
+function resume(id: string, overrides: Partial<Resume> = {}): Resume {
+  return {
+    id,
+    name: `简历 ${id}`,
+    templateId: 'tech-single',
+    content: { sections: [] },
+    createdAt: '2026-09-01T00:00:00.000Z',
+    updatedAt: '2026-09-01T00:00:00.000Z',
+    ...overrides,
+  };
+}
+
+function version(id: string, resumeId: string, overrides: Partial<ResumeVersion> = {}): ResumeVersion {
+  return {
+    id,
+    resumeId,
+    label: `版本 ${id}`,
+    templateId: 'tech-single',
+    content: { sections: [] },
+    createdAt: '2026-09-02T00:00:00.000Z',
+    ...overrides,
+  };
+}
+
+/** N 天前删掉的时间戳 */
+function daysAgoIso(days: number): string {
+  return new Date(NOW.getTime() - days * 86_400_000).toISOString();
+}
+
+function dbWithResumes(): DB {
+  const db = dbWithSample();
+  db.resumes = [
+    resume('r1'),
+    resume('r2', { deletedAt: daysAgoIso(2) }),
+    resume('r3', { deletedAt: daysAgoIso(TRASH_RETENTION_DAYS + 1) }),
+  ];
+  db.resumeVersions = [
+    version('v1', 'r1'),
+    version('v2', 'r1', { deletedAt: daysAgoIso(1) }),
+    version('v3', 'r2'),
+    version('v4', 'r3'),
+    version('v5', 'r1', { deletedAt: daysAgoIso(TRASH_RETENTION_DAYS + 2) }),
+  ];
+  return db;
+}
+
+describe('v0.9 · 简历回收站', () => {
+  it('trashedResumes：只给软删的简历，按删得最晚的在前', () => {
+    const db = dbWithResumes();
+    const list = trashedResumes(db);
+    expect(list.map((item) => item.id)).toEqual(['r2', 'r3']);
+  });
+
+  it('visibleResumeVersions：滤掉已删简历的版本与自身已删的版本', () => {
+    const db = dbWithResumes();
+    // 逐个交代，避免以后误读这条断言：
+    //   v1 → 父简历 r1 在、自己没删            → 留下
+    //   v2 → 自己软删了                        → 滤掉
+    //   v3 → 父简历 r2 软删了                  → 滤掉
+    //   v4 → 父简历 r3 软删了（虽未满 30 天）   → 滤掉
+    //   v5 → 自己软删且已过期                  → 滤掉
+    expect(visibleResumeVersions(db).map((item) => item.id)).toEqual(['v1']);
+  });
+
+  it('★ sweepTrashResumes：满 30 天的简历连带版本真删；投递上的绑定 id 一个都不清', () => {
+    const db = dbWithResumes();
+    db.applications[0] = { ...db.applications[0], resumeVersionId: 'v4', resumeVersion: '版本 v4' };
+    const result = sweepTrashResumes(db, NOW);
+    expect(result.removedResumes).toBe(1);
+    // v4（父简历过期）+ v5（自己过期）一起被真删
+    expect(result.removedVersions).toBe(2);
+    expect(result.db.resumes.map((item) => item.id)).toEqual(['r1', 'r2']);
+    expect(result.db.resumeVersions.map((item) => item.id)).toEqual(['v1', 'v2', 'v3']);
+    // ★ 悬空引用是设计的一部分（A-12）：绝不替用户清空绑定
+    expect(result.db.applications[0].resumeVersionId).toBe('v4');
+    expect(result.db.applications[0].resumeVersion).toBe('版本 v4');
+  });
+
+  it('sweepTrashResumes：没有过期项时原样返回同一个库（引用不变）', () => {
+    const db = dbWithResumes();
+    const result = sweepTrashResumes(db, new Date('2026-09-03T00:00:00.000Z'));
+    expect(result.removedResumes).toBe(0);
+    expect(result.removedVersions).toBe(0);
+    expect(result.db).toBe(db);
+  });
+
+  it('★ sweepTrash 汇总里带上简历/版本/报告三项计数（报告超 200 丢最旧）', () => {
+    const db = dbWithResumes();
+    db.aiReports = Array.from({ length: 205 }, (_, i): AIReport => ({
+      id: `rep-${i}`,
+      pluginId: 'builtin:d19-diag',
+      targetType: 'resume_diagnosis',
+      targetId: 'v1',
+      content: '# 诊断',
+      createdAt: new Date(Date.UTC(2026, 9, 1, 0, i)).toISOString(),
+    }));
+    const result = sweepTrash(db, NOW);
+    expect(result.removedResumes).toBe(1);
+    expect(result.removedVersions).toBe(2);
+    expect(result.removedReports).toBe(5);
+    expect(result.db.aiReports).toHaveLength(200);
+    expect(result.db.aiReports[0].id).toBe('rep-5');
+  });
+});
+
+describe('v0.9 · capAiReports（纯函数）', () => {
+  it('没超上限 → 原样返回同一个数组；超了 → 只丢最旧的，剩余顺序不变', () => {
+    const rows = Array.from({ length: 5 }, (_, i): AIReport => ({
+      id: `r${i}`,
+      pluginId: 'builtin:d19-diag',
+      targetType: 'resume_diagnosis',
+      targetId: 'v1',
+      content: '#',
+      createdAt: new Date(Date.UTC(2026, 9, 1, 0, i)).toISOString(),
+    }));
+    expect(capAiReports(rows, 5)).toBe(rows);
+
+    // 打乱一次顺序，确认「保留下来的顺序 = 原顺序」而不是按时间重排
+    const shuffled = [rows[3], rows[0], rows[4], rows[1], rows[2]];
+    const kept = capAiReports(shuffled, 3);
+    expect(kept.map((row) => row.id)).toEqual(['r3', 'r4', 'r2']);
+  });
+});

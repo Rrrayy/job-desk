@@ -66,6 +66,10 @@ export const FIELD_OWNERSHIP: Record<keyof Application, Ownership> = {
   priority: 'user-only',
   tags: 'user-only',
   resumeVersion: 'user-only',
+  /** v0.9：绑定哪个简历版本是用户的决定，平台永不写（它根本不知道这件事） */
+  resumeVersionId: 'user-only',
+  /** v0.9：改绑留痕同理 —— 平台改不动用户的选择，也不该往留痕里塞东西 */
+  resumeBindLog: 'user-only',
   daysPerWeek: 'user-only',
   durationMonths: 'user-only',
   silenceOverride: 'user-only',

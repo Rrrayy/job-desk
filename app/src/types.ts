@@ -130,7 +130,21 @@ export interface Application {
   jdCapturedAt?: string;
   /** v0.7：用户标记「链接已失效」的时刻（ISO）。可恢复 ≠ 删除 jdUrl */
   jdLinkDeadAt?: string;
+  /** 用户手填的简历版本名（v0.9 起降级为「绑定当时的版本名快照」） */
   resumeVersion?: string;
+  /**
+   * v0.9：绑定的**冻结版本**（1:1，可改绑）。不允许绑草稿。
+   *
+   * ★ 悬空是设计的一部分（A-12）：版本被删/被清理后这个 id 还留着，
+   *   显示侧靠 `resumeVersion` 快照名兜底成「v3（已删除）」，绝不空白、绝不报错。
+   *   所以 `validateV2` **故意不校验**它的存在性 —— 校验会让「删版本 → 导出 → 导入」整库失败。
+   */
+  resumeVersionId?: string;
+  /**
+   * v0.9：改绑留痕，定长 ≤ 20（超出丢最旧）。
+   * ★ 绝不写 note —— note 会进 `lastActivityAtOf`，改个简历版本不该让沉默天数归零（F9）。
+   */
+  resumeBindLog?: ResumeBindLogEntry[];
   salaryText?: string;
   daysPerWeek?: number;
   durationMonths?: number;
@@ -292,7 +306,7 @@ export interface AISettings {
 
 /** 全局设置 */
 export interface AppSettings {
-  schemaVersion: 4;
+  schemaVersion: 5;
   warnAfterDays: number;
   staleAfterDays: number;
   interviewResultWaitDays: number;
@@ -316,6 +330,12 @@ export interface AppSettings {
    */
   courseSlots: { weekday: number; start: string; end: string; name: string }[];
   defaultResumeVersion?: string;
+  /**
+   * v0.9：「设主版本」= 写这一个字段（单一事实来源），新建投递/快速记录时作为默认绑定。
+   * ★ 缺省不写 —— 迁移绝不为旧数据凭空造版本（也不写空串占坑）。
+   * 旧 `defaultResumeVersion`（文本）保留只读兼容，不再写。
+   */
+  defaultResumeVersionId?: string;
   /** v2 新增：同步设置 */
   sync: SyncSettings;
   /** v0.6 新增：备份提醒间隔天数（3 / 7 / 14；0 = 不提醒） */
@@ -476,7 +496,8 @@ export interface RequestLog {
 export type AISuggestionTargetType =
   | 'question'          // D14：面经新题（targetId 为空 = 新建，接受时才落 Question）
   | 'application_note'  // D15：话术草稿落成一条 note
-  | 'staging_field';    // D17：staged 行的某个字段建议（枚举只增不改）
+  | 'staging_field'     // D17：staged 行的某个字段建议（枚举只增不改）
+  | 'resume_field';     // v0.9：润色 / JD 定向写回简历**草稿**（targetId = Resume.id）
 
 export type AISuggestionStatus = 'pending' | 'accepted' | 'rejected';
 
@@ -501,6 +522,173 @@ export interface AISuggestion {
   decidedAt?: string;
 }
 
+/* ===================== v0.9 简历模块（schemaVersion 4 → 5，纯 additive） =====================
+ *
+ * 一条铁律先写在前面：**数据是超集，模板只是视图**。
+ * 8 套模板共享同一份 `ResumeContent`（切模板只改 `templateId`，content 一条不删），
+ * 所以模板独有字段永远留在 items[].fields 里，不会因为切模板而丢。
+ *
+ * 冻结不可变：`ResumeVersion.content` 一经创建不许被任何路径改写（含 AI）。
+ * 要改一份已冻结的版本 → 「以此版本为草稿」→ 编辑 → 「存为新版本」。
+ */
+
+export type ResumeSectionType =
+  | 'basics'
+  | 'education'
+  | 'experience'
+  | 'project'
+  | 'skills'
+  | 'campus'
+  | 'awards'
+  | 'papers'
+  | 'courses'
+  | 'custom';
+
+export type ResumeFieldType = 'text' | 'month' | 'rich_bullets' | 'tags' | 'image';
+
+/** 模板 id（模板本体是代码常量，不入库；库里只存用户选了哪一个） */
+export type TemplateId =
+  | 'tech-single'
+  | 'tech-double'
+  | 'product-ops'
+  | 'campus-general'
+  | 'social-simple'
+  | 'minimal-bw'
+  | 'academic'
+  | 'creative';
+
+/** 模板里的一个字段声明。key 必须来自 templates/base.ts 的 FIELD_META（或 basics 的联系字段） */
+export interface TemplateFieldSpec {
+  key: string;
+  required?: boolean;
+  /** 覆写基座的元数据；不写则取 FIELD_META[key] */
+  label?: string;
+  placeholder?: string;
+  hint?: string;
+  type?: ResumeFieldType;
+}
+
+export interface TemplateSectionSpec {
+  type: ResumeSectionType;
+  /** 缺省取 SECTION_LABEL[type] */
+  label?: string;
+  repeatable: boolean;
+  fields: TemplateFieldSpec[];
+}
+
+export interface Template {
+  id: TemplateId;
+  name: string;
+  targetDirection: string;
+  /** 内联 SVG 线框（由 thumbs.ts 按 layout 生成，非手写 8 张） */
+  thumbnail: string;
+  schema: { sections: TemplateSectionSpec[] };
+  layout: 'single' | 'double' | 'timeline';
+  printRules: { breakAvoid: string[]; pageMarginMm: number };
+}
+
+/** 一个条目（一条经历 / 一段教育 / 一个项目） */
+export interface ResumeItem {
+  id: string;
+  /** 字段超集：任何模板写过的 key 都留在这里，切模板不删 */
+  fields: Record<string, string>;
+  /** rich_bullets 的要点；与 fields 分离，避免「一个 key 塞多行文本」 */
+  bullets?: string[];
+}
+
+export interface ResumeSection {
+  /** 稳定 id：AI 润色的 fieldPath 依赖它，切模板不重新生成 */
+  id: string;
+  type: ResumeSectionType;
+  /** 用户可改名；缺省用模板 label */
+  title?: string;
+  items: ResumeItem[];
+}
+
+export interface ResumeContent {
+  sections: ResumeSection[];
+}
+
+export interface Resume {
+  id: string;
+  /** 「前端开发 - 主投」 */
+  name: string;
+  templateId: TemplateId;
+  /** 可编辑草稿（永远只有一份「正在改的」） */
+  content: ResumeContent;
+  createdAt: string;
+  updatedAt: string;
+  /** 软删，与 Application 同款 30 天 */
+  deletedAt?: string | null;
+}
+
+/** 冻结快照：content 一经创建**不许被任何路径改写**（含 AI） */
+export interface ResumeVersion {
+  id: string;
+  /** → Resume.id */
+  resumeId: string;
+  /** 「v3 前端-项目版」；可重命名（id 不变 → 统计不漂移） */
+  label: string;
+  /** 冻结当时的模板 */
+  templateId: TemplateId;
+  /** ★ 深拷贝冻结（cloneDB） */
+  content: ResumeContent;
+  createdAt: string;
+  note?: string;
+  /** 软删；被投递引用时删除需二次确认 */
+  deletedAt?: string | null;
+}
+
+/** 改绑留痕的一条（定长队列，超出丢最旧） */
+export interface ResumeBindLogEntry {
+  /** 版本被真删后为 undefined */
+  versionId?: string;
+  /** 绑定当时的 label 快照 */
+  label: string;
+  at: string;
+}
+
+/** 改绑留痕上限（PRD §5.1） */
+export const RESUME_BIND_LOG_LIMIT = 20;
+
+/* ---------------- AI 报告（只读产出，不写用户数据） ---------------- */
+
+export type AIReportTargetType = 'resume_diagnosis' | 'application_analysis';
+
+/** 维度的四种判定（`not_found` 不计入合成分——它是「材料里没提到」，不是「不匹配」） */
+export type AIVerdict = 'strong_match' | 'partial_match' | 'gap' | 'not_found';
+
+export interface AIReportDimension {
+  key: string;
+  label: string;
+  verdict: AIVerdict;
+  evidenceFromResume?: string;
+  evidenceFromJd?: string;
+  gapDescription?: string;
+}
+
+export interface AIReport {
+  id: string;
+  /** 'builtin:d19-diag' | 'builtin:d20-analysis' */
+  pluginId: string;
+  targetType: AIReportTargetType;
+  /** ResumeVersion.id | Application.id（按 targetType 解释） */
+  targetId: string;
+  /** 展示用正文（Markdown 子集），≤8000 字 */
+  content: string;
+  dimensions?: AIReportDimension[];
+  /** 代码侧合成分（0–100 等权）；材料不足时为 undefined */
+  scoreLocal?: number;
+  model?: string;
+  createdAt: string;
+}
+
+/**
+ * 报告总数上限（PRD 验收 23）：超了丢最旧。
+ * 「同一 target 只留最近 3 份」的规则随 T07 的报告卡一起做，本版只落总上限。
+ */
+export const AI_REPORT_LIMIT = 200;
+
 /** localStorage 里存的整份数据库 */
 export interface DB {
   settings: AppSettings;
@@ -518,4 +706,8 @@ export interface DB {
   pluginStorage: PluginStorage[];
   requestLog: RequestLog[];
   aiSuggestions: AISuggestion[];
+  /* v0.9 简历三表：迁移 4→5 空表落库（纯 additive，老数据零影响） */
+  resumes: Resume[];
+  resumeVersions: ResumeVersion[];
+  aiReports: AIReport[];
 }

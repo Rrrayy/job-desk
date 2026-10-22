@@ -34,10 +34,10 @@ export const DEFAULT_NEW_SETTINGS = {
   dailyActionBudget: 5,
 } as const;
 
-/** 默认设置（schemaVersion 4） */
+/** 默认设置（schemaVersion 5） */
 export function defaultSettings(): Settings {
   return {
-    schemaVersion: 4,
+    schemaVersion: 5,
     warnAfterDays: 3,
     staleAfterDays: 7,
     interviewResultWaitDays: 5,
@@ -65,7 +65,7 @@ export function defaultSettings(): Settings {
   };
 }
 
-/** 空数据库（含 v2 三个新数组 + v0.4 日程表 + v0.8 插件三表） */
+/** 空数据库（含 v2 三个新数组 + v0.4 日程表 + v0.8 插件三表 + v0.9 简历三表） */
 export function emptyDB(): DB {
   return {
     settings: defaultSettings(),
@@ -80,6 +80,10 @@ export function emptyDB(): DB {
     pluginStorage: [],
     requestLog: [],
     aiSuggestions: [],
+    // v0.9 简历三表：空表起步（additive，老数据零影响）
+    resumes: [],
+    resumeVersions: [],
+    aiReports: [],
   };
 }
 

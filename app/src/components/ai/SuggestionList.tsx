@@ -15,6 +15,7 @@ const TARGET_LABEL: Record<AISuggestionTargetType, string> = {
   question: '新题',
   application_note: '话术草稿',
   staging_field: '字段补全',
+  resume_field: '简历字段',
 };
 
 export interface SuggestionListProps {

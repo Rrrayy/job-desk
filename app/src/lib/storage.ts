@@ -4,8 +4,9 @@
  * 铁律：读失败绝不允许白屏 —— 降级为空数据 + 提示「数据已损坏，可导出修复」。
  *
  * ★ 语义提醒（架构 D-05）：`validateImport` 的名字是「校验」，但它同时负责**迁移**：
- *   v1 / v2 → migrateV2ToV3（内部级联 v1→v2→v3），v3 → validateV2。启动与导入共用这一个入口，
- *   所以「v1 备份导入」与「启动时自动迁移」物理上是同一份实现，不可能漂移。
+ *   任意老版本（v1~v4 / 无版本号）→ migrateV2ToV3（内部逐级级联到当前版本），
+ *   当前版本 → validateV2。启动与导入共用这一个入口，
+ *   所以「老备份导入」与「启动时自动迁移」物理上是同一份实现，不可能漂移。
  *   版本分发上限统一由 `SCHEMA_VERSION_CURRENT` 决定，禁止再写死数字。
  */
 
@@ -13,7 +14,7 @@ import type { DB, PlatformId, Status } from '../types';
 import type { InsightsTab } from './api';
 import { BUDGET } from './budget';
 import { defaultSettings, emptyDB } from './defaults';
-import { FORMAT_VERSION_CURRENT, MSG_BACKUP_TOO_NEW_HEAD, MSG_BACKUP_TOO_NEW_MID, SCHEMA_VERSION_CURRENT, SCHEMA_VERSION_V1, SCHEMA_VERSION_V2, SCHEMA_VERSION_V3, migrateV2ToV3, resolveSchemaVersion } from './migrate';
+import { FORMAT_VERSION_CURRENT, MSG_BACKUP_TOO_NEW_HEAD, MSG_BACKUP_TOO_NEW_MID, SCHEMA_VERSION_CURRENT, SCHEMA_VERSION_V1, migrateV2ToV3, resolveSchemaVersion } from './migrate';
 import {
   BACKUP_KEY_PREFIX,
   readPointer,
@@ -237,15 +238,13 @@ export function validateImport(raw: unknown): ImportResult {
 
   const version = resolveSchemaVersion(raw);
   if (version === SCHEMA_VERSION_CURRENT) return validateV2(raw);
-  // v0.8：v3（v0.6~v0.7.x 的备份）也走同一条迁移链 —— migrateV2ToV3 内部对 v3
-  // 直接级联 migrateV3ToV4，保证「启动迁移」与「导入备份」永远是同一份实现。
-  if (
-    version === SCHEMA_VERSION_V1 ||
-    version === SCHEMA_VERSION_V2 ||
-    version === SCHEMA_VERSION_V3 ||
-    version === 'unknown'
-  ) {
-    // §D.3：v1 / v2 / v3 备份导入必须成功，且走同一条迁移
+  // v0.9：判定改成「比当前版本旧的都算老数据」，不再手抄一张常量清单 ——
+  // 原来那张清单在升到 v5 时漏掉了 v4，导致 **v0.8.0 用户导入自己的备份**
+  // 会看到「无法识别的数据格式版本：4」（数据没丢，但人会被吓住）。
+  // 用范围判断之后，以后每次升版本都自动把上一版收进迁移链，不需要回来补清单。
+  const isLegacy = version === 'unknown' || (typeof version === 'number' && version < SCHEMA_VERSION_CURRENT);
+  if (isLegacy) {
+    // §D.3：任意老版本（v1 / v2 / v3 / v4 / 无版本号）备份导入必须成功，且走同一条迁移
     const migrated = migrateV2ToV3(raw, { now: new Date().toISOString() });
     if (!migrated.ok) return { ok: false, error: migrated.error };
     // 迁移产物过一遍校验，避免「迁移写出一个自己都读不回来的库」
@@ -700,14 +699,15 @@ export function saveListFilters(state: ListFilterState): void {
 /* ------------------------------ 导出导入 ------------------------------ */
 
 /**
- * 导出为格式化 JSON（formatVersion 3，settings.schemaVersion 原样保留）。
+ * 导出为格式化 JSON（formatVersion 4，settings.schemaVersion 原样保留）。
  *
  * v0.6：`formatVersion` 改用常量 `FORMAT_VERSION_CURRENT`，与内部 schemaVersion
- * 彻底解耦 —— 内部结构升到 v4，导出格式跟到 3（老版本的备份带更小的 schemaVersion，
+ * 彻底解耦 —— 内部结构升到 v5，导出格式跟到 4（老版本的备份带更小的 schemaVersion，
  * 会按「旧格式走迁移」读入；新版本备份则按「更新版本」拒绝而不是读坏）。
  *
  * v0.8：pluginStorage / aiSuggestions 随导出（可往返）；
  * **requestLog 剥离**（PRD 验收 13：导出 JSON 默认不含请求日志 —— 审计数据只留在本机）。
+ * v0.9：resumes / resumeVersions / aiReports 随导出（版本历史是用户数据，不是缓存）。
  */
 export function exportJSON(db: DB): string {
   const payload = {
@@ -726,6 +726,9 @@ export function exportJSON(db: DB): string {
     events: db.events,
     pluginStorage: db.pluginStorage,
     aiSuggestions: db.aiSuggestions,
+    resumes: db.resumes,
+    resumeVersions: db.resumeVersions,
+    aiReports: db.aiReports,
   };
   return JSON.stringify(payload, null, 2);
 }

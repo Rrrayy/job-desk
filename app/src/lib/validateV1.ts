@@ -6,7 +6,18 @@
  * 同一份数据迁移两次就得到两个不同的结果，「无损」这条验收无法自动化。
  */
 
-import type { Application, Channel, Company, Interview, InterviewKind, Note, PlatformId, Status } from '../types';
+import type {
+  Application,
+  Channel,
+  Company,
+  Interview,
+  InterviewKind,
+  Note,
+  PlatformId,
+  ResumeBindLogEntry,
+  Status,
+} from '../types';
+import { RESUME_BIND_LOG_LIMIT } from '../types';
 import { ALL_STATUSES } from './rules';
 
 /** v0.8：面试类型白名单（与 InterviewKind 一致；非法值回落 undefined，模式照 events.kind） */
@@ -100,6 +111,29 @@ export function asTriStateDate(value: unknown): string | null | undefined {
   const text = value.trim();
   if (!text) return undefined;
   return DATE_LIKE.test(text) ? text : undefined;
+}
+
+/**
+ * v0.9：改绑留痕归一（定长队列 ≤ 20）。
+ *
+ * 逐条白名单重建：`label` / `at` 缺一就丢该条（一条没有时间的留痕无法排序，
+ * 留着只会让「什么时候改绑的」变成谎话）；`versionId` 可选（版本被真删后就是没有）。
+ * 超出 20 条丢最旧 —— 保留的是数组尾部（新的在尾部，与写入侧一致）。
+ */
+export function normalizeResumeBindLog(raw: unknown): ResumeBindLogEntry[] {
+  if (!Array.isArray(raw)) return [];
+  const rows: ResumeBindLogEntry[] = [];
+  for (const item of raw) {
+    if (!isRecord(item)) continue;
+    const label = asString(item.label);
+    const at = asString(item.at);
+    if (!label || !at) continue;
+    const entry: ResumeBindLogEntry = { label, at };
+    const versionId = asOptionalString(item.versionId);
+    if (versionId) entry.versionId = versionId;
+    rows.push(entry);
+  }
+  return rows.length > RESUME_BIND_LOG_LIMIT ? rows.slice(rows.length - RESUME_BIND_LOG_LIMIT) : rows;
 }
 
 /**
@@ -217,6 +251,11 @@ export function normalizeCoreArrays(
     if (isRecord(item.userEditedAt)) {
       app.userEditedAt = item.userEditedAt as Application['userEditedAt'];
     }
+    // v0.9：投递绑定的冻结版本（additive）。缺省不写 —— 老数据只有文本快照，绝不凭空造引用
+    const resumeVersionId = asOptionalString(item.resumeVersionId);
+    if (resumeVersionId) app.resumeVersionId = resumeVersionId;
+    const bindLog = normalizeResumeBindLog(item.resumeBindLog);
+    if (bindLog.length > 0) app.resumeBindLog = bindLog;
     applications.push(app);
   }
 

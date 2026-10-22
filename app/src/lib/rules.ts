@@ -828,32 +828,95 @@ export function buildChannelStats(db: DB): ChannelStat[] {
 }
 
 export interface ResumeStat {
+  /** 展示名（= label，保留这个字段名是为了不惊动既有视图） */
   version: string;
+  /** v0.9：展示名（正式字段；`version` 留作别名） */
+  label: string;
+  /** v0.9：版本 id；null = 老数据（只有文本快照）或未标注 */
+  versionId: string | null;
   total: number;
   interviewed: number;
   rate: number;
+  /** v0.9：样本是否够出结论（投递满 20 份才解锁，PRD 验收 13） */
+  sampleEnough: boolean;
 }
 
-/** 简历版本面试率：有任意面试记录算进面 */
-export function buildResumeStats(db: DB): ResumeStat[] {
-  const interviewAppIds = new Set(db.interviews.map((i) => i.applicationId));
-  const buckets = new Map<string, { total: number; interviewed: number }>();
+/** 只有文本快照、没有绑定的老数据统一归这一个桶（PRD 验收 2） */
+export const UNBOUND_LEGACY_LABEL = '未绑定（旧数据）';
+/** 连文本快照都没有 */
+export const UNLABELED_RESUME_LABEL = '未标注';
+/** 版本已被真删、快照名也没留时的兜底文案 */
+export const DELETED_RESUME_VERSION_LABEL = '（已删除的版本）';
+/** 简历卡出排名的样本门槛 */
+export const RESUME_SAMPLE_MIN = 20;
+
+/** 按版本聚合后的中间结构（简历页与复盘卡共用同一份口径） */
+export interface VersionAggregate {
+  versionId: string | null;
+  label: string;
+  total: number;
+  interviewed: number;
+}
+
+/**
+ * 按简历版本聚合投递与进面数。**单次 O(N) 扫描**（验收 27：500 条投递 + 30 版本 < 20ms）：
+ * 面试表先过一遍建 id 集合，版本表先过一遍建 label 索引，再单遍扫投递分桶 ——
+ * 渲染期不许再写 `applications.find(v => …)` 那种嵌套查找（500×30 = 1.5 万次比较）。
+ *
+ * 分桶口径（PRD §5.2 / 验收 2）：
+ * - 有 `resumeVersionId` → 按 **id** 聚合（版本改名不漂移；版本已删则用快照名兜底）
+ * - 只有 `resumeVersion` 文本 → 统一归「未绑定（旧数据）」桶（**不再按文本各分一桶**：
+ *   同一份简历的文本会随用户手输变化，按文本分会把「一份简历」拆成好几行）
+ * - 都没有 → 「未标注」桶
+ */
+export function aggregateByVersion(db: DB): VersionAggregate[] {
+  const interviewed = new Set<string>();
+  for (const interview of db.interviews) interviewed.add(interview.applicationId);
+  const labels = new Map<string, string>();
+  for (const version of db.resumeVersions) labels.set(version.id, version.label);
+
+  const buckets = new Map<string, VersionAggregate>();
   for (const app of db.applications) {
-    const version = app.resumeVersion || '未标注';
-    if (!buckets.has(version)) buckets.set(version, { total: 0, interviewed: 0 });
-    const bucket = buckets.get(version);
-    if (!bucket) continue;
+    let key: string;
+    let versionId: string | null = null;
+    let label: string;
+    if (app.resumeVersionId) {
+      versionId = app.resumeVersionId;
+      key = `id:${versionId}`;
+      label = labels.get(versionId) ?? app.resumeVersion ?? DELETED_RESUME_VERSION_LABEL;
+    } else if (app.resumeVersion) {
+      key = 'legacy';
+      label = UNBOUND_LEGACY_LABEL;
+    } else {
+      key = 'none';
+      label = UNLABELED_RESUME_LABEL;
+    }
+    const existing = buckets.get(key);
+    const bucket: VersionAggregate =
+      existing ?? { versionId, label, total: 0, interviewed: 0 };
     bucket.total += 1;
-    if (interviewAppIds.has(app.id)) bucket.interviewed += 1;
+    if (interviewed.has(app.id)) bucket.interviewed += 1;
+    if (!existing) buckets.set(key, bucket);
   }
-  return [...buckets.entries()]
-    .map(([version, v]) => ({
-      version,
-      total: v.total,
-      interviewed: v.interviewed,
-      rate: v.total > 0 ? v.interviewed / v.total : 0,
-    }))
-    .sort((a, b) => b.total - a.total);
+  return [...buckets.values()].sort(
+    (a, b) => b.total - a.total || a.label.localeCompare(b.label, 'zh-Hans-CN'),
+  );
+}
+
+/**
+ * 简历版本面试率：有任意面试记录算进面。
+ * v0.9：改用 `aggregateByVersion`（id 优先 + 旧文本归一个桶），并带上样本门槛标记。
+ */
+export function buildResumeStats(db: DB): ResumeStat[] {
+  return aggregateByVersion(db).map((row) => ({
+    version: row.label,
+    label: row.label,
+    versionId: row.versionId,
+    total: row.total,
+    interviewed: row.interviewed,
+    rate: row.total > 0 ? row.interviewed / row.total : 0,
+    sampleEnough: row.total >= RESUME_SAMPLE_MIN,
+  }));
 }
 
 export interface WeekBucket {

@@ -705,3 +705,242 @@ describe('v0.8 · written 状态变更可整体撤销（⌘Z 数据层语义）'
     expect(draft.notes.map((note) => note.id)).toEqual(['n-mine']);
   });
 });
+
+/* ============ v0.9：简历版本面试率（id 优先 + 旧文本归一个桶，单次 O(N)） ============ */
+
+import type { ResumeVersion } from '../types';
+import {
+  aggregateByVersion,
+  buildResumeStats,
+  DELETED_RESUME_VERSION_LABEL,
+  RESUME_SAMPLE_MIN,
+  UNBOUND_LEGACY_LABEL,
+  UNLABELED_RESUME_LABEL,
+} from './rules';
+
+function makeVersion(id: string, label: string, overrides: Partial<ResumeVersion> = {}): ResumeVersion {
+  return {
+    id,
+    resumeId: 'r-1',
+    label,
+    templateId: 'tech-single',
+    content: { sections: [] },
+    createdAt: '2026-09-01T00:00:00.000Z',
+    ...overrides,
+  };
+}
+
+/** 造一个只关心「投递 → 版本 → 面试」三张表的库 */
+function resumeDB(apps: Application[], versions: ResumeVersion[], interviews: Interview[] = []): DB {
+  const db = makeDB(apps);
+  db.resumeVersions = versions;
+  db.interviews = interviews;
+  return db;
+}
+
+function interviewed(appId: string, id = `iv-${appId}`): Interview {
+  return makeInterviewAt({ id, applicationId: appId });
+}
+
+describe('v0.9 · aggregateByVersion：按版本 id 聚合', () => {
+  it('★ 绑了同一个版本 id 的投递聚成一行，进面数按面试表算', () => {
+    const db = resumeDB(
+      [
+        makeApp({ id: 'a1', resumeVersionId: 'v1', resumeVersion: 'v1 前端' }),
+        makeApp({ id: 'a2', resumeVersionId: 'v1', resumeVersion: 'v1 前端' }),
+        makeApp({ id: 'a3', resumeVersionId: 'v1' }),
+      ],
+      [makeVersion('v1', 'v1 前端')],
+      [interviewed('a1'), interviewed('a3')],
+    );
+    const rows = aggregateByVersion(db);
+    expect(rows).toHaveLength(1);
+    expect(rows[0]).toEqual({ versionId: 'v1', label: 'v1 前端', total: 3, interviewed: 2 });
+  });
+
+  it('★ 版本改名不漂移：label 跟版本表走，不看投递上的旧快照', () => {
+    const db = resumeDB(
+      [makeApp({ id: 'a1', resumeVersionId: 'v1', resumeVersion: '旧名（改名前）' })],
+      [makeVersion('v1', '新名（改名后）')],
+    );
+    const rows = aggregateByVersion(db);
+    expect(rows[0].label).toBe('新名（改名后）');
+    expect(rows[0].versionId).toBe('v1');
+  });
+
+  it('版本已被真删：用投递上的快照名兜底；连快照都没有才用「（已删除的版本）」', () => {
+    const db = resumeDB(
+      [
+        makeApp({ id: 'a1', resumeVersionId: 'gone', resumeVersion: '快照名' }),
+        makeApp({ id: 'a2', resumeVersionId: 'gone-2' }),
+      ],
+      [],
+    );
+    const byId = new Map(aggregateByVersion(db).map((row) => [row.versionId, row.label]));
+    expect(byId.get('gone')).toBe('快照名');
+    expect(byId.get('gone-2')).toBe(DELETED_RESUME_VERSION_LABEL);
+  });
+
+  it('★ 老数据（只有文本、没有 id）不论文本几种都归「未绑定（旧数据）」一个桶', () => {
+    const db = resumeDB(
+      [
+        makeApp({ id: 'a1', resumeVersion: '前端-项目版' }),
+        makeApp({ id: 'a2', resumeVersion: '前端-算法版' }),
+        makeApp({ id: 'a3', resumeVersion: '前端-项目版' }),
+      ],
+      [],
+    );
+    const rows = aggregateByVersion(db);
+    expect(rows).toHaveLength(1);
+    expect(rows[0].versionId).toBeNull();
+    expect(rows[0].label).toBe(UNBOUND_LEGACY_LABEL);
+    expect(rows[0].total).toBe(3);
+  });
+
+  it('什么都没标 → 「未标注」桶；空文本等于没标', () => {
+    const db = resumeDB([makeApp({ id: 'a1' }), makeApp({ id: 'a2', resumeVersion: '' })], []);
+    const rows = aggregateByVersion(db);
+    expect(rows).toHaveLength(1);
+    expect(rows[0].label).toBe(UNLABELED_RESUME_LABEL);
+    expect(rows[0].total).toBe(2);
+  });
+
+  it('三种桶可以共存，并按投递数降序排（同数按名排）', () => {
+    const db = resumeDB(
+      [
+        makeApp({ id: 'a1', resumeVersionId: 'v1' }),
+        makeApp({ id: 'a2', resumeVersionId: 'v1' }),
+        makeApp({ id: 'a3', resumeVersionId: 'v1' }),
+        makeApp({ id: 'a4', resumeVersion: '旧文本' }),
+        makeApp({ id: 'a5', resumeVersion: '旧文本 2' }),
+        makeApp({ id: 'a6' }),
+      ],
+      [makeVersion('v1', 'v1 前端')],
+    );
+    expect(aggregateByVersion(db).map((row) => [row.label, row.total])).toEqual([
+      ['v1 前端', 3],
+      [UNBOUND_LEGACY_LABEL, 2],
+      [UNLABELED_RESUME_LABEL, 1],
+    ]);
+  });
+
+  it('★ 两个版本可以同名：两行都在，靠 versionId 区分（视图的 key 用它）', () => {
+    const db = resumeDB(
+      [
+        makeApp({ id: 'a1', resumeVersionId: 'v1' }),
+        makeApp({ id: 'a2', resumeVersionId: 'v2' }),
+      ],
+      [makeVersion('v1', '前端版'), makeVersion('v2', '前端版')],
+    );
+    const stats = buildResumeStats(db);
+    expect(stats).toHaveLength(2);
+    expect(stats.map((row) => row.label)).toEqual(['前端版', '前端版']);
+    // 文案撞了，id 没撞 —— 复盘页的 key 用 versionId ?? label
+    expect(new Set(stats.map((row) => row.versionId ?? row.label)).size).toBe(2);
+  });
+
+  it('空库 → 空数组（不造出空桶）', () => {
+    expect(aggregateByVersion(resumeDB([], []))).toEqual([]);
+  });
+});
+
+describe('v0.9 · buildResumeStats：老文本数据仍出结果（复盘页不回退）', () => {
+  it('★ v0.8 形态的数据（只有 resumeVersion 文本）照旧算出面试率', () => {
+    const db = resumeDB(
+      [
+        makeApp({ id: 'a1', resumeVersion: '前端简历' }),
+        makeApp({ id: 'a2', resumeVersion: '前端简历' }),
+        makeApp({ id: 'a3', resumeVersion: '后端简历' }),
+        makeApp({ id: 'a4', resumeVersion: '后端简历' }),
+      ],
+      [],
+      [interviewed('a1'), interviewed('a3')],
+    );
+    const stats = buildResumeStats(db);
+    expect(stats).toHaveLength(1);
+    // 四份投递都只有文本 → 同一个「未绑定」桶；不会因为文本不同被拆成两行
+    expect(stats[0].label).toBe(UNBOUND_LEGACY_LABEL);
+    expect(stats[0].version).toBe(stats[0].label);
+    expect(stats[0].total).toBe(4);
+    expect(stats[0].interviewed).toBe(2);
+    expect(stats[0].rate).toBeCloseTo(0.5, 10);
+  });
+
+  it('rate 是 0~1 的小数；versionId 原样带出，旧数据的 versionId 是 null', () => {
+    const db = resumeDB(
+      [makeApp({ id: 'a1', resumeVersionId: 'v1' }), makeApp({ id: 'a2', resumeVersion: '文本' })],
+      [makeVersion('v1', 'v1')],
+      [interviewed('a1')],
+    );
+    // 两行 total 相同 → 顺序由 label 排序决定，别按下标取值
+    const stats = buildResumeStats(db);
+    const bound = stats.find((row) => row.versionId === 'v1');
+    const legacy = stats.find((row) => row.versionId === null);
+    expect(bound?.rate).toBe(1);
+    expect(legacy?.rate).toBe(0);
+  });
+
+  it('★ 样本门槛：投递满 20 份才 sampleEnough', () => {
+    const few = resumeDB(
+      Array.from({ length: RESUME_SAMPLE_MIN - 1 }, (_, i) =>
+        makeApp({ id: `few-${i}`, resumeVersionId: 'v1' }),
+      ),
+      [makeVersion('v1', 'v1')],
+    );
+    expect(buildResumeStats(few)[0].sampleEnough).toBe(false);
+
+    const enough = resumeDB(
+      Array.from({ length: RESUME_SAMPLE_MIN }, (_, i) =>
+        makeApp({ id: `ok-${i}`, resumeVersionId: 'v1' }),
+      ),
+      [makeVersion('v1', 'v1')],
+    );
+    expect(buildResumeStats(enough)[0].sampleEnough).toBe(true);
+  });
+
+  it('面试记录挂在别的投递上不算进面', () => {
+    const db = resumeDB(
+      [makeApp({ id: 'a1', resumeVersionId: 'v1' }), makeApp({ id: 'a2', resumeVersionId: 'v1' })],
+      [makeVersion('v1', 'v1')],
+      [interviewed('a1'), interviewed('a2'), interviewed('a2', 'iv-dup')],
+    );
+    const stat = buildResumeStats(db)[0];
+    // 同一条投递有两场面试也只算一次「进面」
+    expect(stat.interviewed).toBe(2);
+  });
+});
+
+describe('v0.9 · aggregateByVersion：性能（验收 27）', () => {
+  it('★ 500 条投递 + 30 个版本，单次聚合 < 20ms', () => {
+    const versions = Array.from({ length: 30 }, (_, i) => makeVersion(`v${i}`, `版本 ${i}`));
+    const apps = Array.from({ length: 500 }, (_, i) =>
+      makeApp({
+        id: `perf-${i}`,
+        // 2/3 绑定版本、1/6 只有旧文本、1/6 什么都没标
+        ...(i % 6 === 5
+          ? {}
+          : i % 6 === 4
+            ? { resumeVersion: `旧文本 ${i % 4}` }
+            : { resumeVersionId: `v${i % 30}` }),
+      }),
+    );
+    const interviews = apps.filter((_, i) => i % 3 === 0).map((item) => interviewed(item.id));
+    const db = resumeDB(apps, versions, interviews);
+
+    // 预热一轮，避免把首次的 JIT / 结构体分配算进耗时
+    aggregateByVersion(db);
+    const start = performance.now();
+    const rows = aggregateByVersion(db);
+    const elapsed = performance.now() - start;
+
+    expect(rows.reduce((sum, row) => sum + row.total, 0)).toBe(500);
+    // 桶数按数据自己算（不写死）：每个绑定版本一个桶 + 旧文本桶 + 未标注桶
+    const keys = new Set(
+      apps.map((item) =>
+        item.resumeVersionId ? `id:${item.resumeVersionId}` : item.resumeVersion ? 'legacy' : 'none',
+      ),
+    );
+    expect(rows).toHaveLength(keys.size);
+    expect(elapsed).toBeLessThan(20);
+  });
+});

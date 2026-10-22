@@ -439,7 +439,7 @@ function buildV3Raw(): Record<string, unknown> {
 }
 
 describe('v0.8 · migrateV3ToV4', () => {
-  it('v3 → v4：三张插件空表落库 + settings.ai 缺省补齐 + schemaVersion 4', () => {
+  it('v3 → v5：三张插件空表落库 + settings.ai 缺省补齐 + 级联抬到 schemaVersion 5', () => {
     const result = migrateV3ToV4(buildV3Raw(), { now: NOW });
     expect(result.ok).toBe(true);
     if (!result.ok) return;
@@ -448,9 +448,13 @@ describe('v0.8 · migrateV3ToV4', () => {
     expect(db.pluginStorage).toEqual([]);
     expect(db.requestLog).toEqual([]);
     expect(db.aiSuggestions).toEqual([]);
-    expect(db.settings.schemaVersion).toBe(4);
+    // v0.9：v3 → v4 之后继续级联到 v5（每一步只管自己那一个版本号）
+    expect(db.settings.schemaVersion).toBe(5);
+    expect(db.resumes).toEqual([]);
+    expect(db.resumeVersions).toEqual([]);
+    expect(db.aiReports).toEqual([]);
     expect(db.settings.ai).toEqual({ baseURL: '', model: '', isLocal: false });
-    expect(db.settings.lastMigration).toMatchObject({ from: 3, to: 4, at: NOW });
+    expect(db.settings.lastMigration).toMatchObject({ from: 3, to: 5, at: NOW });
   });
 
   it('★ 只加不减：v0.7.3 形状的既有数据逐字段原样（含面试记录与挂点）', () => {
@@ -592,5 +596,294 @@ describe('v0.8 · 校验器（written / kind / 三新表）', () => {
     expect(result.db.aiSuggestions).toEqual([]);
     expect(result.db.settings.schemaVersion).toBe(SCHEMA_VERSION_CURRENT);
     expect(result.db.settings.ai).toEqual({ baseURL: '', model: '', isLocal: false });
+  });
+});
+
+/* ====================== v0.9：schema 4→5（简历三表） ====================== */
+
+import { SCHEMA_VERSION_V5, migrateV4ToV5 } from './migrate';
+import { emptyDB } from './defaults';
+
+/** 造一份「v0.8.0 真实导出」形状的 v4 库（有插件三表 / settings.ai，没有简历三表） */
+function buildV4Raw(): Record<string, unknown> {
+  const raw = buildV3Raw();
+  const settings = { ...(raw.settings as Record<string, unknown>) };
+  settings.schemaVersion = 4;
+  settings.ai = { baseURL: '', model: '', isLocal: false };
+  return {
+    ...raw,
+    version: 4,
+    formatVersion: 3,
+    settings,
+    pluginStorage: [],
+    requestLog: [],
+    aiSuggestions: [],
+  };
+}
+
+describe('v0.9 · migrateV4ToV5', () => {
+  it('v4 → v5：三张简历空表落库 + schemaVersion 5 + 审计记「4 → 5」', () => {
+    const result = migrateV4ToV5(buildV4Raw(), { now: NOW });
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+    expect(result.changed).toBe(true);
+    expect(result.db.resumes).toEqual([]);
+    expect(result.db.resumeVersions).toEqual([]);
+    expect(result.db.aiReports).toEqual([]);
+    expect(result.db.settings.schemaVersion).toBe(SCHEMA_VERSION_V5);
+    expect(result.db.settings.lastMigration).toMatchObject({ from: 4, to: 5, at: NOW });
+  });
+
+  it('★ 不为旧数据凭空造版本：投递不新增 resumeVersionId，settings 不新增 defaultResumeVersionId', () => {
+    const result = migrateV4ToV5(buildV4Raw(), { now: NOW });
+    if (!result.ok) throw new Error('迁移失败');
+    for (const app of result.db.applications) {
+      expect('resumeVersionId' in app).toBe(false);
+      expect('resumeBindLog' in app).toBe(false);
+    }
+    expect('defaultResumeVersionId' in result.db.settings).toBe(false);
+    // 旧的文本字段原样保留（只读兼容，不再写）
+    expect(result.db.settings.defaultResumeVersion).toBe('');
+  });
+
+  it('★ 幂等：连跑两次，第二次 changed=false 且对象引用不变', () => {
+    const once = migrateV4ToV5(buildV4Raw(), { now: NOW });
+    if (!once.ok) throw new Error('第一次就失败了');
+    const twice = migrateV4ToV5(once.db, { now: '2026-11-01T00:00:00.000Z' });
+    expect(twice.ok).toBe(true);
+    if (!twice.ok) return;
+    expect(twice.changed).toBe(false);
+    expect(twice.db).toBe(once.db);
+  });
+
+  it('只接受 v4：喂 v3 数据 → 明确报错并指路分发入口', () => {
+    const result = migrateV4ToV5(buildV3Raw(), { now: NOW });
+    expect(result.ok).toBe(false);
+    if (result.ok) return;
+    expect(result.error).toContain('只接受 v4');
+    expect(result.error).toContain('migrateV2ToV3');
+  });
+
+  it('来自更新版本（v6）→ 拒绝，不猜结构', () => {
+    const raw = buildV4Raw();
+    (raw.settings as Record<string, unknown>).schemaVersion = 6;
+    const result = migrateV4ToV5(raw, { now: NOW });
+    expect(result.ok).toBe(false);
+    if (result.ok) return;
+    expect(result.error).toContain('请先升级工具');
+  });
+
+  it('★ 级联：v1 / v3 备份直通当前版本，审计记的仍是最初的 from', () => {
+    const fromV4 = migrateV2ToV3(buildV4Raw(), { now: NOW });
+    if (!fromV4.ok) throw new Error('v4 导入失败');
+    expect(fromV4.db.settings.schemaVersion).toBe(SCHEMA_VERSION_CURRENT);
+    expect(fromV4.db.settings.lastMigration).toMatchObject({ from: 4, to: 5 });
+    expect(fromV4.db.resumes).toEqual([]);
+
+    const fromV3 = migrateV2ToV3(buildV3Raw(), { now: NOW });
+    if (!fromV3.ok) throw new Error('v3 导入失败');
+    expect(fromV3.db.settings.lastMigration).toMatchObject({ from: 3, to: 5 });
+  });
+
+  it('坏数据：v4 缺关键字段 → 明确报错，不产出半个库', () => {
+    const raw = buildV4Raw();
+    delete (raw.applications as Array<Record<string, unknown>>)[0].jobTitle;
+    const result = migrateV4ToV5(raw, { now: NOW });
+    expect(result.ok).toBe(false);
+    if (result.ok) return;
+    expect(result.error).toContain('v4 数据结构不合法');
+  });
+});
+
+describe('v0.9 · 简历三表校验（validateV2）', () => {
+  /** 一份「当前形状」的空库，测试按需往里塞行 */
+  function v5Raw(): Record<string, unknown> {
+    return JSON.parse(JSON.stringify(emptyDB())) as Record<string, unknown>;
+  }
+
+  function resumeRow(overrides: Record<string, unknown> = {}): Record<string, unknown> {
+    return {
+      id: 'r1',
+      name: '前端开发 - 主投',
+      templateId: 'tech-single',
+      content: {
+        sections: [
+          {
+            id: 'sec1',
+            type: 'project',
+            title: '项目经历',
+            items: [{ id: 'it1', fields: { title: '求职工作台' }, bullets: ['一行一题记面经'] }],
+          },
+        ],
+      },
+      createdAt: '2026-10-01T00:00:00.000Z',
+      updatedAt: '2026-10-01T00:00:00.000Z',
+      ...overrides,
+    };
+  }
+
+  function versionRow(overrides: Record<string, unknown> = {}): Record<string, unknown> {
+    return {
+      id: 'v1',
+      resumeId: 'r1',
+      label: 'v1 主投版',
+      templateId: 'tech-single',
+      content: { sections: [] },
+      createdAt: '2026-10-02T00:00:00.000Z',
+      ...overrides,
+    };
+  }
+
+  it('三表缺失（v0.8.0 备份）→ 补空表，不报错', () => {
+    const result = validateV2(buildV4Raw());
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+    expect(result.db.resumes).toEqual([]);
+    expect(result.db.resumeVersions).toEqual([]);
+    expect(result.db.aiReports).toEqual([]);
+  });
+
+  it('简历行：正常内容归一；空 bullets / 空 title 不写键', () => {
+    const raw = v5Raw();
+    raw.resumes = [resumeRow(), resumeRow({ id: 'r2', content: { sections: [{ id: 's2', type: 'skills', title: '', items: [{ id: 'i2', fields: { a: '1' }, bullets: [] }] }] } })];
+    const result = validateV2(raw);
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+    const [first, second] = result.db.resumes;
+    expect(first.content.sections[0].items[0].bullets).toEqual(['一行一题记面经']);
+    expect('title' in (second.content.sections[0].items[0] as object)).toBe(false);
+    expect('title' in second.content.sections[0]).toBe(false);
+  });
+
+  it('简历行：缺 name / templateId 非法 / 板块 type 非法 → 行级报错（整库失败，D-1）', () => {
+    for (const bad of [
+      resumeRow({ name: '' }),
+      resumeRow({ templateId: 'not-a-template' }),
+      resumeRow({ content: { sections: [{ id: 's1', type: 'unknown', items: [] }] } }),
+      resumeRow({ content: { sections: [{ id: '', type: 'project', items: [] }] } }),
+    ]) {
+      const raw = v5Raw();
+      raw.resumes = [bad];
+      const result = validateV2(raw);
+      expect(result.ok).toBe(false);
+    }
+  });
+
+  it('版本 → 简历：所属简历不存在 → 报错（这条边必须存在）', () => {
+    const raw = v5Raw();
+    raw.resumeVersions = [versionRow({ resumeId: 'ghost' })];
+    const result = validateV2(raw);
+    expect(result.ok).toBe(false);
+    if (result.ok) return;
+    expect(result.error).toContain('所属的简历不存在');
+  });
+
+  it('★ 悬空引用必须能过（A-12）：投递绑已删版本 / 报告指向不存在的目标 → 不报错', () => {
+    const raw = v5Raw();
+    raw.resumes = [resumeRow()];
+    raw.resumeVersions = [versionRow({ deletedAt: '2026-10-03T00:00:00.000Z' })];
+    raw.companies = [{ id: 'c1', name: '字节跳动', createdAt: '2026-09-01T00:00:00.000Z' }];
+    raw.applications = [
+      {
+        id: 'a1', companyId: 'c1', jobTitle: '前端', status: 'applied',
+        statusChangedAt: '2026-10-01T00:00:00.000Z', lastActivityAt: '2026-10-01T00:00:00.000Z',
+        createdAt: '2026-10-01T00:00:00.000Z', updatedAt: '2026-10-01T00:00:00.000Z',
+        resumeVersion: 'v1 主投版', resumeVersionId: 'v1-gone',
+        resumeBindLog: [{ versionId: 'v1-gone', label: 'v1 主投版', at: '2026-10-04T00:00:00.000Z' }],
+      },
+    ];
+    raw.aiReports = [
+      {
+        id: 'rep1', pluginId: 'builtin:d20-analysis', targetType: 'application_analysis',
+        targetId: 'app-gone', content: '# 结论', createdAt: '2026-10-05T00:00:00.000Z',
+      },
+    ];
+    const result = validateV2(raw);
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+    // 悬空 id 与快照名都原样保留 —— 显示侧靠快照名兜底
+    expect(result.db.applications[0].resumeVersionId).toBe('v1-gone');
+    expect(result.db.applications[0].resumeBindLog).toHaveLength(1);
+    expect(result.db.aiReports).toHaveLength(1);
+  });
+
+  it('投递的改绑留痕：坏条目丢弃、超过 20 条丢最旧', () => {
+    const raw = v5Raw();
+    raw.companies = [{ id: 'c1', name: '字节跳动', createdAt: '2026-09-01T00:00:00.000Z' }];
+    raw.applications = [
+      {
+        id: 'a1', companyId: 'c1', jobTitle: '前端', status: 'applied',
+        statusChangedAt: '2026-10-01T00:00:00.000Z', lastActivityAt: '2026-10-01T00:00:00.000Z',
+        createdAt: '2026-10-01T00:00:00.000Z', updatedAt: '2026-10-01T00:00:00.000Z',
+        resumeBindLog: [
+          { label: '没时间', at: '' },
+          { label: '', at: '2026-10-01T00:00:00.000Z' },
+          ...Array.from({ length: 25 }, (_, i) => ({ label: `v${i + 1}`, at: `2026-10-${`${i + 1}`.padStart(2, '0')}T00:00:00.000Z` })),
+        ],
+      },
+    ];
+    const result = validateV2(raw);
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+    const log = result.db.applications[0].resumeBindLog ?? [];
+    expect(log).toHaveLength(20);
+    // 丢最旧 → 保留的是后 20 条
+    expect(log[0].label).toBe('v6');
+    expect(log[19].label).toBe('v25');
+  });
+
+  it('报告维度：verdict 非法 → 该维度丢弃，其余保留；scoreLocal 收敛到 0–100', () => {
+    const raw = v5Raw();
+    raw.aiReports = [
+      {
+        id: 'rep1', pluginId: 'builtin:d20-analysis', targetType: 'application_analysis',
+        targetId: 'a1', content: '# 结论', createdAt: '2026-10-05T00:00:00.000Z',
+        scoreLocal: 137,
+        dimensions: [
+          { key: 'hard_skills', label: '硬技能', verdict: 'strong_match', evidenceFromJd: 'React' },
+          { key: 'domain', label: '行业', verdict: '有点相关吧' },
+          { key: 'education', label: '学历', verdict: 'not_found' },
+        ],
+      },
+    ];
+    const result = validateV2(raw);
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+    const report = result.db.aiReports[0];
+    expect(report.dimensions).toHaveLength(2);
+    expect(report.dimensions?.map((dimension) => dimension.verdict)).toEqual(['strong_match', 'not_found']);
+    expect(report.scoreLocal).toBe(100);
+  });
+
+  it('报告总数超 200 → 丢最旧，保留最新 200 份且顺序不变', () => {
+    const raw = v5Raw();
+    raw.aiReports = Array.from({ length: 205 }, (_, i) => ({
+      id: `rep-${i}`,
+      pluginId: 'builtin:d19-diag',
+      targetType: 'resume_diagnosis',
+      targetId: 'v1',
+      content: '# 诊断',
+      createdAt: new Date(Date.UTC(2026, 9, 1, 0, i)).toISOString(),
+    }));
+    const result = validateV2(raw);
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+    expect(result.db.aiReports).toHaveLength(200);
+    expect(result.db.aiReports[0].id).toBe('rep-5');
+    expect(result.db.aiReports[199].id).toBe('rep-204');
+  });
+
+  it('报告正文超过 8000 字 → 截断（只读产物，不把 localStorage 撑爆）', () => {
+    const raw = v5Raw();
+    raw.aiReports = [
+      {
+        id: 'rep1', pluginId: 'builtin:d19-diag', targetType: 'resume_diagnosis',
+        targetId: 'v1', content: '字'.repeat(9000), createdAt: '2026-10-05T00:00:00.000Z',
+      },
+    ];
+    const result = validateV2(raw);
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+    expect(result.db.aiReports[0].content).toHaveLength(8000);
   });
 });

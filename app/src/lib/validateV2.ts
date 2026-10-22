@@ -8,9 +8,13 @@
  */
 
 import type {
+  AIReport,
+  AIReportDimension,
+  AIReportTargetType,
   AISuggestion,
   AISuggestionStatus,
   AISuggestionTargetType,
+  AIVerdict,
   AppSettings,
   CalendarEvent,
   DB,
@@ -23,10 +27,17 @@ import type {
   Question,
   QuestionCategory,
   RequestLog,
+  Resume,
+  ResumeContent,
+  ResumeItem,
+  ResumeSection,
+  ResumeSectionType,
+  ResumeVersion,
   RootCause,
   StagedReason,
   StagedSyncItem,
   SyncSettings,
+  TemplateId,
 } from '../types';
 import type { NormalizedRecord } from '../adapters/types';
 import { DEFAULT_SYNC_SETTINGS, defaultSettings } from './defaults';
@@ -38,6 +49,7 @@ import {
   normalizeFileLinkSettings,
 } from './migrate';
 import { STAGING_LIMIT } from './sync/engine';
+import { capAiReports } from './trash';
 import { V2_NOTE_TYPES, asOptionalString, asString, isRecord, normalizeCoreArrays } from './validateV1';
 
 export type ImportResult = { ok: true; db: DB } | { ok: false; error: string };
@@ -51,8 +63,38 @@ const ROOT_CAUSES: RootCause[] = ['conceptGap', 'forgot', 'nervous', 'misread', 
 // 如果不在这里放行，下一轮启动 validateV2 就会把「自己刚写的库」判成坏数据 —— 那是更严重的 bug。
 const STAGED_REASONS: StagedReason[] = ['unmapped', 'ambiguous', 'conflict', 'unparsed'];
 // v0.8：AI 建议的枚举白名单（types.ts 注释约定「枚举只增不改」，这里同步维护）
-const AI_TARGET_TYPES: AISuggestionTargetType[] = ['question', 'application_note', 'staging_field'];
+const AI_TARGET_TYPES: AISuggestionTargetType[] = [
+  'question',
+  'application_note',
+  'staging_field',
+  'resume_field',
+];
 const AI_STATUSES: AISuggestionStatus[] = ['pending', 'accepted', 'rejected'];
+// v0.9：简历模块三个白名单（枚举只增不改；非法值见各自的处理口径）
+const RESUME_SECTION_TYPES: ResumeSectionType[] = [
+  'basics',
+  'education',
+  'experience',
+  'project',
+  'skills',
+  'campus',
+  'awards',
+  'papers',
+  'courses',
+  'custom',
+];
+const TEMPLATE_IDS: TemplateId[] = [
+  'tech-single',
+  'tech-double',
+  'product-ops',
+  'campus-general',
+  'social-simple',
+  'minimal-bw',
+  'academic',
+  'creative',
+];
+const AI_REPORT_TARGET_TYPES: AIReportTargetType[] = ['resume_diagnosis', 'application_analysis'];
+const AI_VERDICTS: AIVerdict[] = ['strong_match', 'partial_match', 'gap', 'not_found'];
 
 function isPlatform(value: unknown): value is PlatformId {
   return typeof value === 'string' && (PLATFORMS as string[]).includes(value);
@@ -137,6 +179,10 @@ export function normalizeV2Settings(raw: unknown): AppSettings {
     weeklyApplyGoal: positiveInt(source.weeklyApplyGoal, base.weeklyApplyGoal),
     courseSlots,
     defaultResumeVersion: asOptionalString(source.defaultResumeVersion) ?? '',
+    // v0.9：缺省不写（不写空串占坑）；有值才落库
+    ...(asOptionalString(source.defaultResumeVersionId)
+      ? { defaultResumeVersionId: asOptionalString(source.defaultResumeVersionId) as string }
+      : {}),
     sync: normalizeSyncSettings(source.sync),
     backupReminderDays: normalizeBackupReminderDays(source.backupReminderDays),
     fileLink: normalizeFileLinkSettings(source.fileLink),
@@ -363,6 +409,178 @@ function normalizeAiSuggestionRow(raw: unknown, index: number): { ok: true; valu
   return { ok: true, value };
 }
 
+/* ---------- v0.9 简历三表（缺失补 []，行级校验沿用同一宽容度约定） ---------- */
+
+/**
+ * 简历正文归一。**结构必填、内容宽松**：
+ * - `sections` 缺失/不是数组 → 空文档（老备份没有这三张表，别为它拦住整个导入）；
+ * - 板块/条目的 `id`/`type` 必须合法（它们是 AI 润色的 fieldPath 依赖项，乱了就没法定位）；
+ * - `fields` 只留字符串值（非字符串值静默丢弃：模板只认 string，留着反而会在渲染时炸）；
+ * - 空 `bullets` / 空 `title` 不写键（与「没写过」逐字节一致）。
+ */
+function normalizeContent(raw: unknown): { ok: true; value: ResumeContent } | { ok: false; error: string } {
+  if (!isRecord(raw)) return { ok: true, value: { sections: [] } };
+  const rawSections = Array.isArray(raw.sections) ? raw.sections : [];
+  const sections: ResumeSection[] = [];
+  for (let i = 0; i < rawSections.length; i += 1) {
+    const item = rawSections[i];
+    if (!isRecord(item)) return { ok: false, error: `第 ${i + 1} 个简历板块不是对象` };
+    const id = asString(item.id);
+    const type = asString(item.type);
+    if (!id) return { ok: false, error: `第 ${i + 1} 个简历板块缺少 id` };
+    if (!RESUME_SECTION_TYPES.includes(type as ResumeSectionType)) {
+      return { ok: false, error: `第 ${i + 1} 个简历板块的 type 不合法` };
+    }
+    const rawItems = Array.isArray(item.items) ? item.items : [];
+    const items: ResumeItem[] = [];
+    for (let j = 0; j < rawItems.length; j += 1) {
+      const row = rawItems[j];
+      if (!isRecord(row)) return { ok: false, error: `第 ${i + 1} 个板块的第 ${j + 1} 个条目不是对象` };
+      const itemId = asString(row.id);
+      if (!itemId) return { ok: false, error: `第 ${i + 1} 个板块的第 ${j + 1} 个条目缺少 id` };
+      const fields: Record<string, string> = {};
+      if (isRecord(row.fields)) {
+        for (const [key, value] of Object.entries(row.fields)) {
+          if (typeof value === 'string') fields[key] = value;
+        }
+      }
+      const entry: ResumeItem = { id: itemId, fields };
+      if (Array.isArray(row.bullets)) {
+        const bullets = row.bullets.filter((bullet): bullet is string => typeof bullet === 'string');
+        if (bullets.length > 0) entry.bullets = bullets;
+      }
+      items.push(entry);
+    }
+    const section: ResumeSection = { id, type: type as ResumeSectionType, items };
+    const title = asOptionalString(item.title);
+    if (title) section.title = title;
+    sections.push(section);
+  }
+  return { ok: true, value: { sections } };
+}
+
+/** 软删时间戳：只有合法 ISO 才留，其余当「没删」 */
+function deletedAtOf(raw: unknown): string | null | undefined {
+  const value = asOptionalString(raw);
+  if (!value) return undefined;
+  return Number.isNaN(Date.parse(value)) ? undefined : value;
+}
+
+function normalizeResumeRow(raw: unknown, index: number): { ok: true; value: Resume } | { ok: false; error: string } {
+  if (!isRecord(raw)) return { ok: false, error: `第 ${index + 1} 份简历不是对象` };
+  const id = asString(raw.id);
+  const name = asString(raw.name);
+  const templateId = asString(raw.templateId);
+  if (!id) return { ok: false, error: `第 ${index + 1} 份简历缺少 id` };
+  if (!name) return { ok: false, error: `第 ${index + 1} 份简历缺少 name` };
+  if (!TEMPLATE_IDS.includes(templateId as TemplateId)) {
+    return { ok: false, error: `第 ${index + 1} 份简历的 templateId 不合法` };
+  }
+  const content = normalizeContent(raw.content);
+  if (!content.ok) return { ok: false, error: `第 ${index + 1} 份简历：${content.error}` };
+  const value: Resume = {
+    id,
+    name,
+    templateId: templateId as TemplateId,
+    content: content.value,
+    createdAt: asString(raw.createdAt) || new Date().toISOString(),
+    updatedAt: asString(raw.updatedAt) || new Date().toISOString(),
+  };
+  const deletedAt = deletedAtOf(raw.deletedAt);
+  if (deletedAt) value.deletedAt = deletedAt;
+  return { ok: true, value };
+}
+
+function normalizeResumeVersionRow(
+  raw: unknown,
+  index: number,
+): { ok: true; value: ResumeVersion } | { ok: false; error: string } {
+  if (!isRecord(raw)) return { ok: false, error: `第 ${index + 1} 个简历版本不是对象` };
+  const id = asString(raw.id);
+  const resumeId = asString(raw.resumeId);
+  const label = asString(raw.label);
+  const templateId = asString(raw.templateId);
+  if (!id) return { ok: false, error: `第 ${index + 1} 个简历版本缺少 id` };
+  if (!resumeId) return { ok: false, error: `第 ${index + 1} 个简历版本缺少 resumeId` };
+  if (!label) return { ok: false, error: `第 ${index + 1} 个简历版本缺少 label` };
+  if (!TEMPLATE_IDS.includes(templateId as TemplateId)) {
+    return { ok: false, error: `第 ${index + 1} 个简历版本的 templateId 不合法` };
+  }
+  const content = normalizeContent(raw.content);
+  if (!content.ok) return { ok: false, error: `第 ${index + 1} 个简历版本：${content.error}` };
+  const value: ResumeVersion = {
+    id,
+    resumeId,
+    label,
+    templateId: templateId as TemplateId,
+    content: content.value,
+    createdAt: asString(raw.createdAt) || new Date().toISOString(),
+  };
+  const note = asOptionalString(raw.note);
+  if (note) value.note = note;
+  const deletedAt = deletedAtOf(raw.deletedAt);
+  if (deletedAt) value.deletedAt = deletedAt;
+  return { ok: true, value };
+}
+
+/** 报告正文上限（超过了就截断 —— 报告是只读产物，留 100KB 在里面只会把 localStorage 撑爆） */
+const REPORT_CONTENT_LIMIT = 8000;
+
+/**
+ * AI 报告：维度用**白名单回落**而不是报错 —— 模型输出里出现一个没见过的 verdict，
+ * 该维度直接丢弃，其余维度与正文照常保留（PRD 验收 21）。报告是历史产物，
+ * 为了一个坏维度把整份导入判成坏数据是过度严格。
+ */
+function normalizeAiReportRow(raw: unknown, index: number): { ok: true; value: AIReport } | { ok: false; error: string } {
+  if (!isRecord(raw)) return { ok: false, error: `第 ${index + 1} 份 AI 报告不是对象` };
+  const id = asString(raw.id);
+  const pluginId = asString(raw.pluginId);
+  const targetType = asString(raw.targetType);
+  const targetId = asString(raw.targetId);
+  if (!id) return { ok: false, error: `第 ${index + 1} 份 AI 报告缺少 id` };
+  if (!pluginId) return { ok: false, error: `第 ${index + 1} 份 AI 报告缺少 pluginId` };
+  if (!AI_REPORT_TARGET_TYPES.includes(targetType as AIReportTargetType)) {
+    return { ok: false, error: `第 ${index + 1} 份 AI 报告的 targetType 不合法` };
+  }
+  if (!targetId) return { ok: false, error: `第 ${index + 1} 份 AI 报告缺少 targetId` };
+  const content = asString(raw.content);
+  if (!content) return { ok: false, error: `第 ${index + 1} 份 AI 报告缺少 content` };
+  const value: AIReport = {
+    id,
+    pluginId,
+    targetType: targetType as AIReportTargetType,
+    targetId,
+    content: content.slice(0, REPORT_CONTENT_LIMIT),
+    createdAt: asString(raw.createdAt) || new Date().toISOString(),
+  };
+  if (Array.isArray(raw.dimensions)) {
+    const dimensions: AIReportDimension[] = [];
+    for (const item of raw.dimensions) {
+      if (!isRecord(item)) continue;
+      const key = asString(item.key);
+      const label = asString(item.label);
+      const verdict = asString(item.verdict);
+      if (!key || !label) continue;
+      if (!AI_VERDICTS.includes(verdict as AIVerdict)) continue;
+      const dimension: AIReportDimension = { key, label, verdict: verdict as AIVerdict };
+      const fromResume = asOptionalString(item.evidenceFromResume);
+      const fromJd = asOptionalString(item.evidenceFromJd);
+      const gap = asOptionalString(item.gapDescription);
+      if (fromResume) dimension.evidenceFromResume = fromResume;
+      if (fromJd) dimension.evidenceFromJd = fromJd;
+      if (gap) dimension.gapDescription = gap;
+      dimensions.push(dimension);
+    }
+    if (dimensions.length > 0) value.dimensions = dimensions;
+  }
+  if (typeof raw.scoreLocal === 'number' && Number.isFinite(raw.scoreLocal)) {
+    value.scoreLocal = Math.min(100, Math.max(0, Math.round(raw.scoreLocal)));
+  }
+  const model = asOptionalString(raw.model);
+  if (model) value.model = model;
+  return { ok: true, value };
+}
+
 /**
  * 三表的公共骨架：缺失 → []（老备份没有它们，与 experiences 同口径）；
  * 不是数组 → 报错；行级校验失败 → 报错（已有数据类型错了必须说，不静默纠错）。
@@ -480,6 +698,14 @@ export function validateV2(raw: unknown): ImportResult {
   const suggestionResult = normalizeV08Table(raw.aiSuggestions, normalizeAiSuggestionRow);
   if (!suggestionResult.ok) return { ok: false, error: suggestionResult.error };
 
+  /* ---------- v0.9 简历三表（缺失补 []；坏行报错 = 整库失败，见 D-1） ---------- */
+  const resumeResult = normalizeV08Table(raw.resumes, normalizeResumeRow);
+  if (!resumeResult.ok) return { ok: false, error: resumeResult.error };
+  const versionResult = normalizeV08Table(raw.resumeVersions, normalizeResumeVersionRow);
+  if (!versionResult.ok) return { ok: false, error: versionResult.error };
+  const reportResult = normalizeV08Table(raw.aiReports, normalizeAiReportRow);
+  if (!reportResult.ok) return { ok: false, error: reportResult.error };
+
   const settings = normalizeV2Settings(raw.settings);
 
   /* ---------- 旧 courseSlots 一次性迁移进 events ---------- */
@@ -515,6 +741,20 @@ export function validateV2(raw: unknown): ImportResult {
     }
   }
 
+  /* ---------- 简历版本 → 简历：只校验「必须存在」的那一条边 ---------- */
+  const resumeIds = new Set(resumeResult.rows.map((resume) => resume.id));
+  for (const version of versionResult.rows) {
+    if (!resumeIds.has(version.resumeId)) {
+      return { ok: false, error: `简历版本「${version.label}」所属的简历不存在（${version.resumeId}）` };
+    }
+  }
+  // ★ 这里**故意不校验**（A-12）：
+  //   - Application.resumeVersionId → ResumeVersion.id（软删 + 快照名兜底是设计的一部分）
+  //   - AIReport.targetId（报告是历史产物，目标被删后报告仍应可读）
+  // 校验它们会让「删版本 → 导出 → 导入」整库失败，而那正是 PRD §7.2 要防的「空白/报错」。
+
+  const reports = capAiReports(reportResult.rows);
+
   const db: DB = {
     settings,
     companies: core.data.companies,
@@ -529,6 +769,10 @@ export function validateV2(raw: unknown): ImportResult {
     pluginStorage: dedupePluginStorage(storageResult.rows),
     requestLog: logResult.rows,
     aiSuggestions: suggestionResult.rows,
+    resumes: resumeResult.rows,
+    resumeVersions: versionResult.rows,
+    // 总数超上限（200）时丢最旧 —— 与 staging 的丢弃策略一致
+    aiReports: reports,
   };
 
   return { ok: true, db };

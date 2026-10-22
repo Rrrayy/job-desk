@@ -369,9 +369,150 @@ describe('v0.8 迁移（3→4）：v0.7.3 备份导入零损失', () => {
     const parsed = JSON.parse(exportJSON(db)) as Record<string, unknown> & {
       formatVersion: number; pluginStorage: unknown[]; requestLog?: unknown[]; aiSuggestions: unknown[];
     };
-    expect(parsed.formatVersion).toBe(3);
+    expect(parsed.formatVersion).toBe(4);
     expect(parsed.pluginStorage).toHaveLength(1);
     expect(parsed.aiSuggestions).toHaveLength(1);
+    expect(parsed.requestLog).toBeUndefined();
+  });
+});
+
+/* ====================== v0.9：schema 4→5 迁移的安全三出口 ====================== */
+
+describe('v0.9 迁移（4→5）：v0.8.0 备份导入零损失', () => {
+  /**
+   * 一份 v0.8.0 形状的真实备份：有插件两表，有只写文本的 resumeVersion，
+   * 但**没有**简历三表、没有 resumeVersionId、没有 defaultResumeVersionId。
+   * 这正是升级用户手里会拿着的那份文件。
+   */
+  const v080Backup = JSON.stringify({
+    exportedAt: '2026-10-05T00:00:00.000Z',
+    app: 'jobdesk',
+    formatVersion: 3,
+    version: 4,
+    settings: {
+      schemaVersion: 4,
+      warnAfterDays: 3, staleAfterDays: 7, interviewResultWaitDays: 5, wishlistExpireDays: 7,
+      resultPromptHour: 20, offerSilenceDays: 7, deadlineWarnDays: 3, dailyActionBudget: 5,
+      channelFactor: { referral: 3, official: 2, boss: 1, shixiseng: 1, nowcoder: 1, liepin: 1, other: 1 },
+      weeklyApplyGoal: 8, courseSlots: [], defaultResumeVersion: '前端-项目版',
+      backupReminderDays: 7, fileLink: { enabled: false, readOnly: false }, encryption: { enabled: false },
+      sync: { defaultPlatform: 'boss', statusMapOverrides: {}, autoRefreshActivity: true },
+    },
+    companies: [{ id: 'c1', name: '字节跳动', shortName: '字节', createdAt: '2026-09-01T00:00:00.000Z' }],
+    applications: [{
+      id: 'a1', companyId: 'c1', jobTitle: '前端开发实习生', jobType: 'daily', status: 'chatting',
+      statusChangedAt: '2026-09-02T00:00:00.000Z', lastActivityAt: '2026-09-02T00:00:00.000Z',
+      appliedAt: '2026-09-02', createdAt: '2026-09-02T00:00:00.000Z', updatedAt: '2026-09-02T00:00:00.000Z',
+      rejectedAtRound: null, silenceOverride: null, nextActionAt: null, deadlineAt: null, mutedUntil: null, tags: [],
+      // ★ 老数据的「版本」只有一个手输文本
+      resumeVersion: '前端-项目版',
+    }],
+    interviews: [{
+      id: 'iv1', applicationId: 'a1', round: 1, totalRounds: null,
+      scheduledAt: '2026-09-08T14:00:00.000Z', format: 'video', result: 'pending', prepChecklist: [],
+    }],
+    notes: [], experiences: [], questions: [], staging: [], events: [],
+    pluginStorage: [], aiSuggestions: [],
+  });
+
+  it('★ 导入零错误零损失：原有数组逐条等价，简历三表为空，且不伪造版本', () => {
+    const result = importFromText(v080Backup);
+    expect(result.ok, JSON.stringify(result)).toBe(true);
+    if (!result.ok) return;
+    const parsed = JSON.parse(v080Backup) as {
+      applications: unknown[]; interviews: unknown[]; companies: unknown[]; settings: { defaultResumeVersion: string };
+    };
+
+    expect(result.db.applications).toHaveLength(parsed.applications.length);
+    expect(result.db.applications[0]).toEqual(parsed.applications[0]);
+    expect(result.db.interviews).toEqual(parsed.interviews);
+    expect(result.db.companies).toEqual(parsed.companies);
+
+    // 三张新表存在但空着 —— 迁移不许替用户造数据
+    expect(result.db.resumes).toEqual([]);
+    expect(result.db.resumeVersions).toEqual([]);
+    expect(result.db.aiReports).toEqual([]);
+    expect(result.db.settings.schemaVersion).toBe(SCHEMA_VERSION_CURRENT);
+
+    // ★ 关键：不把老文本「升级」成绑定 id，也不补默认版本
+    expect(result.db.applications[0].resumeVersionId).toBeUndefined();
+    expect(result.db.applications[0].resumeBindLog).toBeUndefined();
+    expect(result.db.settings.defaultResumeVersionId).toBeUndefined();
+    // 老字段原样保留（复盘页要按它算「未绑定（旧数据）」）
+    expect(result.db.applications[0].resumeVersion).toBe('前端-项目版');
+    expect(result.db.settings.defaultResumeVersion).toBe(parsed.settings.defaultResumeVersion);
+  });
+
+  it('★ 迁移前回滚点存在且内容 = 原始字节（v4 启动路径）', () => {
+    localStorage.setItem(STORAGE_KEY, v080Backup);
+    const result = loadDB();
+    expect(result.migration).toBeUndefined();
+
+    const keys: string[] = [];
+    for (let i = 0; i < localStorage.length; i += 1) {
+      const key = localStorage.key(i);
+      if (key && key.startsWith(ROLLBACK_PREFIX)) keys.push(key);
+    }
+    expect(keys).toHaveLength(1);
+    expect(localStorage.getItem(keys[0])).toBe(v080Backup);
+  });
+
+  it('★ 同一备份连续导入两次幂等（序列化结果完全一致）', () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date('2026-10-21T00:00:00.000Z'));
+    try {
+      const first = importFromText(v080Backup);
+      const second = importFromText(v080Backup);
+      expect(first.ok && second.ok).toBe(true);
+      if (!first.ok || !second.ok) return;
+      expect(exportJSON(second.db)).toBe(exportJSON(first.db));
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it('坏数据触发迁移失败：原数据字节级不变 + 只读锁定 + 回滚点保留', () => {
+    const broken = v080Backup.replace('"jobTitle":"前端开发实习生"', '"jobTitle2":"字段名坏了"');
+    localStorage.setItem(STORAGE_KEY, broken);
+    const beforeBytes = broken.length;
+
+    const result = loadDB();
+    expect(isFailure(result)).toBe(true);
+    if (!isFailure(result)) return;
+
+    expect(localStorage.getItem(STORAGE_KEY)).toHaveLength(beforeBytes);
+    expect(isPersistenceLocked()).toBe(true);
+    expect(result.migration.backupKey).not.toBeNull();
+    expect(saveDB(emptyDB())).toBeNull();
+    expect(localStorage.getItem(STORAGE_KEY)).toHaveLength(beforeBytes);
+
+    unlockPersistence();
+  });
+
+  it('导出 JSON 带上简历三表（formatVersion 4），仍然不含 requestLog', () => {
+    const db = buildSampleDB(new Date('2026-10-21T09:00:00'));
+    db.resumes = [{
+      id: 'r1', name: '我的简历', templateId: 'tech-single',
+      content: { sections: [] },
+      createdAt: '2026-10-01T00:00:00.000Z', updatedAt: '2026-10-01T00:00:00.000Z',
+    }];
+    db.resumeVersions = [{
+      id: 'v1', resumeId: 'r1', label: 'v1 初版', templateId: 'tech-single',
+      content: { sections: [] }, createdAt: '2026-10-01T00:00:00.000Z',
+    }];
+    db.aiReports = [{
+      id: 'rep1', pluginId: 'builtin:d19-diag', targetType: 'resume_diagnosis', targetId: 'r1',
+      content: '总体还行', dimensions: [{ key: 'match', label: '匹配度', verdict: 'partial_match' }],
+      createdAt: '2026-10-01T00:00:00.000Z',
+    }];
+
+    const parsed = JSON.parse(exportJSON(db)) as Record<string, unknown> & {
+      formatVersion: number; resumes: unknown[]; resumeVersions: unknown[]; aiReports: unknown[]; requestLog?: unknown[];
+    };
+    expect(parsed.formatVersion).toBe(4);
+    expect(parsed.resumes).toHaveLength(1);
+    expect(parsed.resumeVersions).toHaveLength(1);
+    expect(parsed.aiReports).toHaveLength(1);
     expect(parsed.requestLog).toBeUndefined();
   });
 });

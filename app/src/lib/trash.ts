@@ -17,7 +17,8 @@
  *    用户下次打开时看到「已清理 N 条」比后台静默删除诚实得多。
  */
 
-import type { DB } from '../types';
+import type { AIReport, DB } from '../types';
+import { AI_REPORT_LIMIT } from '../types';
 import { sweepExpiredSuggestions } from '../ai/suggestions';
 
 /** 回收站保留天数 */
@@ -132,12 +133,99 @@ export interface SweepResult {
   removedNotes: number;
   /** v0.8：过期的 rejected/accepted AI 建议条数（7 天保留期） */
   removedSuggestions: number;
+  /** v0.9：过期的简历 / 版本条数（同样 30 天） */
+  removedResumes: number;
+  removedVersions: number;
+  /** v0.9：超 200 上限被丢掉的旧报告条数 */
+  removedReports: number;
+}
+
+/* ---------------- v0.9 简历 / 版本（同款纯函数，不抽通用软删框架） ---------------- */
+
+/**
+ * 回收站里的简历，按「删得最晚的在前」排。
+ * 与 `trashedApps` 同款：简历页内联恢复用它，设置页不分类型分区（Q7 裁决）。
+ */
+export function trashedResumes(db: DB): DB['resumes'] {
+  return db.resumes
+    .filter((resume) => isDeleted(resume))
+    .sort((a, b) => (deletedAtMs(b) ?? 0) - (deletedAtMs(a) ?? 0));
+}
+
+/**
+ * 可见版本：简历本身没删、版本自己也没删。
+ *
+ * 注意**不写进 `visibleDB`**：投递过滤那一处是为了 40+ 个消费点不漏判，
+ * 而简历只有简历页在消费，「多走一次过滤」在这里反而更清楚。
+ */
+export function visibleResumeVersions(db: DB): DB['resumeVersions'] {
+  const aliveResumes = new Set<string>();
+  for (const resume of db.resumes) {
+    if (!isDeleted(resume)) aliveResumes.add(resume.id);
+  }
+  return db.resumeVersions.filter(
+    (version) => !isDeleted(version) && aliveResumes.has(version.resumeId),
+  );
+}
+
+export interface ResumeSweepResult {
+  db: DB;
+  removedResumes: number;
+  removedVersions: number;
+}
+
+/**
+ * 清理过期简历与版本（启动时跑一次）：
+ * - 简历软删满 30 天 → 真删，**其下版本一并真删**（靠父 deletedAt 推导，不逐条打标记）；
+ * - 版本自己被软删满 30 天 → 真删（简历还在）。
+ *
+ * ★ 投递上的 `resumeVersionId` **不动**：悬空引用是设计的一部分（A-12），
+ *   显示侧靠 `resumeVersion` 快照名兜底成「v3（已删除）」。清理时顺手把用户的
+ *   绑定清空才是真正的数据损失 —— 那等于替他做了个不可撤销的决定。
+ */
+export function sweepTrashResumes(db: DB, now: Date): ResumeSweepResult {
+  const doomedResumes = new Set<string>();
+  for (const resume of db.resumes) {
+    if (isTrashExpired(resume, now)) doomedResumes.add(resume.id);
+  }
+  const doomedVersions = new Set<string>();
+  for (const version of db.resumeVersions) {
+    if (doomedResumes.has(version.resumeId) || isTrashExpired(version, now)) doomedVersions.add(version.id);
+  }
+  if (doomedResumes.size === 0 && doomedVersions.size === 0) {
+    return { db, removedResumes: 0, removedVersions: 0 };
+  }
+  return {
+    db: {
+      ...db,
+      resumes: db.resumes.filter((resume) => !doomedResumes.has(resume.id)),
+      resumeVersions: db.resumeVersions.filter((version) => !doomedVersions.has(version.id)),
+    },
+    removedResumes: doomedResumes.size,
+    removedVersions: doomedVersions.size,
+  };
+}
+
+/**
+ * 报告保留：只留最新 N 份（默认 200），丢最旧。
+ *
+ * 纯函数、**顺序稳定**：没超上限时原样返回同一个数组（引用不变），
+ * 超上限时也只摘掉最旧的几份，剩下的顺序与原来一致 ——
+ * 否则「导出 → 导入」往返会因为一次重排而不再逐字节相等。
+ * 「同一 target 只留最近 3 份」的规则随 T07 的报告卡一起做，本版只落总上限。
+ */
+export function capAiReports(rows: AIReport[], limit = AI_REPORT_LIMIT): AIReport[] {
+  if (rows.length <= limit) return rows;
+  const byTime = [...rows].sort((a, b) => (Date.parse(a.createdAt) || 0) - (Date.parse(b.createdAt) || 0));
+  const keep = new Set(byTime.slice(byTime.length - limit));
+  return rows.filter((row) => keep.has(row));
 }
 
 /**
  * 启动时清理过期项：只处理真的超过 30 天的，且**永不碰**没进回收站的行。
  * 过期投递下的面试与备注一并真删；面经不删（它是用户写的内容），只解绑。
  * v0.8：顺手清掉超期的 AI 建议（rejected/accepted 留 7 天，pending 永不清理）。
+ * v0.9：顺手清掉过期的简历/版本与超 200 份的旧报告。
  */
 export function sweepTrash(db: DB, now: Date): SweepResult {
   const doomed = new Set<string>();
@@ -145,15 +233,33 @@ export function sweepTrash(db: DB, now: Date): SweepResult {
     if (isTrashExpired(app, now)) doomed.add(app.id);
   }
   const suggestions = sweepExpiredSuggestions(db.aiSuggestions, now);
-  if (doomed.size === 0 && suggestions.removed === 0) {
-    return { db, removedApps: 0, removedInterviews: 0, removedNotes: 0, removedSuggestions: 0 };
+  const resumeSweep = sweepTrashResumes(db, now);
+  const reports = capAiReports(db.aiReports);
+  const removedReports = db.aiReports.length - reports.length;
+  if (
+    doomed.size === 0 &&
+    suggestions.removed === 0 &&
+    resumeSweep.removedResumes === 0 &&
+    resumeSweep.removedVersions === 0 &&
+    removedReports === 0
+  ) {
+    return {
+      db,
+      removedApps: 0,
+      removedInterviews: 0,
+      removedNotes: 0,
+      removedSuggestions: 0,
+      removedResumes: 0,
+      removedVersions: 0,
+      removedReports: 0,
+    };
   }
 
   const interviews = db.interviews.filter((item) => !doomed.has(item.applicationId));
   const notes = db.notes.filter((item) => !doomed.has(item.applicationId));
   return {
     db: {
-      ...db,
+      ...resumeSweep.db,
       applications: db.applications.filter((app) => !doomed.has(app.id)),
       interviews,
       notes,
@@ -161,11 +267,15 @@ export function sweepTrash(db: DB, now: Date): SweepResult {
         exp.applicationId && doomed.has(exp.applicationId) ? { ...exp, applicationId: null } : exp,
       ),
       aiSuggestions: suggestions.kept,
+      aiReports: reports,
     },
     removedApps: doomed.size,
     removedInterviews: db.interviews.length - interviews.length,
     removedNotes: db.notes.length - notes.length,
     removedSuggestions: suggestions.removed,
+    removedResumes: resumeSweep.removedResumes,
+    removedVersions: resumeSweep.removedVersions,
+    removedReports,
   };
 }
 

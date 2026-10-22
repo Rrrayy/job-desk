@@ -18,13 +18,16 @@ export const SCHEMA_VERSION_V2 = 2;
 export const SCHEMA_VERSION_V3 = 3;
 /** v0.8：插件三表落库 + settings.ai（全部 additive，见 ARCH-v08 A-10） */
 export const SCHEMA_VERSION_V4 = 4;
+/** v0.9：简历三表落库 + 投递绑定字段（全部 additive，见 ARCH-v09 §2.2） */
+export const SCHEMA_VERSION_V5 = 5;
 /** 当前支持的最高内部数据版本 */
-export const SCHEMA_VERSION_CURRENT = SCHEMA_VERSION_V4;
+export const SCHEMA_VERSION_CURRENT = SCHEMA_VERSION_V5;
 /**
  * 导出文件格式版本（与内部 schemaVersion **解耦**，见 §2.3 冲突 ②）。
- * v0.4.1 及更早的备份没有这个字段 → 按 1 处理。v0.8：2 → 3（随插件三表）。
+ * v0.4.1 及更早的备份没有这个字段 → 按 1 处理。
+ * v0.8：2 → 3（随插件三表）；v0.9：3 → 4（随简历三表）。
  */
-export const FORMAT_VERSION_CURRENT = 3;
+export const FORMAT_VERSION_CURRENT = 4;
 
 /**
  * 「备份版本过新」报错的共用字面串（migrate 三个迁移入口 + storage 的导入检查各拼一次）。
@@ -60,9 +63,10 @@ export function resolveSchemaVersion(raw: Record<string, unknown>): number | 'un
  * 级联结构（与 v0.6 的 v1→v2→v3 同一模式）：
  * - v1 / unknown → migrateV1ToV2（结构补全）
  * - v1 / v2 / unknown → 抬到 v3 形状（校验 + 补 v0.6 字段 + lastMigration）
- * - v3 → migrateV3ToV4（v0.8：插件三表 + settings.ai）
+ * - v3 → migrateV3ToV4（v0.8：插件三表 + settings.ai）→ 级联 migrateV4ToV5
+ * - v4 → migrateV4ToV5（v0.9：简历三表）
  *
- * 链式迁移只写**一条** lastMigration 审计：v1 直通当前版本记「1 → 4」，
+ * 链式迁移只写**一条** lastMigration 审计：v1 直通当前版本记「1 → 5」，
  * 不把中间步逐条罗列 —— 设置页展示的是「这份数据的来源」，不是迁移日志。
  */
 export function migrateV2ToV3(input: unknown, ctx: MigrateContext): MigrateResult {
@@ -79,7 +83,10 @@ export function migrateV2ToV3(input: unknown, ctx: MigrateContext): MigrateResul
     };
   }
 
-  // v3 输入直接进入 v0.8 那一步，不重跑 v2→v3 抬升
+  // v4 输入直接进入 v0.9 那一步；v3 输入先补 v0.8 再级联到 v0.9
+  if (version === SCHEMA_VERSION_V4) {
+    return migrateV4ToV5(input, ctx);
+  }
   if (version === SCHEMA_VERSION_V3) {
     return migrateV3ToV4(input, ctx);
   }
@@ -100,8 +107,8 @@ export function migrateV2ToV3(input: unknown, ctx: MigrateContext): MigrateResul
   const from = verified.db;
 
   // 中间态：抬到 v3 形状（lastMigration 记下链的起点），随后由 migrateV3ToV4 收尾。
-  // schemaVersion 的字面量类型是「当前版本 4」，中间态的 3 只能经 unknown 中转 ——
-  // migrateV3ToV4 会立刻把它抬回 4，这个中间值不会出现在任何落库结果里。
+  // schemaVersion 的字面量类型是「当前版本 5」，中间态的 3 只能经 unknown 中转 ——
+  // 后续步骤会立刻把它逐级抬到 5，这个中间值不会出现在任何落库结果里。
   const settings = {
     ...from.settings,
     schemaVersion: SCHEMA_VERSION_V3,
@@ -161,11 +168,70 @@ export function migrateV3ToV4(input: unknown, ctx: MigrateContext): MigrateResul
   const prevFrom = from.settings.lastMigration?.from;
   const chainFrom = typeof prevFrom === 'number' ? prevFrom : SCHEMA_VERSION_V3;
 
-  const settings: AppSettings = {
+  // 中间态：schemaVersion 的字面量类型是「当前版本 5」，中间的 4 只能经 unknown 中转。
+  // migrateV4ToV5 会立刻把它抬回 5，这个中间值不会出现在任何落库结果里。
+  const settings = {
     ...from.settings,
     schemaVersion: SCHEMA_VERSION_V4,
     ai: normalizeAiSettings((from.settings as unknown as Record<string, unknown>).ai),
     lastMigration: { from: chainFrom, to: SCHEMA_VERSION_V4, at: ctx.now, backupKey: '' },
+  } as unknown as AppSettings;
+
+  const v4: DB = {
+    ...from,
+    settings,
+    // v0.8 三张插件表：validateV2 已保证数组存在（缺失补 []、行内容校验过），这里原样透传
+    pluginStorage: from.pluginStorage,
+    requestLog: from.requestLog,
+    aiSuggestions: from.aiSuggestions,
+  };
+  // 级联到 v0.9（与 v1→v2→v3 同一模式：每步只管自己那一个版本号）
+  return migrateV4ToV5(v4, ctx);
+}
+
+/**
+ * v4 → v5（v0.9）。**纯函数、幂等、只加不减**：
+ * - 三张空表（resumes / resumeVersions / aiReports）落库；
+ * - `Application.resumeVersionId` / `resumeBindLog` **缺省不写** —— 不为旧数据凭空造版本
+ *   （用户只有 `resumeVersion` 文本，那一列原样留着当快照，统计归「未绑定（旧数据）」桶）；
+ * - `settings.defaultResumeVersionId` **缺省不写**（旧文本字段原样保留，不写空串占坑）；
+ * - schemaVersion 4 → 5 + lastMigration 审计（链式保留最初的 from）。
+ *
+ * `lastMigration.backupKey` 同样先留空，由调用方在写好回滚点后回填。
+ */
+export function migrateV4ToV5(input: unknown, ctx: MigrateContext): MigrateResult {
+  if (!isRecord(input)) return { ok: false, error: '顶层不是一个对象' };
+
+  const version = resolveSchemaVersion(input);
+  if (version === SCHEMA_VERSION_CURRENT) {
+    return { ok: true, db: input as unknown as DB, changed: false };
+  }
+  if (typeof version === 'number' && version > SCHEMA_VERSION_CURRENT) {
+    return {
+      ok: false,
+      error: `${MSG_BACKUP_TOO_NEW_HEAD}${version}${MSG_BACKUP_TOO_NEW_MID}${SCHEMA_VERSION_CURRENT}）`,
+    };
+  }
+  if (version !== SCHEMA_VERSION_V4) {
+    return {
+      ok: false,
+      error: `这一步只接受 v4 数据，收到的是 ${version === 'unknown' ? '未知版本' : `v${version}`}（v1/v2/v3 请走 migrateV2ToV3 分发入口）`,
+    };
+  }
+
+  // 幂等保护：v4 结构必须先过校验，否则「迁移」会掩盖真正的损坏
+  const verified = validateV2(input);
+  if (!verified.ok) return { ok: false, error: `v4 数据结构不合法：${verified.error}` };
+  const from = verified.db;
+
+  // 链式迁移保留最初的 from：v1 直通 v5 仍然记「1 → 5」，不是「4 → 5」
+  const prevFrom = from.settings.lastMigration?.from;
+  const chainFrom = typeof prevFrom === 'number' ? prevFrom : SCHEMA_VERSION_V4;
+
+  const settings: AppSettings = {
+    ...from.settings,
+    schemaVersion: SCHEMA_VERSION_V5,
+    lastMigration: { from: chainFrom, to: SCHEMA_VERSION_V5, at: ctx.now, backupKey: '' },
   };
 
   return {
@@ -173,10 +239,10 @@ export function migrateV3ToV4(input: unknown, ctx: MigrateContext): MigrateResul
     db: {
       ...from,
       settings,
-      // v0.8 三张插件表：validateV2 已保证数组存在（缺失补 []、行内容校验过），这里原样透传
-      pluginStorage: from.pluginStorage,
-      requestLog: from.requestLog,
-      aiSuggestions: from.aiSuggestions,
+      // 三张简历空表：validateV2 已保证数组存在（缺失补 []、行内容校验过），这里原样透传
+      resumes: from.resumes,
+      resumeVersions: from.resumeVersions,
+      aiReports: from.aiReports,
     },
     changed: true,
   };
@@ -251,6 +317,10 @@ export function migrateV1ToV2(input: unknown, ctx: MigrateContext): MigrateResul
       pluginStorage: [],
       requestLog: [],
       aiSuggestions: [],
+      // v0.9 简历三表：空表起步（additive，老数据零影响）
+      resumes: [],
+      resumeVersions: [],
+      aiReports: [],
     },
     changed: true,
   };
