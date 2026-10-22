@@ -5298,6 +5298,146 @@ button.chip:hover {
   gap: 8px;
 }
 
+/* ---------- photo（T04 起可用：只读压缩后的 data URL） ---------- */
+.photo__input {
+  display: none;
+}
+
+/* ---------- 模板选择器（8 张卡片，缩略图按 layout 生成） ---------- */
+.tpl-picker {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(124px, 1fr));
+  gap: 10px;
+}
+
+.tpl-card {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  padding: 8px;
+  text-align: left;
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  background: var(--surface);
+  cursor: pointer;
+}
+
+.tpl-card:hover {
+  border-color: var(--indigo);
+}
+
+.tpl-card--on {
+  border-color: var(--indigo);
+  box-shadow: 0 0 0 2px var(--indigo-soft);
+}
+
+.tpl-card__thumb {
+  display: block;
+  margin-bottom: 2px;
+}
+
+.tpl-card__thumb svg {
+  display: block;
+  width: 100%;
+  height: auto;
+}
+
+.tpl-card__name {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--ink);
+}
+
+.tpl-card__dir {
+  font-size: 11.5px;
+  line-height: 1.35;
+  color: var(--ink-3);
+}
+
+.tpl-card__layout {
+  font-size: 11px;
+  color: var(--ink-4);
+}
+
+.tpl-picker__warn {
+  grid-column: 1 / -1;
+  margin: 0;
+  font-size: 12px;
+  color: var(--red);
+}
+
+/* ==========================================================================
+   v0.9 · 3 种 layout 变体（T04）
+   同一个渲染器 + 同一份 DOM，只换排版 —— 没有第二套预览组件。
+   ★ 变体只许改「流与装饰」，不许改字号与页边距（那会让预览与打印分家）。
+   ========================================================================== */
+
+/* 双栏：CSS 分栏（左列读到底再读右列，符合简历的阅读顺序） */
+.a4--double .a4__body {
+  column-count: 2;
+  column-gap: 8mm;
+  column-rule: 1px solid #eceff5;
+}
+
+/* 分栏里的板块不许被拆到两列（和打印的 break-inside:avoid 是同一个诉求） */
+.a4--double .rs-section {
+  break-inside: avoid;
+  page-break-inside: avoid;
+}
+
+/* 时间轴：板块左侧一条导轨 + 每条经历一个圆点 */
+.a4--timeline .rs-section {
+  margin-left: 1mm;
+  padding-left: 4mm;
+  border-left: 1px solid #dde1ea;
+}
+
+.a4--timeline .rs-section__title {
+  border-bottom: 0;
+}
+
+.a4--timeline .rs-item {
+  position: relative;
+}
+
+/* 圆点压在导轨上：left 相对条目的内容盒，导轨在 -4mm 处，直径 2.2mm → -5.1mm */
+.a4--timeline .rs-item::before {
+  content: '';
+  position: absolute;
+  left: -5.1mm;
+  top: 1.6mm;
+  width: 2.2mm;
+  height: 2.2mm;
+  border-radius: 50%;
+  background: var(--indigo);
+}
+
+/* 照片（只有 creative 有 image 字段）：浮在基本信息右侧，打印同样有效 */
+.rs-photo {
+  float: right;
+  width: 22mm;
+  height: 28mm;
+  margin: 0 0 2mm 4mm;
+  object-fit: cover;
+  border-radius: 1mm;
+}
+
+/* creative：唯一带色块的模板（正文色板只能有这一处例外，不许再开第二处） */
+.a4[data-tpl='creative'] .rs-section__title {
+  color: #3d47b8;
+  border-bottom-color: #c9cdf0;
+}
+
+.a4[data-tpl='creative'] .rs-photo {
+  border: 1px solid #c9cdf0;
+}
+
+/* minimal-bw：纯黑，去掉一切灰调（这套模板的卖点就是「打印零风险」） */
+.a4[data-tpl='minimal-bw'] .rs-section__title {
+  color: #000;
+  border-bottom-color: #1b1f2a;
+}
+
 /* ==========================================================================
    打印（v0.9）
    ★ 全仓唯一一份静态 @page（Q4 裁决）：禁止按模板生成 @page，模板差异走 .a4__body 内边距

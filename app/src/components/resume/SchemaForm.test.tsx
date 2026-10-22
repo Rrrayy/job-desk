@@ -252,15 +252,20 @@ describe('SchemaForm（jsdom）', () => {
     expect(chips).toEqual(['React', 'TypeScript', 'Vue']);
   });
 
-  /* ------------------------------ image 占位 ------------------------------ */
+  /* ------------------------------ image 字段 ------------------------------ */
 
-  it('image 字段渲染的是「未启用」占位，而不是一个点了没反应的假上传', async () => {
+  it('image 字段是真上传控件（T04 起启用），并把压缩口径写在明处', async () => {
     await render([{ type: 'basics', repeatable: false, fields: [{ key: 'photo' }] }]);
     const button = container.querySelector<HTMLButtonElement>('.photo button')!;
     expect(button.textContent).toBe('选择图片');
-    expect(button.disabled).toBe(true);
-    // 写法提示与「未启用」说明都要在（两条 hint 各司其职，不能互相顶掉）
-    expect(container.querySelector('.photo')?.textContent).toContain('暂未启用');
+    // 占位时代的 disabled 必须消失 —— 留着一个 disable 的按钮就是「点了没反应」
+    expect(button.disabled).toBe(false);
+    // 真的 file input：accept 限图片，且不参与 Tab 序列（视觉上被 button 代理）
+    const input = container.querySelector<HTMLInputElement>('input.photo__input')!;
+    expect(input.type).toBe('file');
+    expect(input.getAttribute('accept')).toBe('image/*');
+    // 两条 hint 各司其职：字段写法提示 + 压缩上限，不能被互相顶掉
+    expect(container.querySelector('.photo')?.textContent).toContain('自动压到宽 ≤480px');
     expect(container.querySelector('.photo')?.textContent).toContain('证件照');
   });
 

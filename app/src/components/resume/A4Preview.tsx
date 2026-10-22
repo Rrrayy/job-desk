@@ -18,7 +18,7 @@ import { memo, useEffect, useLayoutEffect, useRef, useState, type CSSProperties 
 import type { ResumeContent, ResumeItem, TemplateSectionSpec, TemplateId } from '../../types';
 import { cleanBullets, parseTags } from '../../resume/schema';
 import { SECTION_LABEL, fieldMetaOf } from '../../resume/templates/base';
-import { PAGE_CONTENT_PX, PAGE_MARGIN_PX, pageCountOf, pageTopPx } from '../../resume/print';
+import { PAGE_MARGIN_PX, paginate, paginateColumns, type FlowBlock, type Pagination } from '../../resume/print';
 import { sectionsOf, templateOf } from '../../resume/templates';
 import { cx } from '../../lib/util';
 
@@ -61,12 +61,49 @@ function availableWidthOf(host: HTMLElement): number {
   return avail > 0 ? avail : A4_WIDTH_PX;
 }
 
+/** 两个断点数组是否等价（逐值比，容差 0.5px）—— 避免每帧都换 state 触发 React 提交 */
+function sameBreaks(a: readonly number[], b: readonly number[]): boolean {
+  if (a.length !== b.length) return false;
+  return a.every((value, index) => Math.abs(value - b[index]) < 0.5);
+}
+
+/**
+ * 当前实际生效的缩放（`transform: scale()` 的值）。
+ *
+ * 为什么必须知道它：`getBoundingClientRect()` 返回的是**变换之后**的尺寸 ——
+ * `.a4` 被 `scale(0.93)` 套着，量到的 1655px 其实是 1779px 的 0.93 倍。
+ * 拿变换后的数字去和 `PAGE_CONTENT_PX`（CSS px，不受变换影响）相除，
+ * 窄窗口下就会「预览说 1 页、打印出来 2 页」（T04 门禁实测到的错）。
+ *
+ * 取值方式刻意不看 `--a4-scale` 变量，而是量 `.a4` 的实宽 ÷ 210mm：
+ * 这样 `scale` prop（测试/快照）与 CSS 变量两条来源都能覆盖到，
+ * 也不会在「变量还没写上去」的那一帧里读到默认的 1。
+ */
+function scaleOf(a4: HTMLElement | null): number {
+  if (!a4) return 1;
+  const width = a4.getBoundingClientRect().width;
+  if (!Number.isFinite(width) || width <= 0) return 1;
+  const ratio = width / A4_WIDTH_PX;
+  // 离谱值（没布局 / display:none / 祖先还有别的缩放）→ 当作没缩放，宁可不缩放也不要算飞
+  return ratio > 0.05 && ratio < 4 ? ratio : 1;
+}
+
 function A4PreviewInner({ content, templateId, scale }: A4PreviewProps) {
   const sections = sectionsOf(templateId);
   const layout = templateOf(templateId)?.layout ?? 'single';
   const hostRef = useRef<HTMLDivElement | null>(null);
   const bodyRef = useRef<HTMLDivElement | null>(null);
-  const [pages, setPages] = useState(1);
+  /**
+   * 每个「纸张断开点」在连续流里的 y（相对内容起点）+ 推块后的流总长 + 页数。
+   *
+   * 为什么是断点数组而不是页数：分页线必须画在**真正会断开的位置**上。
+   * `break-inside: avoid` 会把放不下的块整块推到下一页，所以断点不是等距的
+   * `i × 269mm` —— 只存页数就只能画等距线，预览与打印对不上
+   * （T04 门禁实测：等距估算说 2 页、真打印 3 页）。
+   * 页数也由 `paginate` 给（按推块后的流总长算），不在这里用 `breaks.length + 1` 推。
+   */
+  const [pagination, setPagination] = useState<Pagination>({ breaks: [], height: 0, pages: 1 });
+  const { breaks, height: flowHeight, pages } = pagination;
 
   /* 缩放：只写 CSS 变量，不进 state。观察父容器（窗口/分栏变化）而不是自己 */
   useEffect(() => {
@@ -87,29 +124,51 @@ function A4PreviewInner({ content, templateId, scale }: A4PreviewProps) {
     const body = bodyRef.current;
     if (!body) return;
     const measure = (): void => {
-      const rect = body.getBoundingClientRect();
+      const bodyRect = body.getBoundingClientRect();
       const style = getComputedStyle(body);
-      // ★ 页数要按**内容高度**算：`.a4__body` 的 14mm 上下内边距就是纸的上下边距，
-      // 不属于内容。直接拿 border-box 高度会 297mm/269mm=1.1 —— 正好一页的内容被算成两页。
-      const padY = (Number.parseFloat(style.paddingTop) || 0) + (Number.parseFloat(style.paddingBottom) || 0);
-      const contentHeight = rect.height - padY;
+      // 纸被等比缩放了，rect 是缩放后的；先换回 CSS px 再和页高相除（见 scaleOf 注释）
+      const scale = scaleOf(body.parentElement);
+      // ★ 内容的起点是**内边距之内**：`.a4__body` 的 14mm 上下内边距就是纸的上下边距，
+      // 不属于内容。不扣它，正好一页的内容会被算成 297mm/269mm=1.1 页。
+      // padding 取自 computed style（本来就是 CSS px），不参与缩放换算。
+      const padTop = Number.parseFloat(style.paddingTop) || 0;
       // 宿主高度按整张纸算（内容不足一页时也不能短于 297mm）
-      hostRef.current?.style.setProperty('--a4-h', `${Math.max(rect.height, A4_HEIGHT_PX)}px`);
-      const next = pageCountOf(contentHeight);
-      setPages((current) => (current === next ? current : next));
+      hostRef.current?.style.setProperty('--a4-h', `${Math.max(bodyRect.height / scale, A4_HEIGHT_PX)}px`);
+
+      // 逐块量「流里的位置与推进量」—— height 用**下一块的 top 差**，这样才把外边距算进去
+      const blocks: FlowBlock[] = [];
+      const children = Array.from(body.children) as HTMLElement[];
+      for (let index = 0; index < children.length; index += 1) {
+        const rect = children[index].getBoundingClientRect();
+        const top = (rect.top - bodyRect.top) / scale - padTop;
+        const next = children[index + 1]?.getBoundingClientRect();
+        blocks.push({ top, height: ((next ? next.top : rect.bottom) - rect.top) / scale });
+      }
+
+      // 两种版式两套模型：竖着的一条流（单栏/时间轴）用 paginate 模拟推块；
+      // 分栏（双栏）里板块会从板面顶端重新开始，一维流模型必然算错 → 走 paginateColumns
+      const result =
+        layout === 'double'
+          ? paginateColumns(bodyRect.height / scale - padTop - (Number.parseFloat(style.paddingBottom) || 0))
+          : paginate(blocks);
+      setPagination((current) =>
+        sameBreaks(current.breaks, result.breaks) && Math.abs(current.height - result.height) < 0.5
+          ? current
+          : result,
+      );
     };
     measure();
     if (typeof ResizeObserver === 'undefined') return;
     const observer = new ResizeObserver(measure);
     observer.observe(body);
     return () => observer.disconnect();
-  }, [content]);
+  }, [content, templateId, layout]);
 
   const style = scale === undefined ? undefined : ({ '--a4-scale': String(clampScale(scale)) } as CSSProperties);
 
   return (
     <div className="a4-fit" ref={hostRef} style={style} data-pages={pages}>
-      <div className={cx('a4', `a4--${layout}`)} aria-hidden="true">
+      <div className={cx('a4', `a4--${layout}`)} data-tpl={templateId} aria-hidden="true">
         <div className="a4__body" ref={bodyRef}>
           {sections.map((spec) => {
             const section = content.sections.find((item) => item.type === spec.type);
@@ -133,14 +192,16 @@ function A4PreviewInner({ content, templateId, scale }: A4PreviewProps) {
           <span
             className="a4__page-no"
             key={`p${index}`}
-            style={{ top: `${pageTopPx(index) + PAGE_CONTENT_PX - PAGE_MARGIN_PX}px` }}
+            // 页码落在这一页内容的底边：第 i 页底边 = 第 i 个断开点（没有断开点就是内容末尾）
+            style={{ top: `${PAGE_MARGIN_PX + (breaks[index] ?? flowHeight)}px` }}
           >
             {index + 1}
           </span>
         ))}
-        {/* 分页线画在「第 i+1 页内容起点」，与打印时的真实断开位置一致 */}
-        {Array.from({ length: Math.max(0, pages - 1) }, (_, index) => (
-          <span className="a4__guide" key={`g${index}`} style={{ top: `${pageTopPx(index + 1)}px` }} />
+        {/* 分页线画在**模拟出来的断开位置**上（不是等距的 i×269mm）：
+            `break-inside: avoid` 会把放不下的块整块推到下一页，断点因此不等距 */}
+        {breaks.map((top: number) => (
+          <span className="a4__guide" key={`g${top}`} style={{ top: `${PAGE_MARGIN_PX + top}px` }} />
         ))}
       </div>
     </div>
@@ -165,13 +226,20 @@ function ResumeItemBlock({ spec, item }: { spec: TemplateSectionSpec; item: Resu
   const metas = spec.fields.map(fieldMetaOf);
   const valueOf = (key: string): string => (item.fields[key] ?? '').trim();
 
-  // 首行 = 第一个有值的文本字段 + 起止月份（简历的通用读法；具体版式由 T04 的 layout 接管）
+  // 首行 = 第一个有值的文本字段 + 起止月份（简历的通用读法；具体版式由 layout 接管）
   const primary = metas.find((meta) => meta.type === 'text' && valueOf(meta.key));
   const start = valueOf('startMonth');
   const end = valueOf('endMonth');
   const period = start || end ? `${start || '—'} – ${end || '至今'}` : '';
+  // 照片单独取出：它是版式元素（块级、固定宽度），不该混进正文的遍历里
+  const photoMeta = metas.find((meta) => meta.type === 'image');
+  const photo = photoMeta ? valueOf(photoMeta.key) : '';
   const rest = metas.filter(
-    (meta) => meta.key !== primary?.key && meta.key !== 'startMonth' && meta.key !== 'endMonth',
+    (meta) =>
+      meta.key !== primary?.key &&
+      meta.key !== 'startMonth' &&
+      meta.key !== 'endMonth' &&
+      meta.type !== 'image',
   );
 
   const missing: string[] = [];
@@ -190,6 +258,8 @@ function ResumeItemBlock({ spec, item }: { spec: TemplateSectionSpec; item: Resu
 
   return (
     <div className="rs-item">
+      {/* 照片（只有 creative 有 image 字段）：块级、固定 22×28mm，不参与正文流 */}
+      {photo ? <img className="rs-photo" src={photo} alt={photoMeta?.label ?? '照片'} /> : null}
       {primary || period ? (
         <div className="rs-item__head">
           {primary ? <span className="rs-item__title">{valueOf(primary.key)}</span> : null}
@@ -198,7 +268,6 @@ function ResumeItemBlock({ spec, item }: { spec: TemplateSectionSpec; item: Resu
       ) : null}
 
       {rest.map((meta) => {
-        if (meta.type === 'image') return null; // 照片随 creative（T04）：本版预览不渲染
         if (meta.type === 'rich_bullets') {
           const bullets = cleanBullets(item.bullets);
           if (bullets.length === 0) return null;

@@ -1,125 +1,130 @@
 /**
- * 打印门禁的宿主页（**只给 `smoke-print.mjs` 用，不进产物**）。
+ * 打印/布局门禁的宿主页（**只给 `smoke-print.mjs` 用，不进产物**）。
  *
- * 为什么需要它：`@media print` 的真相只有真浏览器能验证（jsdom 不评估媒体查询），
- * 而 T03 时点的 `A4Preview` 还没有生产消费方（T05 的 ResumeEditor 才会挂上去），
- * 所以 `dist/index.html` 里根本没有 `.a4` 元素 —— 拿真实产物跑打印断言会
- * 「断言一个不存在的元素」，那是最糟的一种假测试。
+ * 为什么需要它：`@media print` 与 3 种 layout 的真相只有真浏览器能验证
+ * （jsdom 不评估媒体查询、没有布局），而 T05 之前这些组件还没有生产消费方
+ * （`dist/index.html` 里根本没有 `.a4` 元素）。拿真实产物跑打印断言 =
+ * 断言一个不存在的元素 = 最糟的一种假测试。
  *
- * 于是这里用 **esbuild 现场把真组件 + 真样式打成一个页面**（同一个
- * `A4Preview.tsx`、同一个 `styles.css`，一个字节都没换），再由
- * `smoke-print.mjs` 用 `Emulation.setEmulatedMedia({ media: 'print' })` 驱动。
- * 宿主页里连 `<SchemaForm>` 都是真组件：打印规则要隐藏的 `.resume__form`
- * 就是它渲染出来的那个节点，不是我手写的假 div。
+ * 于是这里用 esbuild 现场把**真组件 + 真样式**打成一个页面（同一份
+ * `A4Preview.tsx` / `TemplatePicker.tsx` / `styles.css`，一个字节都没换），
+ * 由 `smoke-print.mjs` 逐套模板驱动（`?tpl=<templateId>` 选模板）：
+ *   - `Emulation.setEmulatedMedia({ media: 'print' })` → 量 computed style
+ *   - `Page.printToPDF` → 确认真的能出纸
  *
- * ★ 它不在 `vite build` 的入口图里（`index.html` 不 import 它），
- *   所以对产物体积零贡献；`tsconfig.json` 的 include 覆盖 `scripts/`，
- *   所以它照样过 `tsc --noEmit`（组件 prop 改错会在这里先炸）。
+ * ★ 它不在 `vite build` 的入口图里（`index.html` 不 import 它），对产物体积零贡献；
+ *   `tsconfig.json` 的 include 覆盖 `scripts/`，所以它照样过 `tsc --noEmit`。
  */
 
 import { useEffect, useState } from 'react';
 import { createRoot } from 'react-dom/client';
-import type { ResumeContent } from '../../src/types';
+import type { ResumeContent, ResumeSectionType, TemplateId } from '../../src/types';
 import { addItem, ensureSectionsWith, sectionOf, setBullets, setField } from '../../src/resume/schema';
-import { BASE_SECTIONS } from '../../src/resume/templates/base';
+import { FIELD_META, type FieldKey, section as declareSection } from '../../src/resume/templates/base';
+import { TEMPLATES, TEMPLATE_ORDER, sectionsOf } from '../../src/resume/templates';
 import { A4Preview } from '../../src/components/resume/A4Preview';
 import { SchemaForm } from '../../src/components/resume/SchemaForm';
+import { TemplatePicker } from '../../src/components/resume/TemplatePicker';
 import { PrintButton } from '../../src/components/resume/PrintButton';
 import '../../src/styles.css';
 
+/** 1×1 白点 PNG：门禁只需要「有一个 data: 图片在纸上」，不需要真照片 */
+const PHOTO = 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8AAAwAB/AL+2wUAAAAASUVORK5CYII=';
+
+/** 每个字段一份像人写的样例（门禁要的是「排版真实」，不是「值好看」也无所谓） */
+const SAMPLE: Record<FieldKey, string> = {
+  name: '林一舟',
+  phone: '138 0000 0000',
+  email: 'yizhou.lin@example.com',
+  city: '杭州',
+  photo: PHOTO,
+  school: '北京邮电大学',
+  major: '计算机科学与技术',
+  degree: '本科',
+  startMonth: '2022-09',
+  endMonth: '2026-06',
+  gpa: '3.8/4.0（专业前 5%）',
+  org: '字节跳动 · 抖音电商',
+  role: '前端开发实习生',
+  description: '把首屏 FCP 从 1.8s 压到 0.9s',
+  techStack: 'React, TypeScript, Vite',
+  projectName: '单文件简历工作台',
+  link: 'github.com/example/job-desk',
+  skillsText: '熟练：TypeScript / React / Vite',
+  awardName: '蓝桥杯省一',
+  awardAt: '2024-05',
+  paperTitle: '基于 XXX 的 YYY 研究',
+  paperWhere: '某学报 2025 年第 3 期',
+  coursesText: '数据结构, 操作系统, 计算机网络',
+  customTitle: '开源贡献',
+  customText: '给 Vite 提过一个构建缓存的小修复',
+};
+
+const SECTION_TYPES: ResumeSectionType[] = [
+  'basics',
+  'education',
+  'experience',
+  'project',
+  'skills',
+  'campus',
+  'awards',
+  'papers',
+  'courses',
+  'custom',
+];
+
+const REPEATABLE = new Set<ResumeSectionType>(['education', 'experience', 'project', 'campus', 'awards', 'papers']);
+
+const ALL_KEYS = Object.keys(FIELD_META).join(',');
+
 /**
- * 造一份「打印出来一定超过一页」的简历。
- *
- * 目的不是好看，而是让分页真的发生：只有跨页时，
- * 「.rs-item 不被切断」「分页装饰消失」这些断言才有意义。
+ * 造一份「所有板块、所有字段都有内容」的简历 —— 目的不是好看，
+ * 而是让**每套模板**都撑到一页以上：只有跨页时，分页保护与溢出断言才有意义。
  */
 function seedContent(): ResumeContent {
-  // ensureSectionsWith 给每个板块建好一条空条目；更靠后的条目用 addItem 追加
-  let content = ensureSectionsWith({ sections: [] }, BASE_SECTIONS);
+  const union = SECTION_TYPES.map((type) => declareSection(type, REPEATABLE.has(type), ALL_KEYS));
+  let content = ensureSectionsWith({ sections: [] }, union);
 
-  const sectionIdOf = (type: string): string => content.sections.find((item) => item.type === type)!.id;
-
-  const fill = (type: string, index: number, fields: Record<string, string>, bullets?: string[]) => {
-    const sectionId = sectionIdOf(type);
-    while (sectionOf(content, sectionId)!.items.length <= index) {
+  for (const type of SECTION_TYPES) {
+    const sectionId = content.sections.find((item) => item.type === type)!.id;
+    // 重复板块补到 3 条（多条目才测得出「条目不跨页」）
+    const target = REPEATABLE.has(type) ? 3 : 1;
+    while (sectionOf(content, sectionId)!.items.length < target) {
       content = addItem(content, sectionId);
     }
-    const itemId = sectionOf(content, sectionId)!.items[index].id;
-    for (const [key, value] of Object.entries(fields)) {
-      content = setField(content, sectionId, itemId, key, value);
+    for (const item of sectionOf(content, sectionId)!.items) {
+      for (const key of Object.keys(FIELD_META) as FieldKey[]) {
+        if (FIELD_META[key].type === 'rich_bullets') {
+          content = setBullets(content, sectionId, item.id, [
+            `${SAMPLE[key]}：第一条要点，写清楚做了什么、怎么做的`,
+            `${SAMPLE[key]}：第二条要点，带一个数字（把 1.8s 压到 0.9s）`,
+          ]);
+        } else {
+          content = setField(content, sectionId, item.id, key, SAMPLE[key]);
+        }
+      }
     }
-    if (bullets) content = setBullets(content, sectionId, itemId, bullets);
-  };
-
-  fill('basics', 0, { name: '林一舟', phone: '138 0000 0000', email: 'yizhou.lin@example.com', city: '杭州' });
-
-  fill('education', 0, {
-    school: '北京邮电大学',
-    major: '计算机科学与技术',
-    degree: '本科',
-    startMonth: '2022-09',
-    endMonth: '2026-06',
-    gpa: '3.8/4.0（专业前 5%）',
-  });
-
-  const experiences: [Record<string, string>, string[]][] = [
-    [
-      { org: '字节跳动 · 抖音电商', role: '前端开发实习生', startMonth: '2025-03', endMonth: '2025-08', techStack: 'React, TypeScript, Vite' },
-      [
-        '把商品详情页首屏 FCP 从 1.8s 压到 0.9s：拆掉三个同步渲染的埋点模块，改成空闲回调里批量上报',
-        '重写 SKU 选择器：把 12 个互相拷贝的 useState 收敛成一个 reducer，交互回归用例从 0 条补到 34 条',
-        '搭了一套基于 esbuild 的组件级快照脚本，把设计走查的返工轮次从平均 3 轮降到 1 轮',
-      ],
-    ],
-    [
-      { org: '某创业公司', role: '全栈实习生', startMonth: '2024-09', endMonth: '2025-01', techStack: 'Node.js, SQLite' },
-      [
-        '独立做完内部工单系统的前端与接口，把运营同学每天手工汇总的 40 分钟压缩到一次导出',
-        '给表单加了字段级校验与草稿自动保存，提交失败率从 11% 降到 2%',
-      ],
-    ],
-    [
-      { org: '实验室 · 人机交互组', role: '学生研究员', startMonth: '2024-03', endMonth: '2024-08' },
-      [
-        '负责实验平台的采集端，用 Web Worker 把高频鼠标轨迹采样从掉帧 20% 变成不掉帧',
-        '整理 32 名被试的数据清洗脚本，可复现地跑出论文里那三张图和一组显著性检验结果',
-      ],
-    ],
-  ];
-  experiences.forEach(([fields, bullets], index) => fill('experience', index, fields, bullets));
-
-  const projects: [Record<string, string>, string[]][] = [
-    [
-      { projectName: '单文件简历工作台', role: '个人项目', startMonth: '2025-06', techStack: 'React, Vite, CDP', link: 'github.com/example/job-desk' },
-      [
-        '把投递、面试、面经、简历收进一个 600 KB 的单文件 HTML，双击即用，数据只落在自己的浏览器里',
-        '用 CDP 直接驱动 headless 浏览器做门禁：性能基准、打印分页、零外部请求，全部脚本化',
-      ],
-    ],
-    [
-      { projectName: '校园二手交易小程序', role: '前端负责人', startMonth: '2023-09', endMonth: '2024-01' },
-      [
-        '上线 4 个月累计 2300 名注册用户，日活在开学季峰值 400',
-        '把列表页的图片加载改成按视口懒加载 + 本地缓存，低端机上滑动帧率从 38 提到 57',
-      ],
-    ],
-  ];
-  projects.forEach(([fields, bullets], index) => fill('project', index, fields, bullets));
-
-  const skillsId = sectionIdOf('skills');
-  const skillsItemId = sectionOf(content, skillsId)!.items[0].id;
-  content = setBullets(content, skillsId, skillsItemId, [
-    '熟练：TypeScript / React / Vite，能手写可维护的状态层与构建脚本',
-    '熟悉：Node.js 服务端与 SQLite，写过采集、清洗、导出整条数据链路',
-    '了解：Rust 基础语法、浏览器渲染管线与打印排版（@page / 分页保护）',
-  ]);
+  }
 
   return content;
 }
 
 const SEED = seedContent();
 
+/**
+ * `?tpl=<templateId>` 选模板（也接受 `#id`）；不认识就落 tech-single（门禁不该因为地址栏手改而白跑）。
+ *
+ * ★ 用 query 而不是 hash：hash 变化是**同文档导航**，模块不会重跑，
+ *   门禁脚本就得自己去 setState —— 那样测的就不是「打开这套模板」了。
+ */
+function templateFromLocation(): TemplateId {
+  const fromQuery = new URLSearchParams(location.search).get('tpl');
+  const id = (fromQuery ?? location.hash.replace(/^#/, '')) as TemplateId;
+  return TEMPLATE_ORDER.includes(id) ? id : 'tech-single';
+}
+
 function Harness() {
+  const [templateId, setTemplateId] = useState<TemplateId>(templateFromLocation);
   const [content, setContent] = useState<ResumeContent>(SEED);
 
   // 首帧之后再置就绪标记：smoke 脚本轮询它，避免「React 还没渲染就量样式」
@@ -127,16 +132,42 @@ function Harness() {
     document.documentElement.dataset.harnessReady = '1';
   }, []);
 
+  // 切模板只补板块、不改内容（与产品行为一致），这样 8 套量的是同一份数据
+  const sections = sectionsOf(templateId);
+
   return (
     <div className="resume">
-      <SchemaForm sections={BASE_SECTIONS} content={content} onChange={(next) => setContent(next)} />
+      {/* 模板选择器放进 `.resume__toolbar`（真实视图里它就挂在工具条上）：
+          打印 CSS 只摘 `.resume__toolbar` / `.resume__form` / `.print-entry` 这些壳，
+          所以它必须待在壳里，否则会跟着内容一起印到纸上 ——
+          门禁的「打印页数 = 预览页数」就是被这个多出来的卡片网格顶多了一页（实测）。 */}
       <div className="resume__toolbar">
+        <TemplatePicker
+          value={templateId}
+          onChange={(id) => {
+            setTemplateId(id);
+            setContent((current) => ensureSectionsWith(current, sectionsOf(id)));
+          }}
+        />
         <PrintButton onBeforePrint={() => undefined} />
       </div>
-      <A4Preview content={content} templateId="minimal-bw" />
+      <SchemaForm sections={sections} content={content} onChange={setContent} />
+      <A4Preview content={content} templateId={templateId} />
     </div>
   );
 }
+
+/**
+ * 把模板清单（id / 布局 / 名称）暴露给门禁脚本。
+ *
+ * 为什么不是脚本里再抄一份 8 行：抄一份就有一份会漂移的真相 ——
+ * 改了 layout 之后脚本还在按老报表断言，绿得毫无意义。
+ */
+(window as unknown as { __templates?: unknown }).__templates = TEMPLATE_ORDER.map((id) => ({
+  id,
+  layout: TEMPLATES[id].layout,
+  name: TEMPLATES[id].name,
+}));
 
 const container = document.getElementById('root');
 if (!container) throw new Error('找不到 #root 挂载点');

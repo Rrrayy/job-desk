@@ -9,7 +9,7 @@
  */
 
 import { describe, expect, it } from 'vitest';
-import type { ResumeContent, TemplateSectionSpec } from '../types';
+import type { ResumeContent, TemplateId, TemplateSectionSpec } from '../types';
 import {
   addItem,
   cleanBullets,
@@ -34,7 +34,7 @@ import {
   SECTION_LABEL,
   fieldMetaOf,
 } from './templates/base';
-import { sectionsOf } from './templates';
+import { TEMPLATES, TEMPLATE_ORDER, sectionsOf } from './templates';
 
 /* ------------------------------ 标签 ------------------------------ */
 
@@ -173,10 +173,21 @@ describe('ensureSectionsWith：只补缺、不清洗、幂等', () => {
     expect(sectionOf(next, content.sections[1].id)?.items[0].id).toBe(firstItemId);
   });
 
-  it('ensureSections(templateId) 在没有登记模板时回落到基座（不会渲染空表单）', () => {
-    const content = ensureSections({ sections: [] }, 'tech-single');
-    expect(content.sections.map((s) => s.type)).toEqual(BASE_SECTIONS.map((s) => s.type));
-    expect(sectionsOf('tech-single')).toBe(BASE_SECTIONS);
+  it('★ 切模板绝不渲染空表单：未登记 → 回落基座；已登记 → 用模板自己的 delta', () => {
+    // 未登记（历史草稿里的旧 id、手改过的 id）：必须整体回落到基座 —— 回落成空表单等于数据丢失
+    const unknown = 'tpl-from-the-future' as TemplateId;
+    expect(sectionsOf(unknown)).toBe(BASE_SECTIONS);
+    const fallback = ensureSections({ sections: [] }, unknown);
+    expect(fallback.sections.map((s) => s.type)).toEqual(BASE_SECTIONS.map((s) => s.type));
+    for (const section of fallback.sections) expect(section.items).toHaveLength(1);
+
+    // 已登记：字段表来自模板 delta（不是基座），且顺序即渲染顺序
+    for (const templateId of TEMPLATE_ORDER) {
+      const sections = sectionsOf(templateId);
+      expect(sections).toBe(TEMPLATES[templateId].schema.sections);
+      const content = ensureSections({ sections: [] }, templateId);
+      expect(content.sections.map((s) => s.type)).toEqual(sections.map((s) => s.type));
+    }
   });
 
   it('emptyContentOf：板块齐全、字段都是空的', () => {

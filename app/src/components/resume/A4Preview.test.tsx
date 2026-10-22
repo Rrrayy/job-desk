@@ -10,18 +10,19 @@
 import { act } from 'react';
 import { createRoot, type Root } from 'react-dom/client';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
-import type { ResumeContent } from '../../types';
+import type { ResumeContent, TemplateId } from '../../types';
 import { ensureSectionsWith, setBullets, setField, setSectionTitle } from '../../resume/schema';
-import { BASE_SECTIONS } from '../../resume/templates/base';
-import { PAGE_CONTENT_PX, pageTopPx } from '../../resume/print';
+import { sectionsOf } from '../../resume/templates';
+import { PAGE_CONTENT_PX, PAGE_MARGIN_PX } from '../../resume/print';
 import { A4Preview, A4_MIN_SCALE, A4_WIDTH_PX, clampScale } from './A4Preview';
 
 // React 18 要求宿主编译期/运行时显式声明「这里是 act 环境」，否则每次 act
 // 都会打印一条 warning。本文件用裸 react-dom/client（没有 testing-library）→ 自己声明。
 (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
 
-function emptyResume(): ResumeContent {
-  return ensureSectionsWith({ sections: [] }, BASE_SECTIONS);
+function emptyResume(templateId: TemplateId = 'tech-single'): ResumeContent {
+  // 用真模板的 schema 造空内容（T04 起 8 套都有 delta，拿基座造数据会和渲染用的 schema 对不上）
+  return ensureSectionsWith({ sections: [] }, sectionsOf(templateId));
 }
 
 function sectionOfContent(content: ResumeContent, type: string) {
@@ -42,7 +43,7 @@ describe('A4Preview（jsdom）', () => {
     container.remove();
   });
 
-  async function render(content: ResumeContent, templateId: 'minimal-bw' = 'minimal-bw'): Promise<void> {
+  async function render(content: ResumeContent, templateId: TemplateId = 'tech-single'): Promise<void> {
     root = createRoot(container);
     await act(async () => {
       root.render(<A4Preview content={content} templateId={templateId} />);
@@ -60,6 +61,29 @@ describe('A4Preview（jsdom）', () => {
     expect(container.querySelectorAll('.rs-section').length).toBeGreaterThan(0);
   });
 
+  it('★ layout 换的是排版类名，不是第二套渲染器：3 种 layout 都在同一份 DOM 上', async () => {
+    const expectLayout = async (id: TemplateId, cls: string, tpl: string): Promise<void> => {
+      await act(async () => {
+        root.render(<A4Preview content={emptyResume()} templateId={id} />);
+      });
+      const a4 = container.querySelector<HTMLElement>('.a4')!;
+      expect(a4.className).toContain(cls);
+      expect(a4.dataset.tpl).toBe(tpl);
+      // 同一个渲染器：正文元素的类名不随布局变（布局只改 CSS）
+      expect(container.querySelector('.rs-section__title')).not.toBeNull();
+      // 空内容时没有「首行」（没有标题也没有时间段），但条目块本身一定在
+      expect(container.querySelector('.rs-item')).not.toBeNull();
+    };
+    root = createRoot(container);
+    await act(async () => {
+      root.render(<A4Preview content={emptyResume()} templateId="tech-single" />);
+    });
+    await expectLayout('tech-single', 'a4--single', 'tech-single');
+    await expectLayout('campus-general', 'a4--double', 'campus-general');
+    await expectLayout('social-simple', 'a4--timeline', 'social-simple');
+    await expectLayout('creative', 'a4--double', 'creative');
+  });
+
   it('板块按 schema 顺序渲染；用户改过的板块名优先于模板名', async () => {
     let content = emptyResume();
     content = setField(content, sectionOfContent(content, 'basics').id, sectionOfContent(content, 'basics').items[0].id, 'name', '张三');
@@ -69,12 +93,11 @@ describe('A4Preview（jsdom）', () => {
     await render(content);
 
     const titles = Array.from(container.querySelectorAll('.rs-section__title')).map((el) => el.textContent);
-    // 顺序 = BASE_SECTIONS 顺序；用户改过的板块名（实习经历）盖掉模板名（实习/工作经历）。
+    // 顺序 = 模板 schema 顺序（tech-single 与基座同序）；用户改过的板块名（实习经历）盖掉模板名。
     // 教育/项目虽未填，但它们的必填字段（学校 / 项目名）还空着 → 仍要占位，
     // 「纸上看得见缺什么」比「排版好看」优先（见下一条断言）。
-    expect(titles).toEqual(['基本信息', '教育经历', '实习经历', '项目经历']);
-    // 技能 / 奖项整块没有任何必填字段、也没填内容 → 不占版面
-    expect(titles).not.toContain('专业技能');
+    expect(titles).toEqual(['基本信息', '教育经历', '实习经历', '项目经历', '专业技能']);
+    // 奖项整块没有必填字段、也没填内容 → 不占版面；技能在 tech-single 里 skillsText 必填 → 留占位
     expect(titles).not.toContain('奖项荣誉');
   });
 
@@ -91,7 +114,7 @@ describe('A4Preview（jsdom）', () => {
     // 删中间一条 + 交换 → 纸上跟着变（预览永远从 content 渲染，没有第二份数据）
     content = setBullets(content, experience.id, experience.items[0].id, ['第三点', '第一点']);
     await act(async () => {
-      root.render(<A4Preview content={content} templateId="minimal-bw" />);
+      root.render(<A4Preview content={content} templateId="tech-single" />);
     });
     expect(Array.from(container.querySelectorAll('.rs-bullets')).map((el) => el.textContent)).toEqual([
       '第三点',
@@ -147,24 +170,56 @@ describe('A4Preview（jsdom）', () => {
     expect(container.querySelectorAll('.a4__guide')).toHaveLength(0);
   });
 
-  it('★ 页数按「内容高度 / 一页可打印高度」算，分页线与页码落在同一把尺子上', async () => {
-    // jsdom 没有布局 —— 把高度「假」到底才是这里唯一诚实的做法：
-    // 钉一个 2.4 页的高度，断言页数与分页线位置都按 print.ts 的公式推导（预览与打印共用一把尺子）
+  it('★ 分页线画在「真正会断开的位置」上：被推下页的块之后，断点不再等距', async () => {
+    // jsdom 没有布局 —— 把几何「假」到底才是这里唯一诚实的做法。
+    // 造一个真实会遇到的情形：第 2 块从 900px 开始、高 1000px，跨过 1016.6px 的一页线
+    // → 浏览器会把它整块推到下页；只按总高 ÷ 269mm 估算会少算一页（T04 门禁实测到的 bug）。
     const original = Element.prototype.getBoundingClientRect;
-    const height = PAGE_CONTENT_PX * 2.4;
-    Element.prototype.getBoundingClientRect = function stubbed(): DOMRect {
-      return { height, width: 0, top: 0, left: 0, bottom: height, right: 0, x: 0, y: 0, toJSON: () => ({}) } as DOMRect;
+    const FLOW = [0, 900, 1900, 2400];
+    const box = (top: number, height: number): DOMRect =>
+      ({ top, height, bottom: top + height, width: 0, left: 0, right: 0, x: 0, y: top, toJSON: () => ({}) }) as DOMRect;
+    Element.prototype.getBoundingClientRect = function stubbed(this: Element): DOMRect {
+      const el = this as HTMLElement;
+      if (el.classList.contains('a4__body')) return box(0, 0);
+      const index = Array.prototype.indexOf.call(el.parentElement!.children, el);
+      return box(FLOW[index] ?? 0, 10);
     };
     try {
       await render(emptyResume());
       const fit = container.querySelector<HTMLElement>('.a4-fit')!;
+      const guides = Array.from(container.querySelectorAll<HTMLElement>('.a4__guide'));
+      // 断点 1 = 一页线（1016.6）；断点 2 = 第二次推块后的页线（2033.2）
+      expect(guides.map((guide) => guide.style.top)).toEqual([
+        `${PAGE_MARGIN_PX + PAGE_CONTENT_PX}px`,
+        `${PAGE_MARGIN_PX + PAGE_CONTENT_PX * 2}px`,
+      ]);
       expect(fit.dataset.pages).toBe('3');
       expect(container.querySelectorAll('.a4__page-no')).toHaveLength(3);
-      const guides = Array.from(container.querySelectorAll<HTMLElement>('.a4__guide'));
-      expect(guides).toHaveLength(2);
-      // 第 i 条线画在「第 i+1 页内容的起点」= 14mm + i × 269mm
-      expect(guides[0].style.top).toBe(`${pageTopPx(1)}px`);
-      expect(guides[1].style.top).toBe(`${pageTopPx(2)}px`);
+    } finally {
+      Element.prototype.getBoundingClientRect = original;
+    }
+  });
+
+  it('★ 量到的几何必须先除回缩放：rect 是变换之后的，页高是 CSS px', async () => {
+    // 真 bug 的形态（T04 门禁抓到）：`.a4` 被 scale(0.5) 套着，量到 600px 其实是 1200px，
+    // 拿 600 去除 1016.6 会得出「1 页」，而打印出来是 2 页。
+    // jsdom 不会做变换 —— 所以这里直接按「变换后」的数字喂进 stub，验算换算这一层。
+    const original = Element.prototype.getBoundingClientRect;
+    const SCALE = 0.5;
+    const box = (top: number, height: number, width: number): DOMRect =>
+      ({ top, height, bottom: top + height, width, left: 0, right: 0, x: 0, y: top, toJSON: () => ({}) }) as DOMRect;
+    Element.prototype.getBoundingClientRect = function stubbed(this: Element): DOMRect {
+      const el = this as HTMLElement;
+      if (el.classList.contains('a4')) return box(0, 1122.5 * SCALE, A4_WIDTH_PX * SCALE);
+      if (el.classList.contains('a4__body')) return box(0, 600 * SCALE, 0);
+      // 唯一一个板块：CSS px 里占 1200px（比一页高）→ 视觉 600px
+      return box(0, 1200 * SCALE, 0);
+    };
+    try {
+      await render(emptyResume());
+      // 1200 CSS px ÷ 1016.6 = 2 页；换算漏了就会是 1 页
+      expect(container.querySelector<HTMLElement>('.a4-fit')!.dataset.pages).toBe('2');
+      expect(container.querySelectorAll('.a4__page-no')).toHaveLength(2);
     } finally {
       Element.prototype.getBoundingClientRect = original;
     }
@@ -180,7 +235,7 @@ describe('A4Preview（jsdom）', () => {
     expect(fit.style.getPropertyValue('--a4-scale') === '' || fit.style.getPropertyValue('--a4-scale') === '1').toBe(true);
 
     await act(async () => {
-      root.render(<A4Preview content={content} templateId="minimal-bw" scale={0.6} />);
+      root.render(<A4Preview content={content} templateId="tech-single" scale={0.6} />);
     });
     expect(fit.style.getPropertyValue('--a4-scale')).toBe('0.6');
   });
@@ -198,14 +253,22 @@ describe('A4Preview（jsdom）', () => {
     expect((A4Preview as unknown as { $$typeof: symbol }).$$typeof).toBe(Symbol.for('react.memo'));
   });
 
-  it('照片字段本版不进预览（照片随 creative / T04）', async () => {
-    let content = emptyResume();
-    const basics = sectionOfContent(content, 'basics');
+  it('★ 照片（只有 creative 有 image 字段）渲染成 .rs-photo；没有照片就不留空位', async () => {
+    // creative 的 basics 里带 photo → 用真模板而不是基座
+    let content = ensureSectionsWith({ sections: [] }, sectionsOf('creative'));
+    const basics = content.sections.find((item) => item.type === 'basics')!;
     content = setField(content, basics.id, basics.items[0].id, 'name', '张三');
-    content = setField(content, basics.id, basics.items[0].id, 'photo', 'data:image/png;base64,AAAA');
+    content = setField(content, basics.id, basics.items[0].id, 'photo', 'data:image/jpeg;base64,AAAA');
 
-    await render(content);
+    await render(content, 'creative');
+    const photo = container.querySelector<HTMLImageElement>('.a4 img.rs-photo')!;
+    expect(photo).not.toBeNull();
+    expect(photo.getAttribute('src')).toBe('data:image/jpeg;base64,AAAA');
+
+    // 移除照片 → 连 <img> 都不该有（不渲染空框，纸上不该有占位方块）
+    await act(async () => {
+      root.render(<A4Preview content={setField(content, basics.id, basics.items[0].id, 'photo', '')} templateId="creative" />);
+    });
     expect(container.querySelector('.a4 img')).toBeNull();
-    expect(container.querySelector('.a4__body')?.textContent).not.toContain('data:image');
   });
 });

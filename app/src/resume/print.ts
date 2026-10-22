@@ -69,6 +69,103 @@ export function pageTopPx(index: number): number {
   return PAGE_MARGIN_PX + index * PAGE_CONTENT_PX;
 }
 
+/** 连续流里的一个块：距内容起点多高（top）、占多高（height，**含**下外边距） */
+export interface FlowBlock {
+  top: number;
+  height: number;
+}
+
+/** 一次模拟分页的结果 */
+export interface Pagination {
+  /** 每页在连续流里的断开位置（相对内容起点的 CSS px，升序） */
+  breaks: number[];
+  /** 推块之后的**流总长**（≥ 各块自然堆叠高度之和）—— 页数由它决定，不是由断点个数决定 */
+  height: number;
+  /** 页数（≥1） */
+  pages: number;
+}
+
+/**
+ * 模拟一次分页，返回断开位置与推块后的流总长。
+ *
+ * 为什么需要这一步（T04 实测发现的真问题）：预览是连续流，而打印会分页。
+ * `break-inside: avoid` 的块如果正好卡在纸张边界上，浏览器会**整块推到下一页** ——
+ * 这一推会让后面的内容整体顺延，最终页数可能比「总高度 ÷ 269mm」多一页。
+ * 只按总高度估页数的结果是：预览显示 2 页、打印出来 3 页（门禁第一次跑就抓到了）。
+ *
+ * 算法就是浏览器分页的极简版：顺序扫描，块放不下当前页剩余空间就整体推到下一页。
+ *
+ * 两条容易写错的细节：
+ * - **页数必须由「推块之后的流总长」算，不能由「断点个数 + 1」算**：
+ *   最后一块被推下去之后，它的尾巴可能已经跨到下一页去了（这一页只装下上半截）。
+ * - **比一页还高的块**：`break-inside: avoid` 也救不了，浏览器只能切开它。
+ *   这里不对它做推块（推过去还是放不下，写不好就是死循环），但它跨过的每条页线
+ *   都是**真实**的翻页位置，逐条记下 —— 早先的版本直接 `continue` 跳过，
+ *   结果「一页里塞了一段两页长的经历」时页数少算一页。
+ *
+ * 不模拟的事（故意的）：分栏版式（`.a4--double`）不用这个函数 —— 见 `paginateColumns`。
+ */
+export function paginate(blocks: readonly FlowBlock[], pagePx: number = PAGE_CONTENT_PX): Pagination {
+  const breaks: number[] = [];
+  let offset = 0;
+  let height = 0;
+
+  const pushBreak = (at: number): void => {
+    if (at <= 0 || breaks[breaks.length - 1] === at) return;
+    breaks.push(at);
+  };
+
+  for (const block of blocks) {
+    if (block.height <= 0) continue;
+    const top = block.top + offset;
+    let end = top + block.height;
+
+    if (block.height >= pagePx) {
+      for (let at = (Math.floor(top / pagePx) + 1) * pagePx; at < end - 1e-6; at += pagePx) pushBreak(at);
+      height = Math.max(height, end);
+      continue;
+    }
+
+    const boundary = (Math.floor(top / pagePx) + 1) * pagePx;
+    if (end > boundary) {
+      // 整块推到下一页：位移要累加到后面所有块上，否则后面的块会「凭空回退」
+      const shift = boundary - top;
+      offset += shift;
+      end += shift;
+      pushBreak(boundary);
+    }
+    height = Math.max(height, end);
+  }
+
+  return { breaks, height, pages: Math.max(1, Math.ceil(height / pagePx - 1e-6)) };
+}
+
+/** 分栏版式的栏数（`.a4--double` 是 2 栏） */
+export const PAGE_COLUMNS = 2;
+
+/**
+ * 分栏版式（`.a4--double`）的页数。
+ *
+ * 为什么不能套用 `paginate`：分栏容器里正文**不是一条竖着的流** —— 量板块的 top 会看到
+ * 它从 1007 突然跳回 0（第二栏从板面顶端重新开始），`paginate` 按一维流去推块，
+ * 结果必然是 0 个断点、1 页，而纸上明明印了 2 页（T04 门禁实测：大学通用模板 1 vs 2）。
+ *
+ * 分栏的真实规则很简单：**每页并排 N 栏，各 N 栏都从页顶排到页底**。于是
+ *   总内容量 ≈ N × 板面高 H，一页装得下 N × 一页高 P → 页数 = H / P
+ * 栏数在上下同时约掉，所以页数只取决于板面高度 —— 这与浏览器预览量到的 H 是同一个数
+ * （屏幕与纸面正文宽都是 182mm，栏宽一样、断行一样）。
+ *
+ * 断点按等距给出：分栏不存在「整块被推下页」这种累积位移，页线本来就是等距的。
+ */
+export function paginateColumns(heightPx: number, pagePx: number = PAGE_CONTENT_PX): Pagination {
+  // 注意这里不能用 pageCountOf：它按 269mm 固定算，量不到注入的 pagePx（测试里换成一页 1000px 就错）
+  const valid = Number.isFinite(heightPx) && heightPx > 0;
+  const pages = valid ? Math.max(1, Math.ceil(heightPx / pagePx - 1e-6)) : 1;
+  const breaks: number[] = [];
+  for (let index = 1; index < pages; index += 1) breaks.push(index * pagePx);
+  return { breaks, height: valid ? heightPx : 0, pages };
+}
+
 export interface PrintOptions {
   /** 打印前落库草稿（T05 传 `flush`，T03 的测试传 spy） */
   flush?: () => void;

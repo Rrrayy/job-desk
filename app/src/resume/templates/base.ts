@@ -17,7 +17,6 @@ import type {
   TemplateFieldSpec,
   TemplateSectionSpec,
 } from '../../types';
-
 /** 板块的缺省标题（用户改过就用用户的，没改就用这个） */
 export const SECTION_LABEL: Record<ResumeSectionType, string> = {
   basics: '基本信息',
@@ -183,3 +182,61 @@ export const BASE_SECTIONS: TemplateSectionSpec[] = [
   { type: 'skills', repeatable: false, fields: [{ key: 'skillsText' }] },
   { type: 'awards', repeatable: true, fields: [{ key: 'awardName' }, { key: 'awardAt' }] },
 ];
+
+/* ---------------------------------------------------------------- delta 构造器 */
+
+/**
+ * 一个字段在 delta 里的覆写项（`required` 也可以用 key 尾缀 `*` 表达，见 `section`）。
+ *
+ * ★ 只允许覆写这 5 个属性（ARCH §1.3 的可测约束）：不允许改 key、不允许加新 key。
+ * 改 key = 换模板时那段内容失联；加新 key = 数据在另一套模板里无处安放。
+ */
+export interface FieldOverride {
+  required?: boolean;
+  label?: string;
+  placeholder?: string;
+  hint?: string;
+  type?: ResumeFieldType;
+}
+
+/**
+ * 紧凑声明一个板块 —— 8 套模板的 delta 全靠它，一行一个板块。
+ *
+ * ```ts
+ * section('experience', true, 'org*,role,startMonth,endMonth,description,techStack')
+ * section('campus', true, 'org*,role,description', { org: { label: '组织/社团' } })
+ * ```
+ *
+ * - key 尾缀 `*` = 必填（`required` 只在为真时才写进对象：8 套 × 几十个字段，
+ *   每个多一个 `required:false` 就是 3 KB 的纯噪音）；
+ * - 第 4 个参数只用于**文案覆写**（同一份字段在不同模板里叫法不同：
+ *   `org` 在技术模板里是「公司/组织」，在校园模板里是「组织/社团」）。
+ *
+ * 为什么用字符串而不是对象数组：中文文案全在 `FIELD_META` 里，delta 只需要写
+ * 「有哪些 key、哪个必填」。字符串形式让一个模板的 schema 一眼能读完，
+ * 也让「8 套模板没有一份新文案」这件事在 review 时无处藏身。
+ */
+export function section(
+  type: ResumeSectionType,
+  repeatable: boolean,
+  keys: string,
+  overrides: Record<string, FieldOverride> = {},
+): TemplateSectionSpec {
+  return {
+    type,
+    repeatable,
+    fields: keys
+      .split(',')
+      .map((raw) => raw.trim())
+      .filter((raw) => raw.length > 0)
+      .map((raw) => {
+        const star = raw.endsWith('*');
+        const key = star ? raw.slice(0, -1) : raw;
+        const override = overrides[key] ?? {};
+        const field: TemplateFieldSpec = { key, ...override };
+        if (star || override.required) field.required = true;
+        else delete field.required;
+        return field;
+      }),
+  };
+}
