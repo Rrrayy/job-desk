@@ -5797,6 +5797,46 @@ button.chip:hover {
   font-size: 12.5px;
 }
 
+/* ============================================================ v0.9 · 投递绑定（T06）
+   简历版本选择器 + 改绑留痕。挂在抽屉「概览」栅格里，宽度与别的字段对齐。 */
+
+.bind {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.bind__select--dangling {
+  color: var(--amber);
+}
+
+.bind__hint {
+  margin: 0;
+}
+
+.bind__log {
+  font-size: 12px;
+  color: var(--ink-3);
+}
+
+.bind__log summary {
+  cursor: pointer;
+  user-select: none;
+}
+
+.bind__log ul {
+  margin: 4px 0 0;
+  padding-left: 16px;
+}
+
+.bind__log li {
+  margin: 2px 0;
+}
+
+.resume-row__stats {
+  color: var(--ink);
+}
+
 /* ==========================================================================
    打印（v0.9）
    ★ 全仓唯一一份静态 @page（Q4 裁决）：禁止按模板生成 @page，模板差异走 .a4__body 内边距

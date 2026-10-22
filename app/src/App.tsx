@@ -89,6 +89,7 @@ import {
   type ResumeSlice,
   type SaveVersionResult,
 } from './resume/versions';
+import { bindResumeVersion as bindResumeVersionDraft } from './resume/bind';
 import { cloneDB, companyFullName, companyLabel, downloadBlob, downloadText, pad2, safeHref, textBytes, uid } from './lib/util';
 import {
   PORTABLE_FILES,
@@ -540,6 +541,17 @@ export default function App() {
       const nowIso = new Date().toISOString();
       // 数据模型层的默认值是 wishlist；「记一家」浮层会显式传 applied（真实用法：投完才记）
       const status: Status = input.status || 'wishlist';
+      // T06：默认绑「主版本」（活版本才作数）。手填了别的版本名就尊重手填，走旧文本桶。
+      const settingsNow = dbRef.current.settings;
+      const defaultVersion = settingsNow.defaultResumeVersionId
+        ? dbRef.current.resumeVersions.find(
+            (version) => version.id === settingsNow.defaultResumeVersionId && !isDeleted(version),
+          )
+        : undefined;
+      const boundVersion =
+        defaultVersion && (!input.resumeVersion || input.resumeVersion === defaultVersion.label)
+          ? defaultVersion
+          : undefined;
       mutate((draft) => {
         const existed = draft.companies.find((c) => c.name === input.companyName);
         let companyId: string;
@@ -567,7 +579,11 @@ export default function App() {
           statusChangedAt: nowIso,
           lastActivityAt: nowIso,
           jdUrl: input.jdUrl,
-          resumeVersion: input.resumeVersion,
+          // v0.9 / T06：新建时默认绑主版本（冻结版）。不做这一步，新投递只有文本快照，
+          // 统计会把它们全部归进「未绑定（旧数据）」桶 —— 把 v0.9 的新数据当成旧数据。
+          // 只在用户没手填别的版本名（或填的正是主版本名）时才绑，手填了别的就尊重手填。
+          resumeVersion: boundVersion ? boundVersion.label : input.resumeVersion,
+          resumeVersionId: boundVersion?.id,
           salaryText: input.salaryText,
           daysPerWeek: input.daysPerWeek,
           durationMonths: input.durationMonths,
@@ -613,6 +629,22 @@ export default function App() {
           target.userEditedAt = { ...(target.userEditedAt ?? {}), status: nowIso };
         }
       });
+    },
+    [mutate],
+  );
+
+  /**
+   * v0.9 / T06：绑定 / 改绑 / 解绑。逻辑全在 `resume/bind.ts` 纯函数层 ——
+   * 这里只负责把 draft 递进去。F9（不碰 lastActivityAt / notes / 时间线）由那一层保证，
+   * 测试在 `resume/bind.test.ts` 里显式回归。
+   */
+  const bindResumeVersion = useCallback(
+    (appId: string, versionId: string | null): boolean => {
+      let ok = false;
+      mutate((draft) => {
+        ok = bindResumeVersionDraft(draft, appId, versionId, new Date().toISOString());
+      });
+      return ok;
     },
     [mutate],
   );
@@ -2589,6 +2621,7 @@ export default function App() {
     toast: (text: string) => showToast(text),
     addApplication,
     updateApplication,
+    bindResumeVersion,
     changeStatus,
     deleteApplication,
     restoreApplication,

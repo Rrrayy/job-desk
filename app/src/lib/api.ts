@@ -248,6 +248,13 @@ export interface AppApi {
 
   addApplication: (input: NewApplicationInput) => string;
   updateApplication: (id: string, patch: Partial<Application>) => void;
+  /**
+   * v0.9 / T06：绑定 / 改绑 / 解绑（`versionId = null`）。
+   * 内部走 `bindResumeVersion` 纯函数：写 `resumeBindLog`（≤20 条）、
+   * 刻意**不**碰 `lastActivityAt` 与 notes/时间线（F9）。
+   * 返回 false = 目标不存在或没变化，调用方无需提示。
+   */
+  bindResumeVersion: (appId: string, versionId: string | null) => boolean;
   changeStatus: (id: string, status: Status, opts?: StatusChangeOpts) => void;
   deleteApplication: (id: string) => void;
   /** v0.5 回收站：从回收站恢复（面试与沟通记录原样回来） */

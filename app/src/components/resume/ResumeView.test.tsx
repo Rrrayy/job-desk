@@ -49,6 +49,12 @@ function fakeApi(options: FakeOptions = {}): { api: AppApi; calls: string[] } {
   };
 
   const api = {
+    /** T06 起 ResumeList 会从 `api.db` 里读统计（buildResumeStats 需要 interviews/applications） */
+    db: {
+      interviews: [],
+      applications: [],
+      resumeVersions: options.versions ?? [],
+    },
     updateResumeContent: (...args: unknown[]) => {
       calls.push(`commit:${String(args[0])}`);
     },

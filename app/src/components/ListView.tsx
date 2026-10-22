@@ -19,6 +19,7 @@ import {
 } from '../lib/rules';
 import { fmtDate, fmtDateTime, timeValue } from '../lib/date';
 import { companyLabel, cx } from '../lib/util';
+import { isDeleted } from '../lib/trash';
 import { useVirtualList } from '../lib/virtual';
 import { DEFAULT_LIST_FILTERS, loadListFilters, saveListFilters, type ListFilterState } from '../lib/storage';
 
@@ -92,13 +93,34 @@ export function ListView({ api }: { api: AppApi }) {
     });
   }, [statusFilter, channelFilter, versionFilter, cityFilter, keyword, sort]);
 
-  const versions = useMemo(() => {
-    const set = new Set<string>();
-    for (const app of db.applications) {
-      if (app.resumeVersion) set.add(app.resumeVersion);
+  /**
+   * v0.9 / T06：版本筛选按 **id**（版本改名不漂移），旧文本快照统一归一个桶。
+   * 曾经按文本去重筛选 —— 同一份简历被手输成三种写法就裂成三行，查无此简历。
+   */
+  const versionOptions = useMemo(() => {
+    const rows = db.resumeVersions
+      .filter((version) => !isDeleted(version))
+      .map((version) => ({ key: version.id, label: version.label }))
+      .sort((a, b) => a.label.localeCompare(b.label, 'zh-Hans-CN'));
+    return db.applications.some((app) => !app.resumeVersionId && app.resumeVersion)
+      ? [...rows, { key: 'legacy', label: '未绑定（旧数据）' }]
+      : rows;
+  }, [db.resumeVersions, db.applications]);
+
+  /** 版本 id → 展示名 + 是否还在（悬空显示要加「（已删除）」；先建索引，渲染期不嵌套扫描） */
+  const versionIndex = useMemo(() => {
+    const map = new Map<string, { label: string; alive: boolean }>();
+    for (const version of db.resumeVersions) {
+      map.set(version.id, { label: version.label, alive: !isDeleted(version) });
     }
-    return [...set].sort();
-  }, [db.applications]);
+    return map;
+  }, [db.resumeVersions]);
+
+  /** 旧缓存里的筛选项可能是文本（v0.9 之前），对不上现在的选项就回落「全部」 */
+  const effectiveVersionFilter =
+    versionFilter === 'all' || versionOptions.some((option) => option.key === versionFilter)
+      ? versionFilter
+      : 'all';
 
   /** 城市选项：不硬编码，全从现有投递里动态去重 */
   const cities = useMemo(() => {
@@ -130,18 +152,29 @@ export function ListView({ api }: { api: AppApi }) {
       .map((app) => {
         const silence = silenceStateOf(app, db.notes, db.settings, now, noteIndex);
         const next = nextInterviewOf(db.interviews, app.id, now);
+        // v0.9 / T06：列与排序都显示「解析后」的版本名 —— 悬空补（已删除），旧数据显示文本
+        const bound = app.resumeVersionId ? versionIndex.get(app.resumeVersionId) : undefined;
+        const versionCell = bound
+          ? bound.alive
+            ? bound.label
+            : `${bound.label}（已删除）`
+          : app.resumeVersion || '';
         return {
           app,
           silence,
           next,
           company: companyLabel(db.companies, app.companyId),
           noteCount: noteIndex.get(app.id)?.length ?? 0,
+          versionCell,
         };
       })
       .filter((row) => {
         if (statusFilter !== 'all' && row.app.status !== statusFilter) return false;
         if (channelFilter !== 'all' && (row.app.channel || 'other') !== channelFilter) return false;
-        if (versionFilter !== 'all' && (row.app.resumeVersion || '') !== versionFilter) return false;
+        if (effectiveVersionFilter !== 'all') {
+          const key = row.app.resumeVersionId ?? (row.app.resumeVersion ? 'legacy' : 'none');
+          if (key !== effectiveVersionFilter) return false;
+        }
         if (cityFilter.length > 0 && !cityFilter.includes((row.app.city || '').trim())) return false;
         if (keywordText) {
           const haystack = `${row.company} ${row.app.jobTitle} ${row.app.city || ''}`.toLowerCase();
@@ -162,7 +195,7 @@ export function ListView({ api }: { api: AppApi }) {
         case 'channel':
           return (a.app.channel || '').localeCompare(b.app.channel || '') * dir;
         case 'version':
-          return (a.app.resumeVersion || '').localeCompare(b.app.resumeVersion || '', 'zh-Hans-CN') * dir;
+          return (a.versionCell || '').localeCompare(b.versionCell || '', 'zh-Hans-CN') * dir;
         case 'appliedAt':
           return (timeValue(a.app.appliedAt) - timeValue(b.app.appliedAt)) * dir;
         case 'silence':
@@ -179,7 +212,7 @@ export function ListView({ api }: { api: AppApi }) {
       }
     });
     return list;
-  }, [db, now, statusFilter, channelFilter, versionFilter, cityFilter, keyword, sort]);
+  }, [db, now, statusFilter, channelFilter, effectiveVersionFilter, versionIndex, cityFilter, keyword, sort]);
 
   /**
    * 窗口化（v0.5 / D6）：行高固定 38px（见 styles.css .table td 的 padding
@@ -255,13 +288,13 @@ export function ListView({ api }: { api: AppApi }) {
           </select>
           <select
             className="select select--compact"
-            value={versionFilter}
+            value={effectiveVersionFilter}
             onChange={(event) => setVersionFilter(event.target.value)}
           >
             <option value="all">全部简历版本</option>
-            {versions.map((version) => (
-              <option key={version} value={version}>
-                {version}
+            {versionOptions.map((option) => (
+              <option key={option.key} value={option.key}>
+                {option.label}
               </option>
             ))}
           </select>
@@ -368,7 +401,7 @@ export function ListView({ api }: { api: AppApi }) {
                     <td>{row.app.jobTitle}</td>
                     <td>{row.app.city || '—'}</td>
                     <td>{row.app.channel ? CHANNEL_LABEL[row.app.channel] : '—'}</td>
-                    <td className="table__version">{row.app.resumeVersion || '—'}</td>
+                    <td className="table__version">{row.versionCell || '—'}</td>
                     <td>{fmtDate(row.app.appliedAt)}</td>
                     <td>
                       {row.silence.level ? (

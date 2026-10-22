@@ -43,6 +43,7 @@ import { experienceForInterview, questionsOf } from '../lib/interview';
 import { PLATFORM_LABEL } from '../adapters/registry';
 import { copyText, cx, orDash } from '../lib/util';
 import { Field, InfoRow, SelectField } from './Field';
+import { BindVersionSelect } from './BindVersionSelect';
 import { JdPanel } from './JdPanel';
 import { AiScenarioPanel } from './ai/AiScenarioPanel';
 
@@ -389,12 +390,7 @@ function DetailBody({ api, app }: { api: AppApi; app: Application }) {
               onCommit={(value) => update({ appliedAt: value || undefined })}
               narrow
             />
-            <Field
-              label="简历版本"
-              value={app.resumeVersion || ''}
-              onCommit={(value) => update({ resumeVersion: value.trim() || undefined })}
-              placeholder={db.settings.defaultResumeVersion || 'v3-前端-项目版'}
-            />
+            <BindVersionSelect api={api} app={app} />
             <Field label="薪资原文" value={app.salaryText || ''} onCommit={(value) => update({ salaryText: value.trim() || undefined })} placeholder="200-300/天" narrow />
             <Field
               label="每周到岗（天）"

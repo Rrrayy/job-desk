@@ -13,12 +13,19 @@
  *    但也不该让人一按就永久消失。回收站折叠区在列表底部，内联恢复。
  */
 
-import { useState } from 'react';
+import { useMemo, useState } from 'react';
 import type { AppApi } from '../../lib/api';
 import type { Resume, TemplateId } from '../../types';
 import { TEMPLATE_LIST } from '../../resume/templates';
 import { fmtDateTime } from '../../lib/date';
+import { RESUME_SAMPLE_MIN, buildResumeStats } from '../../lib/rules';
 import { cx } from '../../lib/util';
+
+/** 一份简历的投递统计（从版本级聚合归回简历级；旧文本桶不归属任何简历） */
+interface ResumeStats {
+  total: number;
+  interviewed: number;
+}
 
 export function ResumeList({ api }: { api: AppApi }) {
   const [creating, setCreating] = useState(false);
@@ -30,6 +37,29 @@ export function ResumeList({ api }: { api: AppApi }) {
 
   const list = api.resume.list;
   const trashed = api.resume.trashed;
+
+  /**
+   * v0.9 / T06：统计接进简历页。复用复盘卡同一份口径（`buildResumeStats`，
+   * O(N) 单遍聚合），再按版本归属把数字归回简历 —— 用户在简历页问的是
+   * 「这份简历投了多少、进了几个面」，不是每个版本各一行。
+   */
+  const statsByResume = useMemo(() => {
+    const db = api.db;
+    const byVersion = new Map<string, ResumeStats>();
+    for (const row of buildResumeStats(db)) {
+      if (row.versionId) byVersion.set(row.versionId, { total: row.total, interviewed: row.interviewed });
+    }
+    const map = new Map<string, ResumeStats>();
+    for (const version of db.resumeVersions) {
+      const row = byVersion.get(version.id);
+      if (!row) continue;
+      const acc = map.get(version.resumeId) ?? { total: 0, interviewed: 0 };
+      acc.total += row.total;
+      acc.interviewed += row.interviewed;
+      map.set(version.resumeId, acc);
+    }
+    return map;
+  }, [api.db]);
 
   const submitCreate = (): void => {
     const id = api.resume.create({ name, templateId });
@@ -106,10 +136,11 @@ export function ResumeList({ api }: { api: AppApi }) {
       ) : (
         <ul className="resume-rows">
           {rows.map((resume) => (
-            <ResumeRow
-              key={resume.id}
-              api={api}
-              resume={resume}
+              <ResumeRow
+                key={resume.id}
+                api={api}
+                resume={resume}
+                stats={statsByResume.get(resume.id)}
               renaming={renamingId === resume.id}
               renameText={renameText}
               onRenameText={setRenameText}
@@ -166,6 +197,8 @@ export function ResumeList({ api }: { api: AppApi }) {
 interface ResumeRowProps {
   api: AppApi;
   resume: Resume;
+  /** 这份简历名下的投递统计（没绑定过任何投递时是 undefined，不显示统计段） */
+  stats?: ResumeStats;
   renaming: boolean;
   renameText: string;
   onRenameText: (value: string) => void;
@@ -174,7 +207,7 @@ interface ResumeRowProps {
 }
 
 function ResumeRow(props: ResumeRowProps) {
-  const { api, resume, renaming, renameText, onRenameText, onStartRename, onEndRename } = props;
+  const { api, resume, stats, renaming, renameText, onRenameText, onStartRename, onEndRename } = props;
   const versions = api.resume.versionsOf(resume.id);
   const template = TEMPLATE_LIST.find((item) => item.id === resume.templateId);
   const isPrimary = versions.some((version) => version.id === api.resume.primaryVersionId);
@@ -224,6 +257,15 @@ function ResumeRow(props: ResumeRowProps) {
             <span className="resume-row__meta">
               {template?.name ?? resume.templateId} · {versions.length} 个版本 · 更新于{' '}
               {fmtDateTime(resume.updatedAt)}
+              {stats && stats.total > 0 ? (
+                <span className="resume-row__stats">
+                  {' '}
+                  · 投递 {stats.total} · 进面 {stats.interviewed}
+                  {stats.total >= RESUME_SAMPLE_MIN
+                    ? `（${Math.round((stats.interviewed / stats.total) * 100)}%）`
+                    : ''}
+                </span>
+              ) : null}
             </span>
           </div>
           <div className="resume-row__acts">
