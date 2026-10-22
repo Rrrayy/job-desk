@@ -8,11 +8,21 @@
  *
  * 所以这里做静态扫描：`app/src` 与 `extension/` 里出现网络 API 就直接失败。
  * 允许例外，但必须写进 `no-network-allowlist`（默认是空的，加一条就要解释一条）。
+ *
+ * v0.8「结构性单点放行」（ARCH-v08 §8-1）：AI 客户端必然在 `app/src` 出现
+ * `fetch(`，与「白名单为空」字面冲突。处置：
+ * - `app/src/ai/gateway.ts` 是核心产物**唯一**的 fetch 出现点，仅豁免 `fetch`
+ *   这一条规则，其余规则照扫；
+ * - 本文件对 gateway.ts 另做专项审计（auditGatewaySource）；
+ * - `no-network-allowlist` 文件**保持为空**，绝不把 gateway 写进去。
+ *
+ * 可测性：scanSource / stripComments / auditGatewaySource 是纯函数且被导出
+ * （check-no-network.test.mjs 消费），只有**直接执行**本文件才跑主流程。
  */
 
 import { readFileSync, readdirSync, statSync, existsSync } from 'node:fs';
 import { dirname, join, relative, resolve, sep } from 'node:path';
-import { fileURLToPath } from 'node:url';
+import { fileURLToPath, pathToFileURL } from 'node:url';
 
 const here = dirname(fileURLToPath(import.meta.url));
 const appRoot = resolve(here, '..');
@@ -27,7 +37,7 @@ const CODE_EXTS = new Set(['.ts', '.tsx', '.js', '.jsx', '.mjs', '.cjs', '.html'
 /** 跳过这些目录 */
 const SKIP_DIRS = new Set(['node_modules', 'dist', 'build', '.git', 'coverage', '.tmp']);
 
-const RULES = [
+export const RULES = [
   { id: 'fetch', regex: /\bfetch\s*\(/, why: '浏览器 fetch' },
   { id: 'xhr', regex: /\bXMLHttpRequest\b/, why: 'XMLHttpRequest' },
   { id: 'beacon', regex: /\.sendBeacon\s*\(/, why: 'navigator.sendBeacon' },
@@ -47,6 +57,104 @@ const RULES = [
   { id: 'css-import', regex: /@import\s+(?:url\()?\s*['"]?https?:/i, why: 'CSS @import 远程样式表' },
   { id: 'remote-link', regex: /<link[^>]+href\s*=\s*['"]https?:/i, why: '远程 <link href>（字体 / 图标 / 样式）' },
 ];
+
+/** v0.8：唯一的 fetch 豁免点（相对 repo 根）。改路径必须同步 ARCH-v08 §8-1 */
+export const GATEWAY_REL = 'app/src/ai/gateway.ts';
+
+/**
+ * 把注释内容替换成空格（保留换行与列位置，方便报告准确行号）。
+ * 字符串字面量里的 `//` 会被误判成注释 —— 对本扫描来说无所谓：
+ * 只会漏掉「写在字符串里的网络调用」，而那本身也不是网络调用。
+ */
+export function stripComments(source) {
+  let inBlock = false;
+  let out = '';
+  let index = 0;
+  while (index < source.length) {
+    const char = source[index];
+    const next = source[index + 1];
+
+    if (inBlock) {
+      if (char === '*' && next === '/') {
+        inBlock = false;
+        out += '  ';
+        index += 2;
+        continue;
+      }
+      out += char === '\n' ? '\n' : ' ';
+      index += 1;
+      continue;
+    }
+
+    if (char === '/' && next === '*') {
+      inBlock = true;
+      out += '  ';
+      index += 2;
+      continue;
+    }
+
+    if (char === '/' && next === '/') {
+      while (index < source.length && source[index] !== '\n') {
+        out += ' ';
+        index += 1;
+      }
+      continue;
+    }
+
+    out += char;
+    index += 1;
+  }
+  return out;
+}
+
+/**
+ * 扫一份源码。`gatewayExemptFetch=true` 时仅豁免 fetch 一条规则
+ * （结构性单点放行，只对 GATEWAY_REL 生效），其余规则照扫。
+ * 纯函数：返回命中列表（行号 / 规则 / 原始行片段）。
+ */
+export function scanSource(source, { gatewayExemptFetch = false } = {}) {
+  const lines = stripComments(source).split(/\r?\n/);
+  const originalLines = source.split(/\r?\n/);
+  const hits = [];
+  for (let i = 0; i < lines.length; i += 1) {
+    for (const rule of RULES) {
+      if (gatewayExemptFetch && rule.id === 'fetch') continue;
+      if (!rule.regex.test(lines[i])) continue;
+      hits.push({
+        line: i + 1,
+        rule: rule.id,
+        why: rule.why,
+        snippet: (originalLines[i] ?? '').trim().slice(0, 120),
+      });
+    }
+  }
+  return hits;
+}
+
+/**
+ * gateway.ts 专项审计（纯函数，返回错误文案或 null）：
+ * ① fetch 单点豁免生效的前提是文件里真的有 fetch —— 结构变了要人工复核；
+ * ② 除 fetch 外不得出现任何其他网络 API（其余规则照扫兜底，这里显式再查并给指向性报错）；
+ * ③ 专项审计注释必须在**原始源码**里（所以这里用原文、不是去注释后的文本）——
+ *   没有「为什么豁免」的解释就不许豁免。
+ */
+export function auditGatewaySource(source) {
+  // 判「文件仍是 fetch 出现点」用裸标识符 \bfetch\b：gateway 里 fetch 以
+  // `?? fetch` 形态出现（经局部 doFetch 调用），不带括号，\bfetch\( 抓不到。
+  if (!/\bfetch\b/.test(stripComments(source))) {
+    return '里没有 fetch 了 —— 单点豁免已无对象，请把扫描器的豁免逻辑一并移除';
+  }
+  if (!/结构性单点|唯一 fetch/.test(source)) {
+    return '缺少专项审计注释（须说明「唯一 fetch 点」的豁免理由）';
+  }
+  for (const rule of RULES) {
+    if (rule.id === 'fetch') continue;
+    if (rule.regex.test(stripComments(source))) {
+      return `出现了 fetch 之外的网络 API [${rule.id}] ${rule.why}`;
+    }
+  }
+  return null;
+}
 
 /**
  * 读 allowlist：每行一个相对路径（可带 `# 原因`）。
@@ -97,107 +205,69 @@ function extOf(name) {
   return index < 0 ? '' : name.slice(index).toLowerCase();
 }
 
-/**
- * 把注释内容替换成空格（保留换行与列位置，方便报告准确行号）。
- * 字符串字面量里的 `//` 会被误判成注释 —— 对本扫描来说无所谓：
- * 只会漏掉「写在字符串里的网络调用」，而那本身也不是网络调用。
- */
-function stripComments(source) {
-  let inBlock = false;
-  let out = '';
-  let index = 0;
-  while (index < source.length) {
-    const char = source[index];
-    const next = source[index + 1];
+/* ------------------------------ 主流程（仅直接执行时运行） ------------------------------ */
 
-    if (inBlock) {
-      if (char === '*' && next === '/') {
-        inBlock = false;
-        out += '  ';
-        index += 2;
-        continue;
-      }
-      out += char === '\n' ? '\n' : ' ';
-      index += 1;
-      continue;
-    }
-
-    if (char === '/' && next === '*') {
-      inBlock = true;
-      out += '  ';
-      index += 2;
-      continue;
-    }
-
-    if (char === '/' && next === '/') {
-      while (index < source.length && source[index] !== '\n') {
-        out += ' ';
-        index += 1;
-      }
-      continue;
-    }
-
-    out += char;
-    index += 1;
+function main() {
+  const allowlist = loadAllowlist();
+  const files = [];
+  for (const root of SCAN_ROOTS) {
+    const absolute = resolve(repoRoot, root);
+    if (!existsSync(absolute)) continue;
+    collect(absolute, files);
   }
-  return out;
-}
 
-const allowlist = loadAllowlist();
-const files = [];
-for (const root of SCAN_ROOTS) {
-  const absolute = resolve(repoRoot, root);
-  if (!existsSync(absolute)) continue;
-  collect(absolute, files);
-}
+  if (files.length === 0) {
+    console.error('✗ 没找到要扫描的文件（app/src 与 extension/ 都不存在？）');
+    process.exit(1);
+  }
 
-if (files.length === 0) {
-  console.error('✗ 没找到要扫描的文件（app/src 与 extension/ 都不存在？）');
+  const hits = [];
+  for (const file of files) {
+    const rel = relative(repoRoot, file).split(sep).join('/');
+    const isAllowed = allowlist.has(rel) || allowlist.has(rel.split('/').pop() ?? '');
+    if (isAllowed) continue;
+    for (const hit of scanSource(readFileSync(file, 'utf-8'), { gatewayExemptFetch: rel === GATEWAY_REL })) {
+      hits.push({ rel, ...hit });
+    }
+  }
+
+  console.log(`扫描 ${files.length} 个文件（${SCAN_ROOTS.join('、')}），规则 ${RULES.length} 条。`);
+
+  if (allowlist.size > 0) {
+    console.log(`allowlist 生效 ${allowlist.size} 条：${[...allowlist].join('、')}`);
+  } else {
+    // 白名单为空 = 单点结构生效，gateway.ts 必须存在且通过专项审计
+    const gateway = files.find((file) => relative(repoRoot, file).split(sep).join('/') === GATEWAY_REL);
+    if (!gateway) {
+      console.error(`✗ 单点豁免配置指向 ${GATEWAY_REL}，但文件不存在 —— 请核对 ARCH-v08 §8-1 与实际结构`);
+      process.exit(1);
+    }
+    const auditError = auditGatewaySource(readFileSync(gateway, 'utf-8'));
+    if (auditError) {
+      console.error(`✗ ${GATEWAY_REL} ${auditError}`);
+      process.exit(1);
+    }
+    console.log(`✓ 单点审计：${GATEWAY_REL} 仅含 fetch，豁免理由注释在场，其余规则零命中。`);
+  }
+
+  if (hits.length === 0) {
+    console.log('✓ 没有发现网络调用。这个页面打开时不会向任何服务器发请求。');
+    process.exit(0);
+  }
+
+  console.error(`\n✗ 发现 ${hits.length} 处网络调用：\n`);
+  for (const hit of hits) {
+    console.error(`  ${hit.rel}:${hit.line}  [${hit.rule}] ${hit.why}`);
+    console.error(`      ${hit.snippet}`);
+  }
+
+  console.error('\n处理方式：删掉它；或者如果确实是误报，把文件路径写进 no-network-allowlist 并注明原因。');
+  console.error('不接受「先这样，以后再清理」—— 隐私承诺一旦破掉就补不回来了。');
   process.exit(1);
 }
 
-const hits = [];
-
-for (const file of files) {
-  const rel = relative(repoRoot, file).split(sep).join('/');
-  const isAllowed = allowlist.has(rel) || allowlist.has(rel.split('/').pop() ?? '');
-  if (isAllowed) continue;
-
-  const raw = readFileSync(file, 'utf-8');
-  const lines = stripComments(raw).split(/\r?\n/);
-  const originalLines = raw.split(/\r?\n/);
-
-  for (let i = 0; i < lines.length; i += 1) {
-    for (const rule of RULES) {
-      if (!rule.regex.test(lines[i])) continue;
-      hits.push({
-        rel,
-        line: i + 1,
-        rule: rule.id,
-        why: rule.why,
-        snippet: (originalLines[i] ?? '').trim().slice(0, 120),
-      });
-    }
-  }
+// 只在 `node scripts/check-no-network.mjs` 直接执行时跑主流程；
+// 被 vitest import（纯函数消费）时不执行。
+if (process.argv[1] && import.meta.url === pathToFileURL(resolve(process.argv[1])).href) {
+  main();
 }
-
-console.log(`扫描 ${files.length} 个文件（${SCAN_ROOTS.join('、')}），规则 ${RULES.length} 条。`);
-
-if (allowlist.size > 0) {
-  console.log(`allowlist 生效 ${allowlist.size} 条：${[...allowlist].join('、')}`);
-}
-
-if (hits.length === 0) {
-  console.log('✓ 没有发现网络调用。这个页面打开时不会向任何服务器发请求。');
-  process.exit(0);
-}
-
-console.error(`\n✗ 发现 ${hits.length} 处网络调用：\n`);
-for (const hit of hits) {
-  console.error(`  ${hit.rel}:${hit.line}  [${hit.rule}] ${hit.why}`);
-  console.error(`      ${hit.snippet}`);
-}
-
-console.error('\n处理方式：删掉它；或者如果确实是误报，把文件路径写进 no-network-allowlist 并注明原因。');
-console.error('不接受「先这样，以后再清理」—— 隐私承诺一旦破掉就补不回来了。');
-process.exit(1);

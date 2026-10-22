@@ -18,6 +18,7 @@
  */
 
 import type { DB } from '../types';
+import { sweepExpiredSuggestions } from '../ai/suggestions';
 
 /** 回收站保留天数 */
 export const TRASH_RETENTION_DAYS = 30;
@@ -129,19 +130,23 @@ export interface SweepResult {
   /** 连带删掉的面试 / 备注 / 面经解绑条数 */
   removedInterviews: number;
   removedNotes: number;
+  /** v0.8：过期的 rejected/accepted AI 建议条数（7 天保留期） */
+  removedSuggestions: number;
 }
 
 /**
  * 启动时清理过期项：只处理真的超过 30 天的，且**永不碰**没进回收站的行。
  * 过期投递下的面试与备注一并真删；面经不删（它是用户写的内容），只解绑。
+ * v0.8：顺手清掉超期的 AI 建议（rejected/accepted 留 7 天，pending 永不清理）。
  */
 export function sweepTrash(db: DB, now: Date): SweepResult {
   const doomed = new Set<string>();
   for (const app of db.applications) {
     if (isTrashExpired(app, now)) doomed.add(app.id);
   }
-  if (doomed.size === 0) {
-    return { db, removedApps: 0, removedInterviews: 0, removedNotes: 0 };
+  const suggestions = sweepExpiredSuggestions(db.aiSuggestions, now);
+  if (doomed.size === 0 && suggestions.removed === 0) {
+    return { db, removedApps: 0, removedInterviews: 0, removedNotes: 0, removedSuggestions: 0 };
   }
 
   const interviews = db.interviews.filter((item) => !doomed.has(item.applicationId));
@@ -155,10 +160,12 @@ export function sweepTrash(db: DB, now: Date): SweepResult {
       experiences: db.experiences.map((exp) =>
         exp.applicationId && doomed.has(exp.applicationId) ? { ...exp, applicationId: null } : exp,
       ),
+      aiSuggestions: suggestions.kept,
     },
     removedApps: doomed.size,
     removedInterviews: db.interviews.length - interviews.length,
     removedNotes: db.notes.length - notes.length,
+    removedSuggestions: suggestions.removed,
   };
 }
 

@@ -132,10 +132,12 @@ export function normalizeChannel(raw: string): Channel | null {
 /**
  * v0.8：轮次列的别名表。键经过 normalizeHeader（小写、去空白与标点）。
  * 0 = 笔试；HR 面按 rules.HR_ROUND 的约定记 4；「不记得 / 未记」给 null。
+ * 体积纪律：只保留高频写法，数字轮次走 `第N轮`/纯数字兜底，四五六面等
+ * 长尾直接落「认不出来」的行级原因（用户可写「4」替代）。
  */
 export const ROUND_ALIASES: Record<string, number> = {
-  笔试: 0, 笔试通过: 0, 已笔试: 0,
-  一面: 1, 二面: 2, 三面: 3, 四面: 4, 五面: 5,
+  笔试: 0, 已笔试: 0,
+  一面: 1, 二面: 2, 三面: 3,
   hr面: 4,
 };
 

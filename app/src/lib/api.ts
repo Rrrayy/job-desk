@@ -272,4 +272,20 @@ export interface AppApi {
   experienceEditorId: string | null;
   openExperience: (id: string) => void;
   closeExperience: () => void;
+
+  /* ---------------- AI（v0.8 / T03；场景 UI 由 T05 消费） ---------------- */
+  ai: {
+    /** 就绪判定（baseURL + model 已配置）；false 时入口置灰 + 内联原因，不弹错误轰炸 */
+    ready: boolean;
+    readyReason: string | null;
+    /** 接受勾选的建议：单次 mutate 写目标表 + 一个撤销点（⌘Z 整体回退） */
+    acceptSuggestions: (ids: string[]) => void;
+    /** 忽略勾选的建议（rejected，留 7 天后启动 sweep 清理） */
+    rejectSuggestions: (ids: string[]) => void;
+    /** 一键清空请求日志（日志本就不含原文，清空只为省空间） */
+    clearRequestLog: () => void;
+  };
+
+  /** v0.8：插件宿主分组。T04 落 broker/sandbox 后补齐 —— 占位防止场景提前接线 */
+  plugins: Record<string, never>;
 }

@@ -80,6 +80,9 @@ import {
 } from './lib/tableExport';
 import { deriveInitialNextReviewAt, nextReviewAtFor } from './lib/interview';
 import { markdownFileName, renderManyMarkdown } from './lib/interviewMarkdown';
+import { applySuggestions, rejectSuggestions, revertAi } from './ai/suggestions';
+import { checkAiReady } from './ai/settings';
+import type { AiUndo } from './ai/types';
 import { detectCapture, pickAdapter, toAdapterInput } from './lib/sync/capture';
 import {
   bindHandle,
@@ -138,7 +141,9 @@ type Undo =
   /** v0.5：导入合并。整库快照回滚是这里唯一允许的「整库级」撤销 ——
    *  因为导入本身就是一次全库级操作，按条撤销没有意义 */
   | { kind: 'import'; previous: DB }
-  | { kind: 'sync'; sync: SyncUndo };
+  | { kind: 'sync'; sync: SyncUndo }
+  /** v0.8：接受 AI 建议（目标写入 + 状态翻转一体回退，见 ai/suggestions.revertAi） */
+  | { kind: 'ai'; ai: AiUndo };
 
 /** 撤销栈里的一格：撤销动作 + 给用户看的名字 +（可选）重做动作 */
 interface UndoEntry {
@@ -298,7 +303,8 @@ export default function App() {
           // 整库恢复：导入这一次操作本来就是全库级的，按条撤销没有意义。
           // 先清空再赋值，保持 draft 的对象身份不变（mutate 依赖它被 recipe 改）
           Object.assign(draft, structuredClone(undo.previous));
-        } else revertSync(draft, undo.sync);
+        } else if (undo.kind === 'ai') revertAi(draft, undo.ai);
+        else revertSync(draft, undo.sync);
       });
     },
     [mutate],
@@ -1054,6 +1060,53 @@ export default function App() {
   const closeExperience = useCallback((): void => {
     setExperienceEditorId(null);
   }, []);
+
+  /* ------------------------------------------------------------ AI（v0.8 / T03） */
+
+  /**
+   * 接受勾选的建议：**单次 mutate** 内写目标表 + 状态翻 accepted + 一个撤销点。
+   * 撤销语义与状态变更同款（⌘Z 整体回退，用户在 DetailDrawer 手写的内容不受影响 ——
+   * 这里回退的只是这次确认写入的 AI 建议）。
+   */
+  const acceptSuggestions = useCallback(
+    (ids: string[]): void => {
+      if (ids.length === 0) return;
+      let undo: AiUndo | null = null;
+      let applied = 0;
+      mutate((draft) => {
+        const result = applySuggestions(draft, new Set(ids), { nowIso: new Date().toISOString() });
+        undo = result.undo;
+        applied = result.applied;
+      });
+      if (applied === 0 || !undo) {
+        showToast('这些建议都已被处理过，没有可接受的内容');
+        return;
+      }
+      pushUndo({ label: `接受 ${applied} 条 AI 建议`, undo: { kind: 'ai', ai: undo } });
+      showToast(`已接受 ${applied} 条 AI 建议`, undoLast);
+    },
+    [mutate, pushUndo, showToast, undoLast],
+  );
+
+  /** 忽略建议：只翻状态、不写目标表，不进撤销栈（7 天后由启动 sweep 清理） */
+  const rejectSuggestionsByIds = useCallback(
+    (ids: string[]): void => {
+      if (ids.length === 0) return;
+      let count = 0;
+      mutate((draft) => {
+        count = rejectSuggestions(draft, new Set(ids), new Date().toISOString());
+      });
+      showToast(count > 0 ? `已忽略 ${count} 条建议（7 天后自动清理）` : '这些建议都已被处理过');
+    },
+    [mutate, showToast],
+  );
+
+  const clearRequestLog = useCallback((): void => {
+    mutate((draft) => {
+      draft.requestLog = [];
+    });
+    showToast('请求日志已清空');
+  }, [mutate, showToast]);
 
   const exportExperienceMarkdown = useCallback(
     (experiences: InterviewExperience[], opts: { desensitize: boolean }): void => {
@@ -1914,6 +1967,9 @@ export default function App() {
     [fileReadOnly, db.settings.fileLink.readOnly],
   );
 
+  /** AI 就绪状态（baseURL+model 已配置）。false 时入口置灰 + 内联原因，不弹错误轰炸 */
+  const aiReadiness = useMemo(() => checkAiReady(db.settings.ai), [db.settings.ai]);
+
   const api: AppApi = {
     // ★ 视图拿到的是**已摘掉回收站**的库；回收站页与设置页直接读 `db`（含已删除）。
     db: viewDB,
@@ -2002,6 +2058,15 @@ export default function App() {
     experienceEditorId,
     openExperience,
     closeExperience,
+
+    ai: {
+      ready: aiReadiness.ready,
+      readyReason: aiReadiness.reason,
+      acceptSuggestions,
+      rejectSuggestions: rejectSuggestionsByIds,
+      clearRequestLog,
+    },
+    plugins: {} as Record<string, never>, // T04 落 broker/sandbox 后补齐
   };
 
   const showWelcome = db.applications.length === 0 && db.companies.length === 0 && !welcomeDismissed;
