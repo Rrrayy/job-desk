@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "求职工作台 · 页面抓取",
-  "version": "0.7.3",
+  "version": "0.8.0",
   "description": "把招聘平台的投递列表变成一段纯文本，粘贴进求职工作台的同步面板。只读你屏幕上已经能看到的内容，不发任何网络请求。",
   "permissions": ["activeTab", "scripting"],
   "action": {

@@ -44,6 +44,7 @@ import { PLATFORM_LABEL } from '../adapters/registry';
 import { copyText, cx, orDash } from '../lib/util';
 import { Field, InfoRow, SelectField } from './Field';
 import { JdPanel } from './JdPanel';
+import { AiScenarioPanel } from './ai/AiScenarioPanel';
 
 export function DetailDrawer({ api }: { api: AppApi }) {
   const app = api.db.applications.find((item) => item.id === api.selectedId);
@@ -67,6 +68,8 @@ function DetailBody({ api, app }: { api: AppApi; app: Application }) {
   const muteLeft = muteRemainDays(app, now);
 
   const [script, setScript] = useState<string | null>(null);
+  /** v0.8 / D15：AI 话术草稿面板（浮层，点击入口才挂载） */
+  const [draftOpen, setDraftOpen] = useState(false);
   const [confirmDelete, setConfirmDelete] = useState(false);
   const [noteType, setNoteType] = useState<NoteType>('chat');
   const [noteText, setNoteText] = useState('');
@@ -238,6 +241,20 @@ function DetailBody({ api, app }: { api: AppApi; app: Application }) {
             <button type="button" className="btn btn--primary btn--small" onClick={() => void handleFollowup()}>
               去催一下
             </button>
+            {/*
+              D15 入口：默认只发公司名 / 岗位 / 状态，其余在预览里显式勾选。
+              未配置时置灰 + 就地说明，不弹窗。
+            */}
+            <button
+              type="button"
+              className="btn btn--small"
+              data-testid="ai-d15-entry"
+              disabled={!api.ai.ready}
+              title={api.ai.ready ? '生成一段可直接发给 HR 的话术' : api.ai.readyReason ?? 'AI 未配置'}
+              onClick={() => setDraftOpen(true)}
+            >
+              🤖 生成沟通话术
+            </button>
             <button
               type="button"
               className="btn btn--small"
@@ -264,6 +281,7 @@ function DetailBody({ api, app }: { api: AppApi; app: Application }) {
               标为已挂
             </button>
           </div>
+          {api.ai.ready ? null : <p className="field__hint">{api.ai.readyReason}</p>}
           {rejectPickerOpen ? (
             <RejectRoundPicker
               value={app.rejectedAtRound}
@@ -724,6 +742,10 @@ function DetailBody({ api, app }: { api: AppApi; app: Application }) {
           </p>
         </section>
       </div>
+
+      {draftOpen ? (
+        <AiScenarioPanel api={api} scenario="d15" targetId={app.id} onClose={() => setDraftOpen(false)} />
+      ) : null}
     </>
   );
 }

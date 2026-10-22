@@ -85,7 +85,8 @@ import { checkAiReady } from './ai/settings';
 import { chatCompletions, GatewayError } from './ai/gateway';
 import { buildRequestLogEntry, capRequestLog, fieldsFingerprint } from './ai/requestLog';
 import { createSuggestions } from './ai/suggestions';
-import type { AiUndo, NewAISuggestion, PreviewField } from './ai/types';
+import { buildScenarioMessages, parseScenarioOutput, scenarioPluginId, toNewSuggestions } from './ai/scenarios';
+import type { AiRunInput, AiRunOutcome, AiUndo, NewAISuggestion, PreviewField } from './ai/types';
 import { PluginBroker, type SendAiInput } from './plugins/broker';
 import { parseManifest } from './plugins/manifest';
 import {
@@ -1091,7 +1092,11 @@ export default function App() {
       let undo: AiUndo | null = null;
       let applied = 0;
       mutate((draft) => {
-        const result = applySuggestions(draft, new Set(ids), { nowIso: new Date().toISOString() });
+        const result = applySuggestions(draft, new Set(ids), {
+          nowIso: new Date().toISOString(),
+          // D14 新建题必须挂在某场面经下，而这个上下文只有当前编辑器知道
+          resolveQuestionExperienceId: () => experienceEditorId,
+        });
         undo = result.undo;
         applied = result.applied;
       });
@@ -1102,7 +1107,7 @@ export default function App() {
       pushUndo({ label: `接受 ${applied} 条 AI 建议`, undo: { kind: 'ai', ai: undo } });
       showToast(`已接受 ${applied} 条 AI 建议`, undoLast);
     },
-    [mutate, pushUndo, showToast, undoLast],
+    [experienceEditorId, mutate, pushUndo, showToast, undoLast],
   );
 
   /** 忽略建议：只翻状态、不写目标表，不进撤销栈（7 天后由启动 sweep 清理） */
@@ -1125,26 +1130,10 @@ export default function App() {
     showToast('请求日志已清空');
   }, [mutate, showToast]);
 
-  /* ------------------------------------------------------------ 插件宿主（v0.8 / T04） */
-
-  const pluginWindowsRef = useRef<Map<string, Window>>(new Map());
-  const [aiPreviewRequest, setAiPreviewRequest] = useState<null | {
-    pluginId: string;
-    scenario: string;
-    fields: PreviewField[];
-    resolve: (checked: Record<string, string> | null) => void;
-  }>(null);
-
-  const registerPluginWindow = useCallback((pluginId: string, win: Window | null): void => {
-    if (win) pluginWindowsRef.current.set(pluginId, win);
-    else pluginWindowsRef.current.delete(pluginId);
-  }, []);
-
-  const postToPlugin = useCallback((pluginId: string, envelope: RpcEnvelope): void => {
-    pluginWindowsRef.current.get(pluginId)?.postMessage(envelope, '*');
-  }, []);
-
-  /** RequestLog 记账：只在真实发送/拒绝时写，且永不落原文（字段白名单在 buildRequestLogEntry） */
+  /**
+   * RequestLog 记账：只在真实发送/拒绝时写，且永不落原文（字段白名单在 buildRequestLogEntry）。
+   * 内置场景与插件共用这一个写入口 —— 日志只有一处实现，才不会两套口径。
+   */
   const logPluginRequest = useCallback(
     (pluginId: string, hash: string, status: 'ok' | 'error', errorCode?: string): void => {
       const ai = dbRef.current.settings.ai;
@@ -1165,6 +1154,65 @@ export default function App() {
     },
     [mutate],
   );
+
+  /**
+   * 跑一次内置场景（D14/D15/D17）。**只能在 D13 预览确认之后调用** ——
+   * `checked` 就是用户勾中的字段，这里不读、也不补任何库内数据。
+   * 顺序与插件 ai_request 完全一致：fingerprint → gateway → 窄校验 → 建议入库 → 一条日志。
+   */
+  const runAiScenario = useCallback(
+    async (input: AiRunInput): Promise<AiRunOutcome> => {
+      const ai = dbRef.current.settings.ai;
+      const readiness = checkAiReady(ai);
+      if (!ai || !readiness.ready) return { ok: false, error: readiness.reason ?? 'AI 服务未配置' };
+      const pluginId = scenarioPluginId(input.scenario);
+      const hash = await fieldsFingerprint(input.checked);
+      try {
+        const result = await chatCompletions(ai, {
+          messages: buildScenarioMessages(input.scenario, input.checked),
+          stream: true,
+          ...(input.onDelta ? { onDelta: input.onDelta } : {}),
+          ...(input.signal ? { signal: input.signal } : {}),
+        });
+        const parsed = parseScenarioOutput(input.scenario, result.text);
+        logPluginRequest(pluginId, hash, parsed.ok ? 'ok' : 'error', parsed.ok ? undefined : 'parse');
+        if (!parsed.ok) return { ok: false, error: parsed.error };
+        const list = createSuggestions(
+          toNewSuggestions(input.scenario, input.targetId, parsed.items),
+          new Date().toISOString(),
+        );
+        mutate((draft) => {
+          for (const suggestion of list) draft.aiSuggestions.push(suggestion);
+        });
+        showToast(`AI 给出 ${list.length} 条建议 —— 勾选后才会写入`);
+        return { ok: true, created: list.length };
+      } catch (error) {
+        const code = error instanceof GatewayError ? error.code : 'ai_failed';
+        logPluginRequest(pluginId, hash, 'error', code);
+        return { ok: false, error: aiErrorText(error) };
+      }
+    },
+    [logPluginRequest, mutate, showToast],
+  );
+
+  /* ------------------------------------------------------------ 插件宿主（v0.8 / T04） */
+
+  const pluginWindowsRef = useRef<Map<string, Window>>(new Map());
+  const [aiPreviewRequest, setAiPreviewRequest] = useState<null | {
+    pluginId: string;
+    scenario: string;
+    fields: PreviewField[];
+    resolve: (checked: Record<string, string> | null) => void;
+  }>(null);
+
+  const registerPluginWindow = useCallback((pluginId: string, win: Window | null): void => {
+    if (win) pluginWindowsRef.current.set(pluginId, win);
+    else pluginWindowsRef.current.delete(pluginId);
+  }, []);
+
+  const postToPlugin = useCallback((pluginId: string, envelope: RpcEnvelope): void => {
+    pluginWindowsRef.current.get(pluginId)?.postMessage(envelope, '*');
+  }, []);
 
   /** 真实 AI 发送（插件 ai_request 的数据面）：指纹 → gateway → 日志 → 流推送 */
   const sendAiForPlugin = useCallback(
@@ -2309,6 +2357,7 @@ export default function App() {
       acceptSuggestions,
       rejectSuggestions: rejectSuggestionsByIds,
       clearRequestLog,
+      runScenario: runAiScenario,
     },
     plugins: {
       list: () => pluginRegistry,
@@ -2609,8 +2658,19 @@ export default function App() {
   );
 }
 
-/* ================= 社区题库导入的格式校验（导出以便单测） ================= */
+/**
+ * AI 失败的一句话人话（R-AI-5）：不弹错误框、不白屏，只在面板里内联一行。
+ * 网络/超时单独给半句排查提示 —— 「连不上」和「模型胡说」是两种完全不同的挫败感。
+ */
+function aiErrorText(error: unknown): string {
+  const message = error instanceof Error ? error.message : String(error);
+  if (error instanceof GatewayError && (error.code === 'network' || error.code === 'timeout')) {
+    return `连不上 AI 服务：${message}。检查本地模型是否在运行、地址是否以 /v1 结尾 —— 这次没有写入任何内容。`;
+  }
+  return `AI 请求失败：${message}。这次没有写入任何内容。`;
+}
 
+/* ================= 社区题库导入的格式校验（导出以便单测） ================= */
 interface CommunityQuestion {
   id?: string;
   text: string;

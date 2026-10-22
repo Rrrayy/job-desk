@@ -12,7 +12,7 @@
  */
 
 import type { AISuggestionTargetType } from '../types';
-import type { PreviewField } from './types';
+import type { AiScenarioKey, PreviewField } from './types';
 
 export interface AiScenarioSpec {
   /** 内置场景固定前缀 builtin:（与插件 pluginId 同一命名空间） */
@@ -45,15 +45,17 @@ const D17_SYSTEM = [
   '输出必须是 JSON：{"fields":[{"field":"companyName","value":"...","evidence":"原文片段"}]}，不要任何其他文字。',
 ].join('\n');
 
-export const AI_SCENARIOS: Record<'d14' | 'd15' | 'd17', AiScenarioSpec> = {
+export const AI_SCENARIOS: Record<AiScenarioKey, AiScenarioSpec> = {
   d14: {
     pluginId: 'builtin:d14',
     targetType: 'question',
     system: D14_SYSTEM,
     fields: [
-      { name: 'companyName', label: '公司名', value: '' },
-      { name: 'jobTitle', label: '岗位名', value: '' },
-      { name: 'note', label: '面经笔记原文', value: '' },
+      // 默认出境 = 粘贴文本，**仅此一项**（PRD R-AI-1）。用户粘贴 = 已授权，故 locked。
+      // 公司名/岗位是可选上下文：默认不勾（显式 defaultChecked:false 覆盖全局基线）。
+      { name: 'note', label: '面经笔记原文', value: '', locked: true },
+      { name: 'companyName', label: '公司名', value: '', defaultChecked: false },
+      { name: 'jobTitle', label: '岗位名', value: '', defaultChecked: false },
     ],
   },
   d15: {
@@ -61,10 +63,14 @@ export const AI_SCENARIOS: Record<'d14' | 'd15' | 'd17', AiScenarioSpec> = {
     targetType: 'application_note',
     system: D15_SYSTEM,
     fields: [
+      // 默认出境 = 公司名 + 岗位 + 状态（PRD Q8 定案，恰好等于全局基线）
       { name: 'companyName', label: '公司名', value: '' },
       { name: 'jobTitle', label: '岗位名', value: '' },
       { name: 'status', label: '当前状态', value: '' },
+      // 以下为显式追加项，默认不勾（轮次 / 面试类型 / 面试官称呼 / 沟通记录）
       { name: 'round', label: '当前轮次', value: '' },
+      { name: 'interviewKind', label: '面试类型', value: '' },
+      { name: 'interviewer', label: '面试官称呼', value: '' },
       { name: 'lastNote', label: '最近沟通记录', value: '' },
     ],
   },
@@ -73,10 +79,12 @@ export const AI_SCENARIOS: Record<'d14' | 'd15' | 'd17', AiScenarioSpec> = {
     targetType: 'staging_field',
     system: D17_SYSTEM,
     fields: [
+      // 铁律：只发用户粘贴的原文（locked）。其余「已识别部分」即使有用也默认不勾 ——
+      // AI 解析的输入必须与库内数据隔离，否则「只发原文」就成了空话（验收 11）。
       { name: 'rawSnippet', label: '用户粘贴的原文片段', value: '', locked: true },
-      { name: 'companyName', label: '公司名（已识别部分）', value: '' },
-      { name: 'jobTitle', label: '岗位名（已识别部分）', value: '' },
-      { name: 'status', label: '状态（已识别部分）', value: '' },
+      { name: 'companyName', label: '公司名（已识别部分）', value: '', defaultChecked: false },
+      { name: 'jobTitle', label: '岗位名（已识别部分）', value: '', defaultChecked: false },
+      { name: 'status', label: '状态（已识别部分）', value: '', defaultChecked: false },
     ],
   },
 };

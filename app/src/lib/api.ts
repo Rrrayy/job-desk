@@ -23,6 +23,7 @@ import type {
 import type { MergePlan, PlannedRow } from './sync/types';
 import type { FileLinkCapability } from './fileLink/handle';
 import type { PluginPermission, PluginRegistration } from '../plugins/types';
+import type { AiRunInput, AiRunOutcome } from '../ai/types';
 
 export type ViewKey = 'today' | 'board' | 'list' | 'calendar' | 'insights';
 
@@ -285,6 +286,11 @@ export interface AppApi {
     rejectSuggestions: (ids: string[]) => void;
     /** 一键清空请求日志（日志本就不含原文，清空只为省空间） */
     clearRequestLog: () => void;
+    /**
+     * 跑一次内置场景（D14/D15/D17）：**只能在 D13 预览确认之后调用**。
+     * 内部走 gateway（唯一 fetch 点）+ RequestLog + 建议入库；失败只回原因字符串。
+     */
+    runScenario: (input: AiRunInput) => Promise<AiRunOutcome>;
   };
 
   /** v0.8：插件宿主分组（T04）。协议在 plugins/broker，存储在 plugins/storage */

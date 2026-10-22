@@ -78,6 +78,15 @@ function makeApi(db: DB): AppApi {
     openExperience: vi.fn(),
     openQuickNote: vi.fn(),
     toast: vi.fn(),
+    // v0.8 / T05：D15 入口读就绪状态（默认未配置 → 按钮置灰，不影响本文件的管线断言）
+    ai: {
+      ready: false,
+      readyReason: '尚未配置 AI 服务地址（设置 → AI 服务）',
+      acceptSuggestions: vi.fn(),
+      rejectSuggestions: vi.fn(),
+      clearRequestLog: vi.fn(),
+      runScenario: vi.fn(),
+    },
   } as unknown as AppApi;
 }
 

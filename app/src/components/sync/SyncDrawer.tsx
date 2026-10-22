@@ -19,7 +19,7 @@ import { Step1Capture } from './Step1Capture';
 import { Step2Preview } from './Step2Preview';
 import { Step3Confirm } from './Step3Confirm';
 import { StagingList } from './StagingList';
-
+import { AiScenarioPanel } from '../ai/AiScenarioPanel';
 export type SyncStep = 1 | 2 | 3 | 4;
 
 export interface SyncDrawerProps {
@@ -49,6 +49,8 @@ export function SyncDrawer(props: SyncDrawerProps) {
   const [rows, setRows] = useState<PlannedRow[]>([]);
   const [parsing, setParsing] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  /** v0.8 / D17：正在用 AI 重试解析的暂存行 id（null = 面板没开） */
+  const [aiItemId, setAiItemId] = useState<string | null>(null);
 
   const summary = useMemo(() => {
     if (!plan) return null;
@@ -245,6 +247,9 @@ export function SyncDrawer(props: SyncDrawerProps) {
                     onResolve={(id, status) => api.resolveStaged(id, status)}
                     onClear={() => api.clearStaging()}
                     onManualAdd={() => api.openNew()}
+                    onAiRetry={(item) => setAiItemId(item.id)}
+                    aiReady={api.ai.ready}
+                    aiReason={api.ai.readyReason}
                   />
                 </>
               ) : null}
@@ -287,6 +292,11 @@ export function SyncDrawer(props: SyncDrawerProps) {
           </div>
         </footer>
       </aside>
+
+      {/* D17：AI 兜底解析（只把这一行的原文发出去，确认后只写暂存行的 parsed） */}
+      {aiItemId ? (
+        <AiScenarioPanel api={api} scenario="d17" targetId={aiItemId} onClose={() => setAiItemId(null)} />
+      ) : null}
     </div>
   );
 }

@@ -151,12 +151,24 @@ function writeTarget(
       const parsed = item.parsed as unknown as Record<string, unknown>;
       const prev = parsed[suggestion.fieldPath];
       parsed[suggestion.fieldPath] = suggestion.content;
+      /**
+       * AI 补出公司名后，这一行就不再是「没解析出来」了 —— 放开成 unmapped，
+       * 用户才能用行内的「归到某个状态」把它落成投递。reason 卡在 unparsed 的话，
+       * 这条补全等于白做（resolveStaged 会拒绝没有公司名的归位，也会拒绝 unparsed 行）。
+       * 只在**确实补上了公司名**时放开，避免把一条空壳行伪装成可归位的记录。
+       */
+      const prevReason =
+        item.reason === 'unparsed' && suggestion.fieldPath === 'companyName' && suggestion.content.trim()
+          ? item.reason
+          : undefined;
+      if (prevReason) item.reason = 'unmapped';
       return {
         table: 'staging',
         id: item.id,
         field: suggestion.fieldPath,
         prevValue: typeof prev === 'string' ? prev : undefined,
         rowExisted: true,
+        ...(prevReason ? { prevReason } : {}),
       };
     }
     default:
@@ -213,6 +225,8 @@ export function revertAi(db: DB, undo: AiUndo): void {
       const parsed = item.parsed as unknown as Record<string, unknown>;
       if (target.prevValue === undefined) delete parsed[target.field];
       else parsed[target.field] = target.prevValue;
+      // D17：补出公司名时放开的 reason 也要收回，否则暂存区状态与内容不一致
+      if (target.prevReason) item.reason = target.prevReason;
     } else if (target.table === 'questions') {
       const question = db.questions.find((item) => item.id === target.id);
       if (!question) continue;

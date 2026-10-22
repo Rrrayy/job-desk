@@ -267,7 +267,7 @@ for (const size of SIZES) {
       return Math.round((performance.now() - t0) * 10) / 10;
     })()`);
 
-    results.push({ size, ...metrics, interactionMs: interaction });
+
     const diag = await page.page.eval(`(async () => {
       const keys = Object.keys(localStorage);
       const main = localStorage.getItem('jobdesk.v1') || '';
@@ -284,6 +284,34 @@ for (const size of SIZES) {
     if (diag.failedPage || diag.tableRows === 0) {
       throw new Error(`数据没进界面：${diag.bodyHead}`);
     }
+
+    // v0.8 / T05 验收 15：今日待办与看板切换耗时（点一级 tab → 两次 rAF 后的稳定帧）。
+    // 看板是 v0.8 改版重点（7 列 + 轮次徽章），必须单独量，不能只看列表排序。
+    // ★ 放在自检之后：这个测量会把视图切走，先自检才不会被自己坑成「数据没进界面」。
+    const viewSwitch = await page.page.eval(`(async () => {
+      const clickView = async (label) => {
+        const button = [...document.querySelectorAll('button')].find((item) =>
+          (item.textContent || '').trim().startsWith(label),
+        );
+        if (!button) return null;
+        const t0 = performance.now();
+        button.click();
+        // 离散事件里 React 会同步 flush：click 返回时 render+commit 已完成
+        const sync = Math.round((performance.now() - t0) * 10) / 10;
+        await new Promise((r) => requestAnimationFrame(() => requestAnimationFrame(r)));
+        return { sync, frame: Math.round((performance.now() - t0) * 10) / 10 };
+      };
+      return { today: await clickView('今日'), board: await clickView('看板') };
+    })()`);
+
+    results.push({
+      size,
+      ...metrics,
+      interactionMs: interaction,
+      todayMs: viewSwitch.today?.frame ?? null,
+      boardMs: viewSwitch.board?.frame ?? null,
+      boardRenderMs: viewSwitch.board?.sync ?? null,
+    });
     console.log('ok');
   } catch (error) {
     console.log(`失败：${error.message}`);
@@ -306,7 +334,7 @@ const report = {
 writeFileSync(join(OUT_DIR, 'perf.json'), `${JSON.stringify(report, null, 2)}\n`);
 
 console.log('');
-console.log('条数   首屏(ms)   可交互(ms)   渲染行数   堆内存(MB)   排序一次(ms)');
+console.log('条数   首屏(ms)   可交互(ms)   渲染行数   堆内存(MB)   排序一次(ms)   今日(ms)   看板(ms)   看板render(ms)');
 for (const row of results) {
   if (row.error) {
     console.log(`${String(row.size).padStart(4)}   ${row.error}`);
@@ -317,7 +345,9 @@ for (const row of results) {
       row.domContentLoaded ?? '—',
     ).padStart(10)}   ${String(row.renderedRows).padStart(8)}   ${String(row.memoryMB ?? '—').padStart(10)}   ${String(
       row.interactionMs ?? '—',
-    ).padStart(11)}`,
+    ).padStart(11)}   ${String(row.todayMs ?? '—').padStart(8)}   ${String(row.boardMs ?? '—').padStart(
+      8,
+    )}   ${String(row.boardRenderMs ?? '—').padStart(15)}`,
   );
 }
 console.log('');

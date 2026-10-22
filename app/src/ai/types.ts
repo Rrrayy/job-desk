@@ -6,7 +6,14 @@
  *   两份定义必然漂移，漂移的第一个受害者就是校验器。
  */
 
-import type { AISettings, AISuggestion, AISuggestionStatus, AISuggestionTargetType, RequestLog } from '../types';
+import type {
+  AISettings,
+  AISuggestion,
+  AISuggestionStatus,
+  AISuggestionTargetType,
+  RequestLog,
+  StagedReason,
+} from '../types';
 
 export type { AISettings, AISuggestion, AISuggestionStatus, AISuggestionTargetType, RequestLog };
 
@@ -62,6 +69,12 @@ export interface AiUndoTarget {
   rowExisted: boolean;
   /** rowExisted=false 时的新建行原值（revert 时整行移除） */
   createdRow?: unknown;
+  /**
+   * 仅 staging 的 D17 写入：AI 补出公司名后会把暂存行的 reason 从 'unparsed'
+   * 放开成 'unmapped'（否则它永远卡在「没解析出来」分支，用户没法归位）。
+   * 撤销时要把原因原样放回去，否则「⌘Z 回退到操作前」只是半个真话。
+   */
+  prevReason?: StagedReason;
 }
 
 export interface AiUndo {
@@ -69,6 +82,31 @@ export interface AiUndo {
   suggestions: AISuggestion[];
   targets: AiUndoTarget[];
 }
+
+/* ---------------------- 内置场景运行时（v0.8 / T05） ---------------------- */
+
+/** 三个内置场景的键；与 prompts.ts 的 AI_SCENARIOS 一一对应 */
+export type AiScenarioKey = 'd14' | 'd15' | 'd17';
+
+/**
+ * 跑一次内置场景（D13 确认之后才调用）。
+ * `checked` 就是用户在预览弹层里勾中的字段 —— 面板不自己拼请求体，
+ * 否则「预览看到的」和「实际发出的」就有第二条通路（D13 铁律）。
+ */
+export interface AiRunInput {
+  scenario: AiScenarioKey;
+  checked: Record<string, string>;
+  /** 建议落到哪一行：D14 = 面经 id（新建题用 resolveQuestionExperienceId）、D15 = 投递 id、D17 = 暂存行 id */
+  targetId: string | null;
+  signal?: AbortSignal;
+  onDelta?: (delta: string) => void;
+}
+
+/**
+ * 场景结果。**失败一律返回原因字符串，不抛异常**（R-AI-5：
+ * 断网 / 模型胡说八道都只该换来一句内联人话，不该是错误弹窗）。
+ */
+export type AiRunOutcome = { ok: true; created: number } | { ok: false; error: string };
 
 /** D13 发送预览的一个字段行 */
 export interface PreviewField {

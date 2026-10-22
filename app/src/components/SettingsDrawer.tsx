@@ -13,6 +13,7 @@ import { PLATFORM_LABEL } from '../adapters/registry';
 import { CommunityImport } from './interview/CommunityImport';
 import { FileLinkPanel } from './FileLinkPanel';
 import { PluginsPanel } from './plugins/PluginsPanel';
+import { AiSettingsPanel } from './ai/AiSettingsPanel';
 
 const PLATFORMS: PlatformId[] = ['boss', 'shixiseng', 'nowcoder', 'liepin', 'custom'];
 
@@ -510,6 +511,14 @@ export function SettingsDrawer({ api, onClose, importError, onDismissError, tras
               onReplay={() => void api.fileLink.replayPending()}
               onToggleEncryption={api.fileLink.toggleEncryption}
             />
+          </section>
+
+          <section className="drawer__section">
+            <div className="drawer__section-head">
+              <h3 className="drawer__section-title">AI 服务（可选）</h3>
+              <span className="muted">{api.ai.ready ? '已配置' : '未配置'}</span>
+            </div>
+            <AiSettingsPanel api={api} />
           </section>
 
           <section className="drawer__section">

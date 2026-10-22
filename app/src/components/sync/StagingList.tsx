@@ -20,6 +20,14 @@ export interface StagingListProps {
   onManualAdd?: () => void;
   /** 暂存区上限（默认取引擎常量），用于「快满了」提示 */
   limit?: number;
+  /**
+   * v0.8 / D17：AI 兜底解析入口。**只对 unparsed / unmapped 行出现** ——
+   * ambiguous 与 conflict 行缺的不是「认字」而是「你的判断」，模型帮不上忙。
+   */
+  onAiRetry?: (item: StagedSyncItem) => void;
+  /** AI 是否已配置；false 时按钮置灰 + 列表顶部一句内联原因（R-AI-5） */
+  aiReady?: boolean;
+  aiReason?: string | null;
 }
 
 const REASON_TEXT: Record<StagedSyncItem['reason'], string> = {
@@ -30,11 +38,33 @@ const REASON_TEXT: Record<StagedSyncItem['reason'], string> = {
 };
 
 export function StagingList(props: StagingListProps) {
-  const { items, onResolve, onClear, onManualAdd, limit = STAGING_LIMIT } = props;
+  const { items, onResolve, onClear, onManualAdd, limit = STAGING_LIMIT, onAiRetry, aiReady = false, aiReason } = props;
   const [confirmClear, setConfirmClear] = useState(false);
   /** 每行选中的目标状态（默认 applied：最常见的「其实我已经投了」） */
   const [picked, setPicked] = useState<Record<string, Status>>({});
   const [copiedId, setCopiedId] = useState<string | null>(null);
+
+  /**
+   * 🤖 AI 重试解析按钮。出境内容 = 这一行的原文（D17 铁律），
+   * 所以原文缺失时按钮禁用 —— 没有原文就没有可发的东西。
+   */
+  const aiButton = (item: StagedSyncItem): JSX.Element | null => {
+    if (!onAiRetry || (item.reason !== 'unparsed' && item.reason !== 'unmapped')) return null;
+    const raw = item.rawSnippet ?? item.parsed.rawSnippet ?? '';
+    const hint = aiReady ? (raw.length > 0 ? '只发这段原文，不含库内任何数据' : '这条没有留下原文，没法重试') : aiReason ?? 'AI 未配置';
+    return (
+      <button
+        type="button"
+        className="btn btn--small"
+        data-testid={`ai-retry-${item.id}`}
+        disabled={!aiReady || raw.length === 0}
+        title={hint}
+        onClick={() => onAiRetry(item)}
+      >
+        🤖 用 AI 重试解析
+      </button>
+    );
+  };
 
   const ordered = useMemo(
     () => [...items].sort((a, b) => (a.capturedAt < b.capturedAt ? 1 : a.capturedAt > b.capturedAt ? -1 : 0)),
@@ -97,6 +127,12 @@ export function StagingList(props: StagingListProps) {
         </div>
       ) : null}
 
+      {onAiRetry && !aiReady ? (
+        <p className="field__hint" data-testid="ai-staging-blocked">
+          「用 AI 重试解析」暂时置灰：{aiReason ?? 'AI 服务未配置'}。置灰不等于报错 —— 配好之后这些行原样还在。
+        </p>
+      ) : null}
+
       <ul className="sync__staging-list">
         {ordered.map((item) => {
           // 「没解析出来」的行没公司名也没岗位名，给不了状态下拉 —— 那样只会
@@ -120,6 +156,7 @@ export function StagingList(props: StagingListProps) {
                 </div>
 
                 <div className="sync__staging-controls">
+                  {aiButton(item)}
                   <button
                     type="button"
                     className="btn btn--small"
@@ -169,6 +206,7 @@ export function StagingList(props: StagingListProps) {
               ) : null}
 
               <div className="sync__staging-controls">
+                {aiButton(item)}
                 <label className="sync__staging-pick">
                   <span className="field__label">归到</span>
                   <select

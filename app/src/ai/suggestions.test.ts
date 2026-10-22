@@ -186,6 +186,59 @@ describe('suggestions · 接受（单次遍历写目标 + 撤销快照）', () =
     revertAi(db, undo); // 不抛错即可
     expect(db.aiSuggestions[0].status).toBe('pending');
   });
+
+  it('D17：补出公司名后 reason 从 unparsed 放开为 unmapped（否则用户无法归位）', () => {
+    const db = dbWithStaging();
+    const [sugg] = createSuggestions([stagingSuggestion()], NOW);
+    db.aiSuggestions = [sugg];
+    expect(db.staging[0].reason).toBe('unparsed');
+
+    const { undo } = applySuggestions(db, new Set([sugg.id]), { nowIso: NOW });
+    expect(db.staging[0].reason).toBe('unmapped');
+    expect(undo.targets[0].prevReason).toBe('unparsed');
+
+    // ⌘Z 之后暂存区回到「没解析出来」，与内容一起还原（不留半真半假的中间态）
+    revertAi(db, undo);
+    expect(db.staging[0].reason).toBe('unparsed');
+    expect(parsedOf(db).companyName).toBe('');
+  });
+
+  it('D17：只补了岗位名 / 没补出公司名时，reason 保持 unparsed', () => {
+    const db = dbWithStaging();
+    const [sugg] = createSuggestions([{ ...stagingSuggestion(), fieldPath: 'jobTitle', content: '前端实习生' }], NOW);
+    db.aiSuggestions = [sugg];
+    const { undo } = applySuggestions(db, new Set([sugg.id]), { nowIso: NOW });
+    expect(db.staging[0].reason).toBe('unparsed');
+    expect(undo.targets[0].prevReason).toBeUndefined();
+  });
+
+  it('验收 10：三题只勾两题 → 库内恰好 +2；⌘Z 整体回退到 0', () => {
+    const db = emptyDB();
+    const list = createSuggestions(
+      [
+        { pluginId: 'builtin:d14', targetType: 'question', targetId: null, fieldPath: 'text', content: 'Vue 响应式原理' },
+        { pluginId: 'builtin:d14', targetType: 'question', targetId: null, fieldPath: 'text', content: '手写防抖' },
+        { pluginId: 'builtin:d14', targetType: 'question', targetId: null, fieldPath: 'text', content: '反问环节' },
+      ],
+      NOW,
+    );
+    db.aiSuggestions = list;
+    const picked = new Set([list[0].id, list[2].id]);
+
+    const { undo, applied } = applySuggestions(db, picked, {
+      nowIso: NOW,
+      resolveQuestionExperienceId: () => 'exp-1',
+    });
+    expect(applied).toBe(2);
+    expect(db.questions).toHaveLength(2);
+    expect(db.questions.map((question) => question.text)).toEqual(['Vue 响应式原理', '反问环节']);
+    // 没勾的那条仍是 pending（用户随时可以回头再收）
+    expect(db.aiSuggestions[1].status).toBe('pending');
+
+    revertAi(db, undo);
+    expect(db.questions).toHaveLength(0);
+    expect(db.aiSuggestions.map((suggestion) => suggestion.status)).toEqual(['pending', 'pending', 'pending']);
+  });
 });
 
 describe('suggestions · 拒绝', () => {

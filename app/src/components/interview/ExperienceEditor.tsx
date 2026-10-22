@@ -24,6 +24,7 @@ import {
   questionsOf,
 } from '../../lib/interview';
 import { clampText } from '../../lib/budget';
+import { AiScenarioPanel } from '../ai/AiScenarioPanel';
 
 const ANSWER_LIMIT = 5000;
 const NOTE_LIMIT = 3000;
@@ -41,6 +42,8 @@ export function ExperienceEditor({ api, experienceId, onClose }: ExperienceEdito
     [api.db.questions, experience],
   );
   const [confirmDelete, setConfirmDelete] = useState(false);
+  /** v0.8 / D14：AI 整理面板（浮层，只在用户点了入口后才挂载） */
+  const [aiOpen, setAiOpen] = useState(false);
 
   if (!experience) {
     return (
@@ -181,6 +184,25 @@ export function ExperienceEditor({ api, experienceId, onClose }: ExperienceEdito
               <span className="muted">失焦即保存</span>
             </div>
 
+            {/*
+              D14 入口。AI 未配置时置灰 + 就地说明原因（R-AI-5）——
+              不用「点了才告诉你没配」，更不弹错误框。
+            */}
+            <div className="drawer__actions">
+              <button
+                type="button"
+                className="btn btn--small"
+                data-testid="ai-d14-entry"
+                disabled={!api.ai.ready}
+                onClick={() => setAiOpen(true)}
+              >
+                🤖 用 AI 整理这段面经
+              </button>
+              <span className="field__hint">
+                {api.ai.ready ? '粘贴一段零散记录，AI 拆成题，逐题勾选才写入' : api.ai.readyReason}
+              </span>
+            </div>
+
             {questions.length === 0 ? (
               <p className="muted">这场还没记题。关掉这个窗口，点「＋ 记面经」一行一题补上。</p>
             ) : (
@@ -220,6 +242,10 @@ export function ExperienceEditor({ api, experienceId, onClose }: ExperienceEdito
           </section>
         </div>
       </aside>
+
+      {aiOpen ? (
+        <AiScenarioPanel api={api} scenario="d14" targetId={experience.id} onClose={() => setAiOpen(false)} />
+      ) : null}
     </div>
   );
 }
