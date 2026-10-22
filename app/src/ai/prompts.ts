@@ -17,7 +17,8 @@ import type { AiScenarioKey, PreviewField } from './types';
 export interface AiScenarioSpec {
   /** 内置场景固定前缀 builtin:（与插件 pluginId 同一命名空间） */
   pluginId: string;
-  targetType: AISuggestionTargetType;
+  /** 建议类场景的写回通道；报告类场景（d19-diag/d20-analysis）不产出建议，缺省 */
+  targetType?: AISuggestionTargetType;
   /** ≤10 行的紧凑 system 提示 */
   system: string;
   /** 出境字段声明（locked = 必发，其余默认不勾） */
@@ -43,6 +44,43 @@ const D17_SYSTEM = [
   '任务：从中识别一条求职记录的公司名/岗位名/状态/城市/薪资。',
   '规则：只输出片段里明确出现的值，认不出就省略该字段；状态映射到：想投/已投/沟通中/笔试/已约面/面试中/offer/已入职/已拒绝/已放弃。',
   '输出必须是 JSON：{"fields":[{"field":"companyName","value":"...","evidence":"原文片段"}]}，不要任何其他文字。',
+].join('\n');
+
+/**
+ * v0.9 四个场景共用的开场（PRD §10）：省的是每个 system 重复的边界声明。
+ * 「联系方式不会出现在输入里」不是承诺，是 context.ts 的结构保证 —— 这里只是告诉模型别问。
+ */
+const T07_PREAMBLE = '你是简历与求职助手。输入只包含用户主动选择的内容；姓名、电话、邮箱、照片等联系方式不会出现，也不要索要。';
+
+const D19_DIAG_SYSTEM = [
+  T07_PREAMBLE,
+  '你是简历诊断教练。输入是候选人的 1–3 个简历模块文本与目标岗位。',
+  '任务：对照目标岗位逐维度判断匹配度，每个维度给出简历/JD 两边的证据原句。',
+  'verdict 只能是 strong_match / partial_match / gap / not_found（材料没提到就用 not_found，不要猜）。',
+  '输出必须是 JSON：{"summary":"两句话总评","next_steps":["最优先的一步"],"dimensions":[{"key":"k","label":"维度","verdict":"gap","evidenceFromResume":"简历原句","evidenceFromJd":"JD 原句","gapDescription":"差在哪"}]}，除此之外不要任何文字。',
+].join('\n');
+
+const D19_POLISH_SYSTEM = [
+  T07_PREAMBLE,
+  '你是简历润色助手。输入是一段简历原文与所在板块名。',
+  '任务：改写成「动词开头、尽量带数字」的中文简历句。保持原有事实，绝不编造没写过的数字或经历。',
+  '输出必须是 JSON：{"polished":"改写后的整段","reasons":["为什么这样改"]}，除此之外不要任何文字。',
+].join('\n');
+
+const D19_JD_SYSTEM = [
+  T07_PREAMBLE,
+  '你是简历定向改写助手。输入是一份 JD 与候选人的若干简历模块（每行以字段名开头，如 description: …）。',
+  '任务：对照 JD 挑出值得改写的字段，产出改写建议。fieldPath 必须用输入里出现过的字段名。',
+  '规则：只基于候选人已有经历改写，不编造新经历；每条建议附 JD 依据原句。',
+  '输出必须是 JSON：{"suggestions":[{"fieldPath":"description","content":"改写后的内容","evidence":"JD 原句"}]}，不要任何其他文字。',
+].join('\n');
+
+const D20_SYSTEM = [
+  T07_PREAMBLE,
+  '你是求职竞争力分析师。输入是一条投递的 JD 原文与公司/岗位/状态。',
+  '任务：逐维度判断候选人与岗位的匹配度，给出两句话总评与下一步建议。',
+  'verdict 只能是 strong_match / partial_match / gap / not_found（材料没提到就用 not_found）。',
+  '输出必须是 JSON：{"summary":"两句话总评","next_steps":["下一步"],"dimensions":[{"key":"k","label":"维度","verdict":"gap","evidenceFromResume":"依据原句","evidenceFromJd":"JD 原句"}]}，除此之外不要任何文字。',
 ].join('\n');
 
 export const AI_SCENARIOS: Record<AiScenarioKey, AiScenarioSpec> = {
@@ -85,6 +123,46 @@ export const AI_SCENARIOS: Record<AiScenarioKey, AiScenarioSpec> = {
       { name: 'companyName', label: '公司名（已识别部分）', value: '', defaultChecked: false },
       { name: 'jobTitle', label: '岗位名（已识别部分）', value: '', defaultChecked: false },
       { name: 'status', label: '状态（已识别部分）', value: '', defaultChecked: false },
+    ],
+  },
+  /* ---------------- v0.9 / T07 四场景（出境表 = PRD §10，字段表就是白名单） ---------------- */
+  'd19-diag': {
+    pluginId: 'builtin:d19-diag',
+    system: D19_DIAG_SYSTEM,
+    fields: [
+      // 用户勾选模块即授权 → locked；目标岗位名是用户在面板里输入的 → 默认勾、可取消
+      { name: 'selectedModules', label: '选中的简历模块', value: '', locked: true },
+      { name: 'targetJobTitle', label: '目标岗位名', value: '', defaultChecked: true },
+      // basics 联系类字段（姓名/电话/邮箱/照片/城市）不在字段表 —— 没有开关，不是默认不勾
+    ],
+  },
+  'd19-polish': {
+    pluginId: 'builtin:d19-polish',
+    targetType: 'resume_field',
+    system: D19_POLISH_SYSTEM,
+    fields: [
+      { name: 'selectedText', label: '选中段落原文', value: '', locked: true },
+      { name: 'sectionLabel', label: '所属板块', value: '', locked: true },
+    ],
+  },
+  'd19-jd': {
+    pluginId: 'builtin:d19-jd',
+    targetType: 'resume_field',
+    system: D19_JD_SYSTEM,
+    fields: [
+      { name: 'jdText', label: '岗位 JD 原文', value: '', locked: true },
+      { name: 'selectedModules', label: '选中的简历模块', value: '', locked: true },
+    ],
+  },
+  'd20-analysis': {
+    pluginId: 'builtin:d20-analysis',
+    system: D20_SYSTEM,
+    fields: [
+      // JD 留档是用户此前粘贴的 → 默认勾、可取消；库内简历模块按铁律默认不勾
+      { name: 'jdText', label: 'JD 留档原文', value: '', defaultChecked: true },
+      { name: 'companyName', label: '公司名', value: '' },
+      { name: 'jobTitle', label: '岗位名', value: '' },
+      { name: 'status', label: '当前状态', value: '' },
     ],
   },
 };

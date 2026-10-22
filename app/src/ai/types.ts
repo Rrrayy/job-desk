@@ -22,6 +22,7 @@ export const AI_TARGET_TYPES: readonly AISuggestionTargetType[] = [
   'question',
   'application_note',
   'staging_field',
+  'resume_field',
 ];
 
 /** OpenAI 兼容 chat/completions 的一条消息 */
@@ -60,7 +61,7 @@ export interface NewAISuggestion {
  * 与 StatusUndo/SyncUndo 同构：只记「这次操作改了什么」，不复制整库。
  */
 export interface AiUndoTarget {
-  table: 'questions' | 'notes' | 'staging';
+  table: 'questions' | 'notes' | 'staging' | 'resumes';
   id: string;
   /** 被改的字段名（新建行为空串） */
   field: string;
@@ -83,10 +84,39 @@ export interface AiUndo {
   targets: AiUndoTarget[];
 }
 
-/* ---------------------- 内置场景运行时（v0.8 / T05） ---------------------- */
+/* ---------------------- 内置场景运行时（v0.8 / T05；v0.9 / T07 扩四个） ---------------------- */
 
-/** 三个内置场景的键；与 prompts.ts 的 AI_SCENARIOS 一一对应 */
-export type AiScenarioKey = 'd14' | 'd15' | 'd17';
+/** 内置场景键；与 prompts.ts 的 AI_SCENARIOS 一一对应 */
+export type AiScenarioKey = 'd14' | 'd15' | 'd17' | 'd19-diag' | 'd19-polish' | 'd19-jd' | 'd20-analysis';
+
+/** 产出建议的场景（写 AISuggestion）；报告类场景（d19-diag / d20-analysis）不在此列 */
+export const SUGGESTION_SCENARIOS: readonly AiScenarioKey[] = ['d14', 'd15', 'd17', 'd19-polish', 'd19-jd'];
+
+/** 报告类场景 → AIReport.targetType 的映射（写报告，不写建议） */
+export const REPORT_SCENARIO_TYPES = {
+  'd19-diag': 'resume_diagnosis',
+  'd20-analysis': 'application_analysis',
+} as const;
+
+/**
+ * 简历模块（T07 modulePicker 的数据形状，由 `ai/context.ts` 的 `resumeModules` 产出）。
+ * ★ 结构性隐私：basics（姓名/电话/邮箱/城市/照片）根本不会成为模块 —— 联系方式
+ *   不是「默认不勾」，是「没有勾选框」。
+ */
+export interface AiResumeModule {
+  /** sectionId */
+  id: string;
+  /** 板块名（用户改过就用改的） */
+  label: string;
+  /** 板块纯文本（发送用；含字段名前缀，模型才能引用 fieldPath） */
+  text: string;
+  /** 润色主字段的全路径（s:sec:i:item:key）；板块没有可润色文本时为 null */
+  primaryPath: string | null;
+  /** 润色主字段的现值 */
+  primaryText: string;
+  /** fieldKey → 全路径（首个命中条目；JD 定向的 fieldPath 落点地图） */
+  fieldPaths: Record<string, string>;
+}
 
 /**
  * 跑一次内置场景（D13 确认之后才调用）。
@@ -96,8 +126,13 @@ export type AiScenarioKey = 'd14' | 'd15' | 'd17';
 export interface AiRunInput {
   scenario: AiScenarioKey;
   checked: Record<string, string>;
-  /** 建议落到哪一行：D14 = 面经 id（新建题用 resolveQuestionExperienceId）、D15 = 投递 id、D17 = 暂存行 id */
+  /** 建议落到哪一行：D14 = 面经 id（新建题用 resolveQuestionExperienceId）、D15 = 投递 id、D17 = 暂存行 id；d19 = 简历 id */
   targetId: string | null;
+  /**
+   * T07：模型的 fieldPath → 真实落点路径（s:sec:i:item:key）的映射。
+   * 只由 modulePicker 的选中模块算出来，模型给不出的键映射不到 = 写回时自然落空。
+   */
+  context?: { fieldPaths: Record<string, string> };
   signal?: AbortSignal;
   onDelta?: (delta: string) => void;
 }
@@ -105,8 +140,12 @@ export interface AiRunInput {
 /**
  * 场景结果。**失败一律返回原因字符串，不抛异常**（R-AI-5：
  * 断网 / 模型胡说八道都只该换来一句内联人话，不该是错误弹窗）。
+ * 成功两分支：建议类 = 入库条数；报告类 = 报告 id（卡片区负责展示）。
  */
-export type AiRunOutcome = { ok: true; created: number } | { ok: false; error: string };
+export type AiRunOutcome =
+  | { ok: true; kind: 'suggestions'; created: number }
+  | { ok: true; kind: 'report'; reportId: string }
+  | { ok: false; error: string };
 
 /** D13 发送预览的一个字段行 */
 export interface PreviewField {

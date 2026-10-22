@@ -105,6 +105,12 @@
  *      红线拟 WARN 690 / FAIL 715（「常态响的警报等于没有警报」的同一逻辑，
  *      数值由主理人定案后另行改动，本文件本轮不动）。
  *
+ *   4) v0.9 实际：简历模块（8 模板 + A4 打印 + 4 AI 场景）体量超出预估
+ *      （T07 四场景实测 +17.9 KB vs 预算 14）。主理人裁决「超出预算就把上限再往上提」：
+ *      WARN 690→705 / FAIL 715→730（T07b+T08 落点预估 ≈692，WARN 留 13 KB 余量，
+ *      FAIL 仍保持「再做一个小功能才需要回头优化」的手感）。
+ *      这是一次明确的产品决策，理由与构成记入 docs/RELEASE-NOTES-v0.9.0.md。
+ *
  * ★ 改动阈值必须写进 docs/RELEASE-NOTES：涨红线不是技术决策，是产品决策。
  */
 
@@ -112,8 +118,8 @@ import { existsSync, statSync } from 'node:fs';
 import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
-const WARN_BYTES = 690 * 1024;
-const FAIL_BYTES = 715 * 1024;
+const WARN_BYTES = 705 * 1024;
+const FAIL_BYTES = 730 * 1024;
 
 /**
  * 当前版本的体积基线（每次发版更新，用来在 CI 里显示「这次改动胖了多少」）。

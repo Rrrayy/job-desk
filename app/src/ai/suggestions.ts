@@ -16,9 +16,37 @@ import type {
   DB,
   Note,
   Question,
+  ResumeSection,
 } from '../types';
 import { uid } from '../lib/util';
+import { FIELD_META } from '../resume/templates/base';
 import type { AiUndo, AiUndoTarget, NewAISuggestion } from './types';
+
+/** 简历行是否在回收站（与 lib/trash.isDeleted 同口径；就地实现避免 trash ↔ ai 循环导入） */
+function resumeGone(resume: { deletedAt?: string | null }): boolean {
+  return typeof resume.deletedAt === 'string' && resume.deletedAt.length > 0;
+}
+
+/**
+ * 润色建议的 fieldPath（`s:{sectionId}:i:{itemId}:{fieldKey}`）→ 落点三元组。
+ * 解析不出来（格式不对）返回 null —— 模型/面板给的路径不可信，落点必须可验证。
+ */
+export function parseResumeFieldPath(fieldPath: string): { sectionId: string; itemId: string; key: string } | null {
+  const parts = fieldPath.split(':');
+  if (parts.length < 5 || parts[0] !== 's' || parts[2] !== 'i') return null;
+  const key = parts.slice(4).join(':');
+  if (!parts[1] || !parts[3] || !key) return null;
+  return { sectionId: parts[1], itemId: parts[3], key };
+}
+
+function resumeItemOf(resume: { content: { sections: ResumeSection[] } }, fieldPath: string) {
+  const parsed = parseResumeFieldPath(fieldPath);
+  if (!parsed) return null;
+  const section = resume.content.sections.find((item) => item.id === parsed.sectionId);
+  const item = section?.items.find((entry) => entry.id === parsed.itemId);
+  if (!section || !item) return null;
+  return { ...parsed, item };
+}
 
 /** rejected/accepted 建议的保留天数（超期由启动 sweep 清理） */
 export const SUGGESTION_RETENTION_DAYS = 7;
@@ -171,6 +199,43 @@ function writeTarget(
         ...(prevReason ? { prevReason } : {}),
       };
     }
+    case 'resume_field': {
+      // v0.9 / T07：写回简历**草稿**（db.resumes 的 content），绝不碰冻结版本 ——
+      // 「投出去的那一版」必须字节级不变，测试里有显式断言。
+      if (!suggestion.targetId) return null;
+      const resume = db.resumes.find((item) => item.id === suggestion.targetId && !resumeGone(item));
+      if (!resume) return null;
+      const located = resumeItemOf(resume, suggestion.fieldPath);
+      // 目标段落已被删掉 → 只翻建议状态（applied 不计），UI 层提示「目标段落已不存在」
+      if (!located) return null;
+      const meta = FIELD_META[located.key as keyof typeof FIELD_META];
+      if (meta?.type === 'rich_bullets') {
+        // 富文本字段：改写结果是整段文字，按行拆回 bullets（cleanBullets 语义与表单一致）
+        const prevBullets = located.item.bullets;
+        located.item.bullets = suggestion.content
+          .split('\n')
+          .map((line) => line.replace(/^[\s\-*•\d.、)）]+/, '').trim())
+          .filter((line) => line.length > 0);
+        resume.updatedAt = nowIso;
+        return {
+          table: 'resumes',
+          id: resume.id,
+          field: suggestion.fieldPath,
+          prevValue: prevBullets?.join('\n'),
+          rowExisted: true,
+        };
+      }
+      const prev = located.item.fields[located.key];
+      located.item.fields[located.key] = suggestion.content;
+      resume.updatedAt = nowIso;
+      return {
+        table: 'resumes',
+        id: resume.id,
+        field: suggestion.fieldPath,
+        prevValue: typeof prev === 'string' ? prev : undefined,
+        rowExisted: true,
+      };
+    }
     default:
       return null;
   }
@@ -214,9 +279,10 @@ export function revertAi(db: DB, undo: AiUndo): void {
         db.questions = db.questions.filter((item) => item.id !== target.id);
       } else if (target.table === 'notes') {
         db.notes = db.notes.filter((item) => item.id !== target.id);
-      } else {
+      } else if (target.table === 'staging') {
         db.staging = db.staging.filter((item) => item.id !== target.id);
       }
+      // resumes 没有「新建行」形态（AI 只改字段，不建简历）——防御到这里就够了
       continue;
     }
     if (target.table === 'staging') {
@@ -227,6 +293,22 @@ export function revertAi(db: DB, undo: AiUndo): void {
       else parsed[target.field] = target.prevValue;
       // D17：补出公司名时放开的 reason 也要收回，否则暂存区状态与内容不一致
       if (target.prevReason) item.reason = target.prevReason;
+    } else if (target.table === 'resumes') {
+      // v0.9 / T07：简历草稿写回的回退。富文本字段撤销时把整段拆回 bullets，
+      // 与写入路径互为镜像 —— 只回退一半的话，⌘Z 之后表单和纸就对不上了。
+      const resume = db.resumes.find((item) => item.id === target.id);
+      if (!resume) continue;
+      const located = resumeItemOf(resume, target.field);
+      if (!located) continue;
+      const meta = FIELD_META[located.key as keyof typeof FIELD_META];
+      if (meta?.type === 'rich_bullets') {
+        if (target.prevValue === undefined) delete located.item.bullets;
+        else located.item.bullets = target.prevValue.split('\n').filter((line) => line.length > 0);
+      } else if (target.prevValue === undefined) {
+        delete located.item.fields[located.key];
+      } else {
+        located.item.fields[located.key] = target.prevValue;
+      }
     } else if (target.table === 'questions') {
       const question = db.questions.find((item) => item.id === target.id);
       if (!question) continue;

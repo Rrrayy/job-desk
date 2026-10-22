@@ -11,6 +11,7 @@ import {
   SUGGESTION_RETENTION_DAYS,
   applySuggestions,
   createSuggestions,
+  parseResumeFieldPath,
   rejectSuggestions,
   revertAi,
   sweepExpiredSuggestions,
@@ -304,5 +305,127 @@ describe('suggestions · 7 天清理', () => {
     const result = sweepExpiredSuggestions([oldNoDecided, broken], now);
     expect(result.removed).toBe(1);
     expect(result.kept.map((item) => item.id)).toEqual(['s-2']);
+  });
+});
+
+/* ---------------------- v0.9 / T07：resume_field ---------------------- */
+
+/**
+ * 简历夹具：一段经历（bullets）+ 一个文本字段（org）。
+ * 字段值刻意分开存：rich_bullets 走 bullets、普通字段走 fields，两条写回路径都要测到。
+ */
+function dbWithResume(): { db: DB; versionContent: string } {
+  const db = emptyDB();
+  db.resumes = [
+    {
+      id: 'res-1',
+      name: '主简历',
+      templateId: 'tech-single',
+      content: {
+        sections: [
+          {
+            id: 'sec-exp',
+            type: 'experience',
+            items: [{ id: 'it-1', fields: { org: '字节跳动' }, bullets: ['旧要点一', '旧要点二'] }],
+          },
+          { id: 'sec-skill', type: 'skills', items: [{ id: 'it-2', fields: { skillsText: 'React\nVue' } }] },
+        ],
+      },
+      createdAt: NOW,
+      updatedAt: NOW,
+    },
+  ];
+  // 冻结版本：AI 写回 + 撤销全程**字节级不变**（「投出去的那一版」神圣不可侵犯）
+  db.resumeVersions = [
+    {
+      id: 'ver-1',
+      resumeId: 'res-1',
+      label: 'v1',
+      templateId: 'tech-single',
+      content: JSON.parse(JSON.stringify(db.resumes[0].content)),
+      createdAt: NOW,
+    },
+  ];
+  return { db, versionContent: JSON.stringify(db.resumeVersions[0].content) };
+}
+
+function resumeSuggestion(fieldPath: string, content: string): NewAISuggestion {
+  return { pluginId: 'builtin:d19-polish', targetType: 'resume_field', targetId: 'res-1', fieldPath, content };
+}
+
+describe('suggestions · resume_field（v0.9 / T07 写回草稿）', () => {
+  it('普通文本字段：写回 fields[key]，undo 记旧值；⌘Z 逐字段还原', () => {
+    const { db } = dbWithResume();
+    db.aiSuggestions = createSuggestions([resumeSuggestion('s:sec-exp:i:it-1:org', '字节跳动 · 抖音电商')], NOW);
+    const result = applySuggestions(db, new Set(db.aiSuggestions.map((item) => item.id)), { nowIso: NOW });
+    expect(result.applied).toBe(1);
+    expect(db.resumes[0].content.sections[0].items[0].fields.org).toBe('字节跳动 · 抖音电商');
+    expect(db.resumes[0].updatedAt).toBe(NOW);
+    expect(result.undo.targets[0]).toMatchObject({ table: 'resumes', field: 's:sec-exp:i:it-1:org', prevValue: '字节跳动' });
+
+    revertAi(db, result.undo);
+    expect(db.resumes[0].content.sections[0].items[0].fields.org).toBe('字节跳动');
+    expect(db.aiSuggestions[0].status).toBe('pending');
+  });
+
+  it('rich_bullets：整段按行拆回 bullets（前缀清理），prevValue = 旧 bullets join；revert 镜像还原', () => {
+    const { db } = dbWithResume();
+    db.aiSuggestions = createSuggestions(
+      [resumeSuggestion('s:sec-exp:i:it-1:description', '- 新要点一\n2. 新要点二\n\n新要点三')],
+      NOW,
+    );
+    const result = applySuggestions(db, new Set(db.aiSuggestions.map((item) => item.id)), { nowIso: NOW });
+    const item = db.resumes[0].content.sections[0].items[0];
+    expect(item.bullets).toEqual(['新要点一', '新要点二', '新要点三']);
+    expect(result.undo.targets[0].prevValue).toBe('旧要点一\n旧要点二');
+
+    revertAi(db, result.undo);
+    expect(db.resumes[0].content.sections[0].items[0].bullets).toEqual(['旧要点一', '旧要点二']);
+  });
+
+  it('目标段落已不存在：只翻建议状态，不写库、applied 不计、revert 不炸', () => {
+    const { db } = dbWithResume();
+    db.aiSuggestions = createSuggestions([resumeSuggestion('s:sec-exp:i:it-404:org', '悬空写回')], NOW);
+    const result = applySuggestions(db, new Set(db.aiSuggestions.map((item) => item.id)), { nowIso: NOW });
+    expect(result.applied).toBe(0);
+    expect(db.aiSuggestions[0].status).toBe('accepted');
+    expect(db.resumes[0].content.sections[0].items[0].fields.org).toBe('字节跳动');
+    revertAi(db, result.undo);
+    expect(db.aiSuggestions[0].status).toBe('pending');
+  });
+
+  it('fieldPath 格式非法（不是 s:x:i:y:key）→ 落空，applied=0', () => {
+    const { db } = dbWithResume();
+    db.aiSuggestions = createSuggestions([resumeSuggestion('org', '没有路径的写回')], NOW);
+    const result = applySuggestions(db, new Set(db.aiSuggestions.map((item) => item.id)), { nowIso: NOW });
+    expect(result.applied).toBe(0);
+    expect(db.resumes[0].updatedAt).toBe(NOW); // 没写
+  });
+
+  it('简历在回收站（deletedAt）→ 写回落空：AI 不碰已删数据', () => {
+    const { db } = dbWithResume();
+    db.resumes[0].deletedAt = NOW;
+    db.aiSuggestions = createSuggestions([resumeSuggestion('s:sec-exp:i:it-1:org', '改回收站')], NOW);
+    const result = applySuggestions(db, new Set(db.aiSuggestions.map((item) => item.id)), { nowIso: NOW });
+    expect(result.applied).toBe(0);
+  });
+
+  it('★ 冻结版本字节级不变：接受 + 撤销整轮跑完，resumeVersions 的 content 逐字节相等', () => {
+    const { db, versionContent } = dbWithResume();
+    db.aiSuggestions = createSuggestions(
+      [resumeSuggestion('s:sec-exp:i:it-1:description', '- 新要点'), resumeSuggestion('s:sec-skill:i:it-2:skillsText', 'TypeScript')],
+      NOW,
+    );
+    const result = applySuggestions(db, new Set(db.aiSuggestions.map((item) => item.id)), { nowIso: NOW });
+    revertAi(db, result.undo);
+    expect(JSON.stringify(db.resumeVersions[0].content)).toBe(versionContent);
+  });
+
+  it('parseResumeFieldPath：合法路径解析；缺段 / 标记不符 / 空 key → null', () => {
+    expect(parseResumeFieldPath('s:sec-exp:i:it-1:org')).toEqual({ sectionId: 'sec-exp', itemId: 'it-1', key: 'org' });
+    expect(parseResumeFieldPath('org')).toBeNull();
+    expect(parseResumeFieldPath('x:sec-exp:i:it-1:org')).toBeNull();
+    expect(parseResumeFieldPath('s:sec-exp:q:it-1:org')).toBeNull();
+    expect(parseResumeFieldPath('s:sec-exp:i:it-1:')).toBeNull();
   });
 });

@@ -125,7 +125,9 @@ import { chatCompletions, GatewayError } from './ai/gateway';
 import { buildRequestLogEntry, capRequestLog, fieldsFingerprint } from './ai/requestLog';
 import { createSuggestions } from './ai/suggestions';
 import { buildScenarioMessages, parseScenarioOutput, scenarioPluginId, toNewSuggestions } from './ai/scenarios';
-import type { AiRunInput, AiRunOutcome, AiUndo, NewAISuggestion, PreviewField } from './ai/types';
+import { capReports, createReport, parseReport } from './ai/reports';
+import { REPORT_SCENARIO_TYPES } from './ai/types';
+import type { AiRunInput, AiRunOutcome, AiScenarioKey, AiUndo, NewAISuggestion, PreviewField } from './ai/types';
 import { PluginBroker, type SendAiInput } from './plugins/broker';
 import { parseManifest } from './plugins/manifest';
 import {
@@ -188,6 +190,7 @@ import { CsvImportDialog } from './components/CsvImportDialog';
 import { QuickNote } from './components/interview/QuickNote';
 import { ExperienceEditor } from './components/interview/ExperienceEditor';
 import { ResumeView } from './components/resume/ResumeView';
+import { AiScenarioPanel } from './components/ai/AiScenarioPanel';
 
 /**
  * 键盘 1..N 与视图的对应关系。
@@ -274,6 +277,14 @@ export default function App() {
   const [insightsTab, setInsightsTabState] = useState<InsightsTab>(ui.insightsTab);
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [quickAddOpen, setQuickAddOpen] = useState(false);
+  /** v0.9 / T07：投递分析面板（d20-analysis）的开门状态。ResumeEditor 的 d19 面板由编辑器自己挂 */
+  const [aiAnalysisPanel, setAiAnalysisPanel] = useState<{ scenario: AiScenarioKey; targetId: string } | null>(null);
+  /**
+   * 简历草稿的 flush 句柄（ResumeEditor 挂载时注册）。
+   * AI 写回 / 打印 / 存版本之前都要 flush —— 但 flush 活在编辑器组件里，
+   * App 只能持有引用。卸载时编辑器会注销（置 null）。
+   */
+  const resumeFlushRef = useRef<(() => void) | null>(null);
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [query, setQuery] = useState('');
   const [toast, setToast] = useState<ToastState | null>(null);
@@ -1429,6 +1440,9 @@ export default function App() {
   const acceptSuggestions = useCallback(
     (ids: string[]): void => {
       if (ids.length === 0) return;
+      // ★ AI 写回前先 flush 简历草稿（A-07）：400 ms 防抖窗口里的输入先落库，
+      // 否则「表单里刚改的 → AI 写回 → 防抖到点用旧草稿覆盖」会静默丢一次写入。
+      resumeFlushRef.current?.();
       let undo: AiUndo | null = null;
       let applied = 0;
       mutate((draft) => {
@@ -1500,6 +1514,16 @@ export default function App() {
    * `checked` 就是用户勾中的字段，这里不读、也不补任何库内数据。
    * 顺序与插件 ai_request 完全一致：fingerprint → gateway → 窄校验 → 建议入库 → 一条日志。
    */
+  /** v0.9 / T07：编辑器把自己的 flush 注册进来（卸载时注销）。真正的实现只有编辑器知道 */
+  const registerResumeFlush = useCallback((fn: (() => void) | null): void => {
+    resumeFlushRef.current = fn;
+  }, []);
+
+  /** v0.9 / T07：打开「投递分析」面板（DetailDrawer 的入口卡调用） */
+  const analyzeApplication = useCallback((appId: string): void => {
+    setAiAnalysisPanel({ scenario: 'd20-analysis', targetId: appId });
+  }, []);
+
   const runAiScenario = useCallback(
     async (input: AiRunInput): Promise<AiRunOutcome> => {
       const ai = dbRef.current.settings.ai;
@@ -1514,18 +1538,46 @@ export default function App() {
           ...(input.onDelta ? { onDelta: input.onDelta } : {}),
           ...(input.signal ? { signal: input.signal } : {}),
         });
+        // 报告类场景（d19-diag / d20-analysis）：产出 AIReport，不写建议、不进撤销栈
+        if (input.scenario === 'd19-diag' || input.scenario === 'd20-analysis') {
+          const parsed = parseReport(result.text);
+          logPluginRequest(pluginId, hash, parsed.ok ? 'ok' : 'error', parsed.ok ? undefined : 'parse');
+          if (!parsed.ok) return { ok: false, error: parsed.error };
+          const report = createReport({
+            pluginId,
+            targetType: REPORT_SCENARIO_TYPES[input.scenario],
+            targetId: input.targetId ?? '',
+            content: parsed.content,
+            ...(parsed.dimensions ? { dimensions: parsed.dimensions } : {}),
+            model: ai.model,
+            createdAt: new Date().toISOString(),
+          });
+          mutate((draft) => {
+            draft.aiReports.push(report);
+            draft.aiReports = capReports(draft.aiReports);
+          });
+          showToast('报告已生成 —— 本地合成，仅供参考');
+          return { ok: true, kind: 'report', reportId: report.id };
+        }
         const parsed = parseScenarioOutput(input.scenario, result.text);
         logPluginRequest(pluginId, hash, parsed.ok ? 'ok' : 'error', parsed.ok ? undefined : 'parse');
         if (!parsed.ok) return { ok: false, error: parsed.error };
+        // d19-jd：模型给的是字段键（如 description），真实落点由 modulePicker 的选中模块决定 ——
+        // 映射不到的键原样保留，写回时落空（只翻状态），绝不猜一个条目写进去。
+        const fieldPaths = input.context?.fieldPaths;
         const list = createSuggestions(
-          toNewSuggestions(input.scenario, input.targetId, parsed.items),
+          toNewSuggestions(input.scenario, input.targetId, parsed.items).map((suggestion) =>
+            fieldPaths && fieldPaths[suggestion.fieldPath]
+              ? { ...suggestion, fieldPath: fieldPaths[suggestion.fieldPath] }
+              : suggestion,
+          ),
           new Date().toISOString(),
         );
         mutate((draft) => {
           for (const suggestion of list) draft.aiSuggestions.push(suggestion);
         });
         showToast(`AI 给出 ${list.length} 条建议 —— 勾选后才会写入`);
-        return { ok: true, created: list.length };
+        return { ok: true, kind: 'suggestions', created: list.length };
       } catch (error) {
         const code = error instanceof GatewayError ? error.code : 'ai_failed';
         logPluginRequest(pluginId, hash, 'error', code);
@@ -2636,6 +2688,7 @@ export default function App() {
     updateCompany,
     updateSettings,
     updateResumeContent,
+    registerResumeFlush,
 
     /**
      * v0.9 / T05：简历页。
@@ -2738,6 +2791,7 @@ export default function App() {
       rejectSuggestions: rejectSuggestionsByIds,
       clearRequestLog,
       runScenario: runAiScenario,
+      analyzeApplication,
     },
     plugins: {
       list: () => pluginRegistry,
@@ -2881,6 +2935,16 @@ export default function App() {
       </footer>
 
       {selectedId ? <DetailDrawer api={api} /> : null}
+      {/* v0.9 / T07：投递分析（d20-analysis）。面板在 App 层挂着，DetailDrawer 的入口卡只负责开门 */}
+      {aiAnalysisPanel ? (
+        <AiScenarioPanel
+          api={api}
+          scenario={aiAnalysisPanel.scenario}
+          targetId={aiAnalysisPanel.targetId}
+          onClose={() => setAiAnalysisPanel(null)}
+          onReport={() => setAiAnalysisPanel(null)}
+        />
+      ) : null}
       {quickAddOpen ? (
         <QuickAdd api={api} initialStatus={quickAddStatus} onClose={() => setQuickAddOpen(false)} />
       ) : null}

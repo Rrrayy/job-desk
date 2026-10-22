@@ -20,6 +20,7 @@
 import type { AIReport, DB } from '../types';
 import { AI_REPORT_LIMIT } from '../types';
 import { sweepExpiredSuggestions } from '../ai/suggestions';
+import { capReports } from '../ai/reports';
 
 /** 回收站保留天数 */
 export const TRASH_RETENTION_DAYS = 30;
@@ -234,7 +235,7 @@ export function sweepTrash(db: DB, now: Date): SweepResult {
   }
   const suggestions = sweepExpiredSuggestions(db.aiSuggestions, now);
   const resumeSweep = sweepTrashResumes(db, now);
-  const reports = capAiReports(db.aiReports);
+  const reports = capReports(db.aiReports);
   const removedReports = db.aiReports.length - reports.length;
   if (
     doomed.size === 0 &&

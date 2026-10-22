@@ -5837,6 +5837,136 @@ button.chip:hover {
   color: var(--ink);
 }
 
+/* ============================================================ v0.9 · AI 场景模块选择 + 报告卡（T07）
+   模块选择器挂在 AI 面板里（复用 modal 的排版）；报告卡一张两用，
+   就近渲染在编辑器纸张下方 / 投递抽屉底部 —— 只读产物，不参与打印。 */
+
+.ai-modules {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.ai-modules__list {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px 14px;
+}
+
+.ai-modules__item {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 13px;
+  color: var(--ink-2);
+  cursor: pointer;
+  user-select: none;
+}
+
+.report-card {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding: 12px 14px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  background: var(--surface);
+  box-shadow: var(--shadow-1);
+}
+
+.report-card__head {
+  display: flex;
+  align-items: baseline;
+  gap: 10px;
+}
+
+.report-card__score {
+  font-size: 18px;
+  font-weight: 700;
+  color: var(--indigo);
+}
+
+.report-card__note {
+  font-size: 12px;
+  color: var(--amber);
+}
+
+.report-card__model {
+  margin-left: auto;
+  font-size: 12px;
+  color: var(--ink-4);
+}
+
+.report-card__dims {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.report-card__dim {
+  padding: 8px 10px;
+  border: 1px solid var(--line-soft);
+  border-radius: var(--radius-sm);
+  background: var(--bg);
+}
+
+.report-card__dim--strong_match .report-card__dim-head {
+  color: var(--green);
+}
+
+.report-card__dim--partial_match .report-card__dim-head {
+  color: var(--blue);
+}
+
+.report-card__dim--gap .report-card__dim-head {
+  color: var(--red);
+}
+
+.report-card__dim--not_found .report-card__dim-head {
+  color: var(--ink-3);
+}
+
+.report-card__dim-head {
+  display: block;
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--ink);
+}
+
+.report-card__evidence,
+.report-card__gap {
+  margin: 4px 0 0;
+  font-size: 12px;
+  color: var(--ink-2);
+}
+
+.report-card__gap {
+  color: var(--red);
+}
+
+.report-card__body summary {
+  cursor: pointer;
+  user-select: none;
+  font-size: 13px;
+  color: var(--ink-3);
+}
+
+.report-card__body pre {
+  margin: 8px 0 0;
+  padding: 10px;
+  border: 1px solid var(--line-soft);
+  border-radius: var(--radius-sm);
+  background: var(--bg);
+  font-family: var(--font);
+  font-size: 12px;
+  white-space: pre-wrap;
+  word-break: break-word;
+  color: var(--ink-2);
+}
+
 /* ==========================================================================
    打印（v0.9）
    ★ 全仓唯一一份静态 @page（Q4 裁决）：禁止按模板生成 @page，模板差异走 .a4__body 内边距

@@ -16,7 +16,7 @@ import { createRoot, type Root } from 'react-dom/client';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { AiScenarioPanel } from './AiScenarioPanel';
 import type { AppApi } from '../../lib/api';
-import type { AiRunInput, AiRunOutcome } from '../../ai/types';
+import type { AiResumeModule, AiRunInput, AiRunOutcome } from '../../ai/types';
 import { createSuggestions } from '../../ai/suggestions';
 import { emptyDB } from '../../lib/defaults';
 import type { DB } from '../../types';
@@ -72,7 +72,7 @@ function makeApi(options: { ready?: boolean; reason?: string; run?: (input: AiRu
       clearRequestLog: vi.fn(),
       runScenario: async (input: AiRunInput): Promise<AiRunOutcome> => {
         runs.push(input);
-        return options.run ? options.run(input) : { ok: true, created: 0 };
+        return options.run ? options.run(input) : { ok: true, kind: 'suggestions', created: 0 };
       },
     },
   } as unknown as AppApi;
@@ -212,7 +212,7 @@ describe('AiScenarioPanel', () => {
         // 真实 App 走 mutate（cloneDB 产生新数组）；mock 这里也必须换引用，
         // 否则组件的 useMemo 依赖比较不到变化（这正是 mutate 纪律存在的理由）
         db.aiSuggestions = [...db.aiSuggestions, ...list];
-        return { ok: true, created: list.length };
+        return { ok: true, kind: 'suggestions', created: list.length };
       },
     });
     await render(api, 'd17');
@@ -228,6 +228,174 @@ describe('AiScenarioPanel', () => {
 
     expect(accepts).toHaveLength(1);
     expect(accepts[0]).toHaveLength(1);
+    expect(closed).toBe(1);
+  });
+});
+
+/* ---------------------- v0.9 / T07：模块选择器 + 报告回调 ---------------------- */
+
+const MODS: AiResumeModule[] = [
+  {
+    id: 'sec-exp',
+    label: '实习经历',
+    text: 'org: 字节跳动',
+    primaryPath: 's:sec-exp:i:it-1:description',
+    primaryText: '负责改写引擎',
+    fieldPaths: { org: 's:sec-exp:i:it-1:org', description: 's:sec-exp:i:it-1:description' },
+  },
+  {
+    id: 'sec-proj',
+    label: '项目经历',
+    text: 'projectName: 单文件简历工作台',
+    primaryPath: 's:sec-proj:i:it-2:description',
+    primaryText: '独立完成分页渲染',
+    fieldPaths: { projectName: 's:sec-proj:i:it-2:projectName', description: 's:sec-proj:i:it-2:description' },
+  },
+  { id: 'sec-skill', label: '专业技能', text: 'skillsText: React', primaryPath: null, primaryText: '', fieldPaths: { skillsText: 's:sec-skill:i:it-3:skillsText' } },
+  { id: 'sec-award', label: '奖项', text: 'awardName: 蓝桥杯省一', primaryPath: 's:sec-award:i:it-4:awardName', primaryText: '蓝桥杯省一', fieldPaths: { awardName: 's:sec-award:i:it-4:awardName' } },
+];
+
+describe('AiScenarioPanel · modulePicker（T07）', () => {
+  let container: HTMLDivElement;
+  let root: Root;
+  let closed: number;
+
+  beforeEach(() => {
+    container = document.createElement('div');
+    document.body.appendChild(container);
+    closed = 0;
+  });
+
+  afterEach(() => {
+    act(() => root.unmount());
+    container.remove();
+  });
+
+  function byTestId(id: string): HTMLElement | null {
+    return container.querySelector(`[data-testid="${id}"]`);
+  }
+
+  async function renderD19(
+    api: AppApi,
+    scenario: 'd19-polish' | 'd19-diag' | 'd19-jd',
+    onReport?: (reportId: string) => void,
+  ): Promise<void> {
+    root = createRoot(container);
+    await act(async () => {
+      root.render(
+        <AiScenarioPanel
+          api={api}
+          scenario={scenario}
+          targetId="res-1"
+          modules={MODS}
+          onReport={onReport}
+          onClose={() => {
+            closed += 1;
+          }}
+        />,
+      );
+    });
+  }
+
+  async function typeText(value: string): Promise<void> {
+    const element = byTestId('ai-input') as HTMLTextAreaElement;
+    const setter = Object.getOwnPropertyDescriptor(window.HTMLTextAreaElement.prototype, 'value')?.set;
+    await act(async () => {
+      setter?.call(element, value);
+      element.dispatchEvent(new Event('input', { bubbles: true }));
+    });
+  }
+
+  async function click(element: HTMLElement | null): Promise<void> {
+    await act(async () => {
+      element?.click();
+      await new Promise((resolve) => setTimeout(resolve, 0));
+    });
+  }
+
+  function moduleBox(index: number): HTMLInputElement {
+    return container.querySelectorAll('.ai-modules__item input')[index] as HTMLInputElement;
+  }
+
+  it('润色单选：不勾不能预览；勾第二个会顶掉第一个（写回目标只有一个）', async () => {
+    const { api } = makeApi();
+    await renderD19(api, 'd19-polish');
+
+    expect((byTestId('ai-generate') as HTMLButtonElement).disabled).toBe(true);
+    expect(container.textContent).toContain('先勾一个板块');
+
+    await click(moduleBox(0));
+    expect(moduleBox(0).checked).toBe(true);
+    expect((byTestId('ai-generate') as HTMLButtonElement).disabled).toBe(false);
+
+    await click(moduleBox(1));
+    expect(moduleBox(0).checked).toBe(false);
+    expect(moduleBox(1).checked).toBe(true);
+  });
+
+  it('没有可润色文本的板块（primaryPath=null）：提示 + 不能预览', async () => {
+    const { api } = makeApi();
+    await renderD19(api, 'd19-polish');
+    await click(moduleBox(2)); // 技能板块没有 bullets / 主文本
+    expect(container.textContent).toContain('没有可润色的文本');
+    expect((byTestId('ai-generate') as HTMLButtonElement).disabled).toBe(true);
+  });
+
+  it('诊断多选：勾满 3 个后第 4 个勾不上（PRD §10.1 上限）', async () => {
+    const { api } = makeApi();
+    await renderD19(api, 'd19-diag');
+    await typeText('前端开发实习生');
+
+    await click(moduleBox(0));
+    await click(moduleBox(1));
+    await click(moduleBox(2));
+    expect(moduleBox(0).checked && moduleBox(1).checked && moduleBox(2).checked).toBe(true);
+    await click(moduleBox(3));
+    expect(moduleBox(3).checked).toBe(false);
+  });
+
+  it('确认发送：polish 的 fieldPath 是 {polished: 主路径}，checked 带选中段原文；多选合并各模块 fieldPaths', async () => {
+    const { api, runs } = makeApi();
+    await renderD19(api, 'd19-polish');
+    await click(moduleBox(0));
+    await click(byTestId('ai-generate'));
+    await click(byTestId('send-preview-confirm'));
+
+    expect(runs).toHaveLength(1);
+    expect(runs[0].context?.fieldPaths).toEqual({ polished: 's:sec-exp:i:it-1:description' });
+    expect(runs[0].checked.selectedText).toBe('负责改写引擎');
+    expect(runs[0].checked.sectionLabel).toBe('实习经历');
+
+    const { api: api2, runs: runs2 } = makeApi();
+    await renderD19(api2, 'd19-diag');
+    await typeText('前端开发实习生');
+    await click(moduleBox(0));
+    await click(moduleBox(1));
+    await click(byTestId('ai-generate'));
+    // d19-diag 的目标岗位名默认勾选（defaultChecked:true）
+    expect(
+      (container.querySelector('[data-testid="preview-field-targetJobTitle"] input') as HTMLInputElement).checked,
+    ).toBe(true);
+    await click(byTestId('send-preview-confirm'));
+
+    expect(runs2[0].context?.fieldPaths).toEqual({
+      org: 's:sec-exp:i:it-1:org',
+      description: 's:sec-proj:i:it-2:description',
+      projectName: 's:sec-proj:i:it-2:projectName',
+    });
+    expect(runs2[0].checked.selectedModules).toContain('【实习经历】');
+  });
+
+  it('报告场景：outcome kind=report → onReport(reportId) + 自动关面板', async () => {
+    const { api } = makeApi({ run: async () => ({ ok: true, kind: 'report', reportId: 'rep_9' }) });
+    const reported: string[] = [];
+    await renderD19(api, 'd19-diag', (reportId) => reported.push(reportId));
+    await typeText('前端开发实习生');
+    await click(moduleBox(0));
+    await click(byTestId('ai-generate'));
+    await click(byTestId('send-preview-confirm'));
+
+    expect(reported).toEqual(['rep_9']);
     expect(closed).toBe(1);
   });
 });

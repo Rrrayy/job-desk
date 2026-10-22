@@ -23,8 +23,14 @@ const QUESTION_CHARS = 300;
 const DRAFT_CHARS = 500;
 /** D17 允许模型回填的字段白名单 —— 与 NormalizedRecord 的键同名，别的键一律丢 */
 const STAGING_AI_FIELDS = ['companyName', 'jobTitle', 'status', 'city', 'salaryText'] as const;
+/** 润色结果截断（一段经历描述的合理上限） */
+const POLISHED_CHARS = 1200;
+/** JD 定向单条建议的内容上限 */
+const JD_CONTENT_CHARS = 1200;
+/** JD 定向最多接受几条（改写建议超过 10 条用户就不会逐条看了） */
+export const MAX_JD_SUGGESTIONS = 10;
 
-/** 一条场景建议的中间形态（field 在 D14 是 'text'、D15 是 'content'、D17 是字段名） */
+/** 一条场景建议的中间形态（field 在 D14 是 'text'、D15 是 'content'、D17 是字段名、d19-jd 是模型给的 fieldPath） */
 export interface AiItem {
   field: string;
   value: string;
@@ -33,12 +39,13 @@ export interface AiItem {
 
 export type ScenarioParse = { ok: true; items: AiItem[] } | { ok: false; error: string };
 
-function isRecord(value: unknown): value is Record<string, unknown> {
+/** 窄校验共用件（reports.ts 也用 —— 两个解析器共享同一套「不猜」的纪律） */
+export function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === 'object' && value !== null && !Array.isArray(value);
 }
 
 /** 从模型输出里抠出第一个 JSON 对象（容忍 ```json 围栏与前后废话） */
-function extractJson(text: string): unknown {
+export function extractJson(text: string): unknown {
   const start = text.indexOf('{');
   const end = text.lastIndexOf('}');
   if (start < 0 || end <= start) return null;
@@ -151,23 +158,76 @@ function parseStagingFields(raw: string): ScenarioParse {
   return { ok: true, items };
 }
 
-/** 按场景分派解析；三种输出形状完全不同，所以这里必须显式分支 */
+/** d19-polish：`{"polished":"…","reasons":["…"]}` → 一条建议，reasons 并成证据行 */
+function parsePolish(raw: string): ScenarioParse {
+  const payload = extractJson(raw);
+  const polished = isRecord(payload) && typeof payload.polished === 'string' ? payload.polished.trim() : '';
+  if (!polished) {
+    return { ok: false, error: '模型没有给出改写结果 —— 这次没有生成建议，可以重试' };
+  }
+  const reasons = isRecord(payload) && Array.isArray(payload.reasons)
+    ? payload.reasons.filter((reason): reason is string => typeof reason === 'string' && reason.trim().length > 0)
+    : [];
+  const evidence = reasons.join('；').slice(0, 300);
+  return {
+    ok: true,
+    items: [{ field: 'polished', value: polished.slice(0, POLISHED_CHARS), ...(evidence ? { evidence } : {}) }],
+  };
+}
+
+/**
+ * d19-jd：`{"suggestions":[{"fieldPath":"description","content":"…","evidence":"JD 原句"}]}`。
+ * fieldPath 是**模型给的键**（如 description），能不能落到真实条目由面板提供的
+ * fieldPaths 地图决定 —— 这里只做形状校验：非字符串、空值、重复键一律丢（不猜）。
+ */
+function parseJdSuggestions(raw: string): ScenarioParse {
+  const payload = extractJson(raw);
+  const list = isRecord(payload) && Array.isArray(payload.suggestions) ? payload.suggestions : null;
+  if (!list) {
+    return { ok: false, error: '模型返回的不是约定的 JSON（{suggestions:[{fieldPath,content,evidence}]}）—— 这次没有生成建议' };
+  }
+  const items: AiItem[] = [];
+  const seen = new Set<string>();
+  for (const entry of list) {
+    if (!isRecord(entry)) continue;
+    const fieldPath = typeof entry.fieldPath === 'string' ? entry.fieldPath.trim().slice(0, 100) : '';
+    const content = typeof entry.content === 'string' ? entry.content.trim() : '';
+    if (!fieldPath || !content || seen.has(fieldPath)) continue;
+    seen.add(fieldPath);
+    const evidence = typeof entry.evidence === 'string' ? entry.evidence.trim().slice(0, 300) : '';
+    items.push({ field: fieldPath, value: content.slice(0, JD_CONTENT_CHARS), ...(evidence ? { evidence } : {}) });
+    if (items.length >= MAX_JD_SUGGESTIONS) break;
+  }
+  if (items.length === 0) {
+    return { ok: false, error: '模型没有给出可用的改写建议 —— 这次没有生成任何内容' };
+  }
+  return { ok: true, items };
+}
+
+/** 按场景分派解析；产出建议的场景走这里，报告类（d19-diag/d20-analysis）走 reports.parseReport */
 export function parseScenarioOutput(key: AiScenarioKey, raw: string): ScenarioParse {
   if (key === 'd14') return parseQuestions(raw);
   if (key === 'd15') return parseDraft(raw);
-  return parseStagingFields(raw);
+  if (key === 'd17') return parseStagingFields(raw);
+  if (key === 'd19-polish') return parsePolish(raw);
+  if (key === 'd19-jd') return parseJdSuggestions(raw);
+  // 报告类场景不产出建议条目；调用方（App）对它们走 reports.parseReport。
+  // 这里挡一道，防止未来有人在建议链路上误接报告场景 —— 静默写错表比报错严重得多。
+  return { ok: false, error: '这个场景产出的是报告，不是逐条建议' };
 }
 
-/** 解析结果 → 待入库的建议（status/createdAt 由 suggestions.createSuggestions 补） */
+/** 解析结果 → 待入库的建议（status/createdAt 由 suggestions.createSuggestions 补）。报告类场景没有 targetType，返回空 */
 export function toNewSuggestions(
   key: AiScenarioKey,
   targetId: string | null,
   items: AiItem[],
 ): NewAISuggestion[] {
   const spec = AI_SCENARIOS[key];
+  const { targetType } = spec;
+  if (!targetType) return [];
   return items.map((item) => ({
     pluginId: spec.pluginId,
-    targetType: spec.targetType,
+    targetType,
     targetId,
     fieldPath: item.field,
     content: item.value,

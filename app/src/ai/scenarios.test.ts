@@ -230,3 +230,92 @@ describe('scenarios · 建议映射', () => {
     });
   });
 });
+
+/* ---------------------- v0.9 / T07 四场景 ---------------------- */
+
+describe('scenarios · T07 四场景出境表（字段表就是白名单）', () => {
+  it('四个场景的出境字段逐一对齐 PRD §10', () => {
+    expect(scenarioPreviewFields('d19-diag', {}).map((field) => field.name)).toEqual(['selectedModules', 'targetJobTitle']);
+    expect(scenarioPreviewFields('d19-polish', {}).map((field) => field.name)).toEqual(['selectedText', 'sectionLabel']);
+    expect(scenarioPreviewFields('d19-jd', {}).map((field) => field.name)).toEqual(['jdText', 'selectedModules']);
+    expect(scenarioPreviewFields('d20-analysis', {}).map((field) => field.name)).toEqual([
+      'jdText',
+      'companyName',
+      'jobTitle',
+      'status',
+    ]);
+  });
+
+  it('★ 联系类字段绝不出境：四场景字段表里没有姓名/电话/邮箱/照片/城市', () => {
+    for (const key of ['d19-diag', 'd19-polish', 'd19-jd', 'd20-analysis'] as const) {
+      const names = scenarioPreviewFields(key, {}).map((field) => field.name);
+      for (const banned of ['name', 'phone', 'email', 'photo', 'city']) {
+        expect(names, `${key} 不应包含 ${banned}`).not.toContain(banned);
+      }
+    }
+  });
+
+  it('d19-polish 只发选中段 + 板块名；d20 只发 JD/公司/岗位/状态', () => {
+    const polish = buildScenarioMessages('d19-polish', { selectedText: '负责改写引擎', sectionLabel: '实习经历' });
+    expect(polish[0].role).toBe('system');
+    expect(polish[1].content).toContain('选中段落原文：负责改写引擎');
+    expect(polish[1].content).toContain('所属板块：实习经历');
+
+    const d20 = buildScenarioMessages('d20-analysis', {
+      jdText: 'JD 原文',
+      companyName: '字节跳动',
+      jobTitle: '前端开发实习生',
+      status: '已投递',
+    });
+    expect(d20[1].content).toContain('JD 留档原文：JD 原文');
+    expect(d20[1].content).toContain('公司名：字节跳动');
+    expect(d20[1].content).toContain('岗位名：前端开发实习生');
+    expect(d20[1].content).toContain('当前状态：已投递');
+  });
+
+  it('d19-diag 的报告场景被挡在建议解析之外（防误接：静默写错表比报错严重）', () => {
+    const result = parseScenarioOutput('d19-diag', JSON.stringify({ content: '报告' }));
+    expect(result.ok).toBe(false);
+    if (result.ok) return;
+    expect(result.error).toContain('报告');
+    expect(toNewSuggestions('d19-diag', 'res-1', [])).toEqual([]);
+  });
+});
+
+describe('scenarios · d19-polish 解析', () => {
+  it('polished + reasons 并成证据行（join「；」，截 300）', () => {
+    const result = parseScenarioOutput(
+      'd19-polish',
+      JSON.stringify({ polished: '主导改写引擎重构', reasons: ['动词开头', '带数字'] }),
+    );
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+    expect(result.items[0]).toEqual({ field: 'polished', value: '主导改写引擎重构', evidence: '动词开头；带数字' });
+  });
+
+  it('没有 polished → ok:false（诚实报错，零写入）', () => {
+    expect(parseScenarioOutput('d19-polish', JSON.stringify({ reasons: ['只有理由'] })).ok).toBe(false);
+  });
+});
+
+describe('scenarios · d19-jd 解析', () => {
+  it('fieldPath 键去重 + evidence 保留；超过 10 条只收前 10 条', () => {
+    const suggestions = Array.from({ length: 14 }, (_, i) => ({
+      fieldPath: i % 3 === 0 ? 'description' : `key-${i}`,
+      content: `改写 ${i}`,
+      evidence: 'JD 原句',
+    }));
+    const result = parseScenarioOutput('d19-jd', JSON.stringify({ suggestions }));
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+    expect(result.items).toHaveLength(10);
+    expect(result.items[0].field).toBe('description');
+    // 第二条 description 是重复键，被丢
+    expect(result.items[1].field).toBe('key-1');
+    expect(result.items[0].evidence).toBe('JD 原句');
+  });
+
+  it('非约定形状 → ok:false', () => {
+    expect(parseScenarioOutput('d19-jd', '随便一段话').ok).toBe(false);
+  });
+});

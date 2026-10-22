@@ -45,6 +45,7 @@ import { copyText, cx, orDash } from '../lib/util';
 import { Field, InfoRow, SelectField } from './Field';
 import { BindVersionSelect } from './BindVersionSelect';
 import { JdPanel } from './JdPanel';
+import { ReportCard } from './resume/ReportCard';
 import { AiScenarioPanel } from './ai/AiScenarioPanel';
 
 export function DetailDrawer({ api }: { api: AppApi }) {
@@ -71,6 +72,14 @@ function DetailBody({ api, app }: { api: AppApi; app: Application }) {
   const [script, setScript] = useState<string | null>(null);
   /** v0.8 / D15：AI 话术草稿面板（浮层，点击入口才挂载） */
   const [draftOpen, setDraftOpen] = useState(false);
+  /** v0.9 / T07：这份投递最近一次的 AI 分析报告（capReports 每 target 只留 3 份） */
+  const analysisReport = useMemo(
+    () =>
+      db.aiReports
+        .filter((report) => report.targetType === 'application_analysis' && report.targetId === app.id)
+        .sort((a, b) => (a.createdAt < b.createdAt ? 1 : -1))[0] ?? null,
+    [db.aiReports, app.id],
+  );
   const [confirmDelete, setConfirmDelete] = useState(false);
   const [noteType, setNoteType] = useState<NoteType>('chat');
   const [noteText, setNoteText] = useState('');
@@ -256,6 +265,21 @@ function DetailBody({ api, app }: { api: AppApi; app: Application }) {
             >
               🤖 生成沟通话术
             </button>
+            {/*
+              v0.9 / T07：投递分析入口。面板由 App 层挂（analyzeApplication），
+              报告卡就近渲染在下方 —— 只读产物，不改投递任何字段。
+            */}
+            <button
+              type="button"
+              className="btn btn--small"
+              data-testid="ai-d20-entry"
+              disabled={!api.ai.ready}
+              title={api.ai.ready ? '对照 JD 分析这份投递的匹配度' : api.ai.readyReason ?? 'AI 未配置'}
+              onClick={() => api.ai.analyzeApplication(app.id)}
+            >
+              🤖 分析这份投递
+            </button>
+            {!app.jdText ? <p className="field__hint">还没有 JD 留档 —— 先在上面贴一份，分析才有依据。</p> : null}
             <button
               type="button"
               className="btn btn--small"
@@ -737,6 +761,12 @@ function DetailBody({ api, app }: { api: AppApi; app: Application }) {
             创建于 {fmtDate(app.createdAt)} · ID {app.id}
           </p>
         </section>
+
+        {/*
+          v0.9 / T07：最近的投递分析报告（每 target 只留 3 份，这里显示最新一份）。
+          只读产物：渲染在抽屉底部，不改投递任何字段。
+        */}
+        {analysisReport ? <ReportCard report={analysisReport} /> : null}
       </div>
 
       {draftOpen ? (

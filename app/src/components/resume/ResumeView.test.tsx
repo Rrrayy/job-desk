@@ -54,7 +54,11 @@ function fakeApi(options: FakeOptions = {}): { api: AppApi; calls: string[] } {
       interviews: [],
       applications: [],
       resumeVersions: options.versions ?? [],
+      aiReports: [],
     },
+    /** T07：编辑器把 flush 注册给 App（AI 写回前冲掉 400ms 防抖） */
+    registerResumeFlush: () => {},
+    ai: { ready: false, readyReason: '未配置' },
     updateResumeContent: (...args: unknown[]) => {
       calls.push(`commit:${String(args[0])}`);
     },

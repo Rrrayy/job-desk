@@ -353,12 +353,14 @@ describe('v0.9 · 简历回收站', () => {
       content: '# 诊断',
       createdAt: new Date(Date.UTC(2026, 9, 1, 0, i)).toISOString(),
     }));
+    // v0.9 / T07：报告上限升级为「每 target 最近 3 份 + 全库 200」双闸，
+    // 这 205 份全是同一个 target —— 每靶闸先切到 3 份，剩下的不再触发总闸。
     const result = sweepTrash(db, NOW);
     expect(result.removedResumes).toBe(1);
     expect(result.removedVersions).toBe(2);
-    expect(result.removedReports).toBe(5);
-    expect(result.db.aiReports).toHaveLength(200);
-    expect(result.db.aiReports[0].id).toBe('rep-5');
+    expect(result.removedReports).toBe(202);
+    expect(result.db.aiReports).toHaveLength(3);
+    expect(result.db.aiReports.map((row) => row.id)).toEqual(['rep-202', 'rep-203', 'rep-204']);
   });
 });
 
