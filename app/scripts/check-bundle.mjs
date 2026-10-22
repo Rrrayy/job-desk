@@ -124,9 +124,9 @@ const FAIL_BYTES = 730 * 1024;
 /**
  * 当前版本的体积基线（每次发版更新，用来在 CI 里显示「这次改动胖了多少」）。
  * 它的作用不是判失败，而是让体积增长**可见** —— 静悄悄长胖是最难回头的技术债。
- * v0.8.0：545 → 580（T01–T04 落点 580.6 KB；T05 的增量由本次改动自己承担）。
+ * v0.9.0：703 KB（简历模块 + 5 AI 场景发布落点 719,686 B = 702.8 KB，取整 703）。
  */
-const BASELINE_BYTES = 593 * 1024;
+const BASELINE_BYTES = 703 * 1024;
 
 const here = dirname(fileURLToPath(import.meta.url));
 const appRoot = resolve(here, '..');
