@@ -10,6 +10,13 @@
  *   1. 首屏可交互时间（数据已就绪 → 表格/看板出现）
  *   2. 列表视图切换耗时
  *   3. 200 条时筛选/排序函数耗时，1000 条时窗口化后的行数
+ *   4. 看板窗口化自证：切到看板后**实际渲染的卡片数**（`renderedCards`）
+ *
+ * ## 为什么要有第 4 项（v0.9.1 / B-11）
+ *
+ * 「看板降到 X ms」这句话没法自证 —— 把卡片全删了也很快。真正证明窗口生效的是
+ * 「1000 条数据下，看板 DOM 里的 `.app-card` 不超过 列数 × 窗口(40)」。
+ * 这条现在是**硬门禁**：超了就退出码 1，免得性能报告变成好看的空话。
  *
  * 用法：node scripts/bench-perf.mjs
  * 前置：npm run build（需要 dist/index.html）
@@ -26,6 +33,15 @@ const DIST = join(APP_DIR, 'dist', 'index.html');
 const OUT_DIR = join(APP_DIR, 'bench-out');
 
 const SIZES = [50, 200, 500, 1000];
+
+/**
+ * 看板 DOM 卡片上限 = 列数 × 窗口(40)。
+ * 7 个主列 + 1 个「已结束」列 = 8 列 → 320。与 `src/lib/boardWindow.ts` 的
+ * `BOARD_WINDOW`/`maxRenderedCards` 同口径（脚本不能 import TS，故此处硬写并在这条注释里对齐）。
+ */
+const BOARD_COLUMNS = 8;
+const BOARD_WINDOW = 40;
+const MAX_BOARD_CARDS = BOARD_COLUMNS * BOARD_WINDOW;
 
 if (!existsSync(DIST)) {
   console.error('✗ 找不到 dist/index.html，先运行 npm run build');
@@ -197,7 +213,11 @@ for (const size of SIZES) {
         await new Promise((r) => requestAnimationFrame(() => requestAnimationFrame(r)));
         return { sync, frame: Math.round((performance.now() - t0) * 10) / 10 };
       };
-      return { today: await clickView('今日'), board: await clickView('看板') };
+      const board = await clickView('看板');
+      // 切到看板之后再数卡片（顺序错了数到的就是列表的 0 张）
+      const cards = document.querySelectorAll('.app-card').length;
+      const more = document.querySelectorAll('.board__more').length;
+      return { today: await clickView('今日'), board, cards, more };
     })()`);
 
     results.push({
@@ -207,6 +227,10 @@ for (const size of SIZES) {
       todayMs: viewSwitch.today?.frame ?? null,
       boardMs: viewSwitch.board?.frame ?? null,
       boardRenderMs: viewSwitch.board?.sync ?? null,
+      /** v0.9.1 / B-11：看板实际渲染的卡片数（窗口自证） */
+      renderedCards: viewSwitch.cards ?? null,
+      /** 有多少列出现了「还有 N 家」（窗口真的截断过） */
+      windowedColumns: viewSwitch.more ?? null,
     });
     console.log('ok');
   } catch (error) {
@@ -228,7 +252,9 @@ const report = {
 writeFileSync(join(OUT_DIR, 'perf.json'), `${JSON.stringify(report, null, 2)}\n`);
 
 console.log('');
-console.log('条数   首屏(ms)   可交互(ms)   渲染行数   堆内存(MB)   排序一次(ms)   今日(ms)   看板(ms)   看板render(ms)');
+console.log(
+  '条数   首屏(ms)   可交互(ms)   渲染行数   堆内存(MB)   排序一次(ms)   今日(ms)   看板(ms)   看板render(ms)   看板卡片   截断列',
+);
 for (const row of results) {
   if (row.error) {
     console.log(`${String(row.size).padStart(4)}   ${row.error}`);
@@ -241,8 +267,25 @@ for (const row of results) {
       row.interactionMs ?? '—',
     ).padStart(11)}   ${String(row.todayMs ?? '—').padStart(8)}   ${String(row.boardMs ?? '—').padStart(
       8,
-    )}   ${String(row.boardRenderMs ?? '—').padStart(15)}`,
+    )}   ${String(row.boardRenderMs ?? '—').padStart(15)}   ${String(row.renderedCards ?? '—').padStart(
+      8,
+    )}   ${String(row.windowedColumns ?? '—').padStart(6)}`,
   );
+}
+
+/* ------------------------------------------------- 硬门禁：窗口真的生效了吗 */
+//
+// 只看耗时是没法证伪的（少了卡片当然快）。所以这里断言一件可以被验证的事实：
+// **看板 DOM 里的卡片数 ≤ 列数 × 40**。1000 条数据时如果窗口没生效，这里会是 1000。
+const overflow = results.filter((row) => !row.error && (row.renderedCards ?? 0) > MAX_BOARD_CARDS);
+if (overflow.length > 0) {
+  console.error('');
+  console.error(`✗ 看板窗口没生效：${overflow.length} 组数据的渲染卡片数超过 ${MAX_BOARD_CARDS}`);
+  for (const row of overflow) console.error(`    ${row.size} 条 → 渲染 ${row.renderedCards} 张卡`);
+  process.exitCode = 1;
+} else {
+  const checked = results.filter((row) => !row.error).length;
+  console.log(`✓ 看板窗口自证：${checked} 组数据的渲染卡片数均 ≤ ${MAX_BOARD_CARDS}（列数 ${BOARD_COLUMNS} × 窗口 ${BOARD_WINDOW}）`);
 }
 console.log('');
 console.log(`明细已写入 ${join(OUT_DIR, 'perf.json')}`);

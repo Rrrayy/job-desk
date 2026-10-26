@@ -125,8 +125,48 @@ export function trashReminder(db: DB, now: Date): TrashReminder {
   return { expiring, expired, soonestDaysLeft };
 }
 
-export interface SweepResult {
-  db: DB;
+/**
+ * 简历侧的到期提醒（v0.9.1 / R-RES-11，架构 B-12）。
+ *
+ * ## 为什么新开一个并列函数，而不是给 `TrashReminder` 加字段
+ *
+ * v0.9 的 `trashReminder` 只循环 `db.applications`。而 `sweepTrash` 早就算出了
+ * `removedResumes` / `removedVersions`——算了却**从来没往界面上送过**：
+ * 简历满 30 天被静默永久删除，用户毫无察觉（违反铁律 6）。
+ *
+ * 修法有两种：
+ * 1. 给 `TrashReminder` 加 `resumeExpiring` 等字段 —— 所有既有调用点与
+ *    `expect(...).toEqual({expiring, expired, soonestDaysLeft})` 这类精确断言全部要改，
+ *    而且「投递的提醒」与「简历的提醒」混在一个对象里，两个数据源迟早写串；
+ * 2. **并列一个 `resumeTrashReminder`**：同样的口径、独立的数据源、谁也不影响谁。
+ *
+ * 选 2。投递提醒的既有断言保持逐字不变（那是 v0.5 起就在守的行为）。
+ *
+ * @param db 当前库（含已删除）
+ * @param now 现在
+ * @returns 与投递侧同构的提醒读数
+ */
+export function resumeTrashReminder(db: DB, now: Date): TrashReminder {
+  let expiring = 0;
+  let expired = 0;
+  let soonestDaysLeft: number | null = null;
+  for (const resume of db.resumes) {
+    if (!isDeleted(resume)) continue;
+    const days = trashDaysLeft(resume, now);
+    if (days === null) continue;
+    if (days <= 0) {
+      expired += 1;
+      continue;
+    }
+    if (days <= TRASH_REMIND_BEFORE_DAYS) {
+      expiring += 1;
+      soonestDaysLeft = soonestDaysLeft === null ? days : Math.min(soonestDaysLeft, days);
+    }
+  }
+  return { expiring, expired, soonestDaysLeft };
+}
+
+export interface SweepResult {  db: DB;
   /** 被真删掉的投递条数 */
   removedApps: number;
   /** 连带删掉的面试 / 备注 / 面经解绑条数 */

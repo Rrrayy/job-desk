@@ -26,6 +26,7 @@ import {
   suggestionFor,
 } from '../lib/rules';
 import { parseFlexible, relativeCountdown, toDateISO } from '../lib/date';
+import { boardWindow, moreCardsLabel } from '../lib/boardWindow';
 import { companyLabel, cx } from '../lib/util';
 import { CLS } from '../lib/classTokens';
 
@@ -47,6 +48,12 @@ export function BoardView({ api }: { api: AppApi }) {
   const [dropPanel, setDropPanel] = useState<DropPanelState | null>(null);
   /** v0.8：面试段三列收纳（默认展开；本地 state，不落库 —— 刷新即恢复展开） */
   const [stageFolded, setStageFolded] = useState(false);
+  /**
+   * v0.9.1 / B-11：哪些列点过「还有 N 家」而展开（key = status 或 'ended'）。
+   * 不落库：刷新回到默认窗口是一件好事（看板要的是「一眼看清分布」）。
+   */
+  const [expandedCols, setExpandedCols] = useState<Record<string, boolean>>({});
+  const expandCol = (key: string): void => setExpandedCols((prev) => ({ ...prev, [key]: true }));
 
   /** 时间线索引：看板一次渲染要给每张卡算沉默和条数，不能每张卡都扫一遍全库 */
   const noteIndex = useMemo(() => buildNoteIndex(db.notes), [db.notes]);
@@ -63,6 +70,11 @@ export function BoardView({ api }: { api: AppApi }) {
 
   const totalActive = BOARD_COLUMNS.reduce((sum, status) => sum + (byStatus.get(status)?.length || 0), 0);
   const endedCount = ENDED_STATUSES.reduce((sum, status) => sum + (byStatus.get(status)?.length || 0), 0);
+  /** v0.9.1 / B-11：已结束列也用同一套窗口（key = 'ended'），计数仍是真实总数 */
+  const endedWin = boardWindow(
+    ENDED_STATUSES.flatMap((status) => byStatus.get(status) || []),
+    expandedCols.ended === true,
+  );
 
   const handleDrop = (event: React.DragEvent<HTMLDivElement>, to: Status): void => {
     event.preventDefault();
@@ -262,6 +274,8 @@ export function BoardView({ api }: { api: AppApi }) {
           <div className="board">
             {BOARD_COLUMNS.map((status) => {
               const list = byStatus.get(status) || [];
+              // v0.9.1 / B-11：每列最多渲染 40 张；**列头计数永远用 win.total**
+              const win = boardWindow(list, expandedCols[status] === true);
               const folded = stageFolded && STAGE_COLUMNS.includes(status);
               return (
                 <div
@@ -288,14 +302,14 @@ export function BoardView({ api }: { api: AppApi }) {
                       style={{ borderTopColor: STATUS_TONE[status] }}
                     >
                       <span className={CLS.aB}>{STATUS_LABEL[status]} ▸</span>
-                      <span className={CLS.aP}>{list.length}</span>
+                      <span className={CLS.aP}>{win.total}</span>
                     </button>
                   ) : (
                     <>
                       <div className="board__col-head" style={{ borderTopColor: STATUS_TONE[status] }}>
                         <span className={CLS.aB}>{STATUS_LABEL[status]}</span>
                         <span className="board__col-head-right">
-                          <span className={CLS.aP}>{list.length}</span>
+                          <span className={CLS.aP}>{win.total}</span>
                           <button
                             type="button"
                             className="col-add"
@@ -307,8 +321,18 @@ export function BoardView({ api }: { api: AppApi }) {
                         </span>
                       </div>
                       <div className="board__col-body">
-                        {list.map(renderCard)}
-                        {list.length === 0 ? <div className="board__empty">拖到这里</div> : null}
+                        {win.visible.map(renderCard)}
+                        {win.hidden > 0 ? (
+                          <button
+                            type="button"
+                            className="board__more"
+                            data-testid={`board-more-${status}`}
+                            onClick={() => expandCol(status)}
+                          >
+                            {moreCardsLabel(win.hidden)}
+                          </button>
+                        ) : null}
+                        {win.total === 0 ? <div className="board__empty">拖到这里</div> : null}
                       </div>
                     </>
                   )}
@@ -324,12 +348,22 @@ export function BoardView({ api }: { api: AppApi }) {
                 style={{ borderTopColor: '#C9CDD8' }}
               >
                 <span className={CLS.aB}>已结束 {endedOpen ? '▾' : '▸'}</span>
-                <span className={CLS.aP}>{endedCount}</span>
+                <span className={CLS.aP}>{endedWin.total}</span>
               </button>
               {endedOpen ? (
                 <div className="board__col-body">
-                  {[...ENDED_STATUSES].flatMap((status) => byStatus.get(status) || []).map(renderCard)}
-                  {endedCount === 0 ? <div className="board__empty">还没有结束的</div> : null}
+                  {endedWin.visible.map(renderCard)}
+                  {endedWin.hidden > 0 ? (
+                    <button
+                      type="button"
+                      className="board__more"
+                      data-testid="board-more-ended"
+                      onClick={() => expandCol('ended')}
+                    >
+                      {moreCardsLabel(endedWin.hidden)}
+                    </button>
+                  ) : null}
+                  {endedWin.total === 0 ? <div className="board__empty">还没有结束的</div> : null}
                 </div>
               ) : null}
             </div>

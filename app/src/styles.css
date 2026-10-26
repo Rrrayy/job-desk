@@ -6176,3 +6176,26 @@ button.chip:hover {
   background: var(--amber-soft);
   color: #8a5a14;
 }
+
+/* ============================================================ v0.9.1 · R-PERF-1 看板窗口 */
+
+/*
+ * 「还有 N 家」：它是**按钮**不是装饰，所以给足点击区（44px 高）和边框。
+ * 视觉上刻意压成次要按钮 —— 绝大多数情况下用户不需要点它。
+ */
+.board__more {
+  margin: 4px 0 8px;
+  padding: 8px 10px;
+  min-height: 36px;
+  border: 1px dashed var(--line);
+  border-radius: var(--radius);
+  background: transparent;
+  color: var(--ink-3);
+  font-size: 12px;
+  cursor: pointer;
+}
+
+.board__more:hover {
+  border-color: var(--ink-3);
+  color: var(--ink-2);
+}

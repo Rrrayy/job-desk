@@ -64,7 +64,17 @@ import {
   statusChangeText,
   type StatusUndo,
 } from './lib/rules';
-import { extendResumeRetention, isDeleted, sweepTrash, trashReminder, trashedApps, trashedResumes, visibleDB } from './lib/trash';
+import {
+  extendResumeRetention,
+  isDeleted,
+  resumeTrashReminder,
+  sweepTrash,
+  trashReminder,
+  trashedApps,
+  trashedResumes,
+  visibleDB,
+} from './lib/trash';
+import { startupNotice } from './lib/startup';
 import {
   activeVersionsOf,
   applyResumeSlice,
@@ -495,20 +505,19 @@ export default function App() {
     requestWrite(JSON.stringify(JSON.parse(exportJSON(db)), null, 2), new Date().toISOString());
   }, [db]);
 
-  // 启动提示（v0.5）：先说过期清理，再说即将到期 —— 两件事别抢一个 toast
+  /**
+   * 启动提示（v0.5 → v0.9.1 补齐四条分支）。
+   *
+   * 四件事互斥、只弹一条（连弹四个 toast 等于一个都没被读到），优先级与文案
+   * 全部收在 `startupNotice` 里 —— 那一层是纯函数、有单测；这里只负责「读数据 + 弹」。
+   *
+   * v0.9.1 补的两条：**简历/版本满 30 天被真删**（v0.9 起 `swept` 算了数却没人用，
+   * 属静默删数据）与**简历即将到期**（此前只有投递会提醒）。
+   */
   useEffect(() => {
-    if (swept.removedApps > 0) {
-      showToast(
-        `回收站里有 ${swept.removedApps} 条投递已满 30 天，已自动永久删除（含 ${swept.removedInterviews} 场面试、${swept.removedNotes} 条记录）`,
-      );
-      return;
-    }
-    const reminder = trashReminder(swept.db, new Date());
-    if (reminder.expiring > 0) {
-      showToast(
-        `回收站有 ${reminder.expiring} 条投递归将在 ${reminder.soonestDaysLeft ?? 1} 天内永久删除，可在设置里恢复`,
-      );
-    }
+    const now = new Date();
+    const notice = startupNotice(swept, trashReminder(swept.db, now), resumeTrashReminder(swept.db, now));
+    if (notice) showToast(notice);
     // 只在启动时提示一次：[swept] 恒定，不会因为之后的数据变化重复弹
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);

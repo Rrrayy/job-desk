@@ -214,3 +214,83 @@ describe('BoardView v0.8（jsdom）', () => {
     expect(container.querySelector('.badge--round')).toBeNull();
   });
 });
+
+/* ---------------------- v0.9.1 / R-PERF-1：看板窗口（B-11） ---------------------- */
+
+describe('BoardView 窗口化（v0.9.1）', () => {
+  let container: HTMLDivElement;
+  let root: Root;
+
+  beforeEach(() => {
+    container = document.createElement('div');
+    document.body.appendChild(container);
+  });
+
+  afterEach(() => {
+    act(() => root.unmount());
+    container.remove();
+  });
+
+  async function renderBoard(db: DB): Promise<void> {
+    root = createRoot(container);
+    await act(async () => {
+      root.render(<BoardView api={makeApi(db)} />);
+    });
+  }
+
+  /**
+   * ★ 45 条数据是必须的：40 条时 `slice(0, 40)` 等于全量，窗口永不生效 —— 那样的
+   * 断言是永真的。45 条才能同时验证「渲染 40」「计数 45」「展开到 45」三件事。
+   */
+  const manyApps = (n: number): Application[] =>
+    Array.from({ length: n }, (_, i) =>
+      makeApp({
+        id: `app-${i}`,
+        status: 'chatting',
+        jobTitle: `岗位 ${String(i).padStart(2, '0')}`,
+      }),
+    );
+
+  const colHeadCount = (name: string): string => {
+    const col = Array.from(container.querySelectorAll('.board__col')).find((el) =>
+      el.querySelector('.board__col-name')?.textContent?.startsWith(name),
+    );
+    return col?.querySelector('.board__col-head-right span')?.textContent ?? '';
+  };
+
+  it('★★ 45 条：只渲染 40 张卡 ∧ 列头计数仍是 45 ∧ 出现「还有 5 家」', async () => {
+    await renderBoard(makeDb(manyApps(45)));
+
+    expect(container.querySelectorAll('.app-card')).toHaveLength(40);
+    expect(colHeadCount('已沟通')).toBe('45');
+    const more = container.querySelector<HTMLButtonElement>('[data-testid="board-more-chatting"]');
+    expect(more?.textContent).toBe('还有 5 家 ▾');
+  });
+
+  it('★★ 点「还有 5 家」→ 渲染 45 张 ∧ 计数仍是 45 ∧ 按钮消失（不会「还有 0 家」）', async () => {
+    await renderBoard(makeDb(manyApps(45)));
+
+    await act(async () => {
+      container.querySelector<HTMLButtonElement>('[data-testid="board-more-chatting"]')?.click();
+    });
+
+    expect(container.querySelectorAll('.app-card')).toHaveLength(45);
+    expect(colHeadCount('已沟通')).toBe('45');
+    expect(container.querySelector('[data-testid="board-more-chatting"]')).toBeNull();
+  });
+
+  it('窗口只影响这一列：另一列照常全量渲染（3 条 < 40）', async () => {
+    const apps = [...manyApps(45), ...Array.from({ length: 3 }, (_, i) => makeApp({ id: `w-${i}`, status: 'wishlist' }))];
+    await renderBoard(makeDb(apps));
+
+    expect(container.querySelectorAll('.app-card')).toHaveLength(43);
+    expect(colHeadCount('想投')).toBe('3');
+    expect(container.querySelector('[data-testid="board-more-wishlist"]')).toBeNull();
+  });
+
+  it('40 条正好装满窗口 → 不出现「还有 N 家」（不多一个按钮）', async () => {
+    await renderBoard(makeDb(manyApps(40)));
+    expect(container.querySelectorAll('.app-card')).toHaveLength(40);
+    expect(container.querySelector('[data-testid="board-more-chatting"]')).toBeNull();
+  });
+});

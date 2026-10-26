@@ -18,6 +18,7 @@ import {
   isTrashExpired,
   markDeleted,
   purgeFromTrash,
+  resumeTrashReminder,
   restoreFromTrash,
   sweepTrash,
   trashDaysLeft,
@@ -415,5 +416,50 @@ describe('v0.9.1 · extendResumeRetention（简历「再留 7 天」）', () => 
     const versionsBefore = db.resumeVersions.map((item) => ({ id: item.id, deletedAt: item.deletedAt }));
     extendResumeRetention(db, 'r2');
     expect(db.resumeVersions.map((item) => ({ id: item.id, deletedAt: item.deletedAt }))).toEqual(versionsBefore);
+  });
+});
+
+describe('v0.9.1 · resumeTrashReminder（简历侧到期提醒）', () => {
+  it('★ 剩 3 天内的简历计入 expiring，剩 7 天的不算（口径与投递侧一致）', () => {
+    const db = dbWithResumes();
+    // r2 已过 2 天（剩 28）、r3 已过 31 天（过期）→ 换两个更贴近边界的
+    db.resumes = [
+      resume('r1'),
+      resume('r2', { deletedAt: daysAgoIso(28) }), // 剩 2 天
+      resume('r3', { deletedAt: daysAgoIso(23) }), // 剩 7 天
+    ];
+    const reminder = resumeTrashReminder(db, NOW);
+    expect(reminder.expiring).toBe(1);
+    expect(reminder.soonestDaysLeft).toBe(2);
+  });
+
+  it('没有已删简历 → 三项都是空值（与投递侧同构，便于上层统一处理）', () => {
+    const db = dbWithResumes();
+    db.resumes = [resume('r1')];
+    expect(resumeTrashReminder(db, NOW)).toEqual({ expiring: 0, expired: 0, soonestDaysLeft: null });
+  });
+
+  it('★ 只看简历，不看投递（数据源独立，避免两个提醒互相污染）', () => {
+    let db = dbWithResumes();
+    db.resumes = [resume('r1')];
+    db = deletedDaysAgo(db, 28, 0); // 让投递侧「剩 2 天」
+    expect(trashReminder(db, NOW).expiring).toBe(1);
+    expect(resumeTrashReminder(db, NOW).expiring).toBe(0);
+  });
+
+  it('已过期但还没被清理的简历计入 expired，不占 expiring', () => {
+    const db = dbWithResumes();
+    db.resumes = [resume('r1', { deletedAt: daysAgoIso(TRASH_RETENTION_DAYS + 5) })];
+    const reminder = resumeTrashReminder(db, NOW);
+    expect(reminder.expired).toBe(1);
+    expect(reminder.expiring).toBe(0);
+    expect(reminder.soonestDaysLeft).toBeNull();
+  });
+
+  it('reminder 只读：不改任何 deletedAt', () => {
+    const db = dbWithResumes();
+    const before = db.resumes.map((item) => item.deletedAt ?? null);
+    resumeTrashReminder(db, NOW);
+    expect(db.resumes.map((item) => item.deletedAt ?? null)).toEqual(before);
   });
 });
