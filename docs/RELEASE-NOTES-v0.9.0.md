@@ -76,6 +76,23 @@ v0.9 立项时预算落点 ≈678 KB（WARN 690 / FAIL 715）。开发过程中�
   类别无法落库」在本版由整段录入路径修复；逐题手录路径不变。
 - **照片上传**仅在 creative 模板启用（≤480px、≤80 KB 自动压缩）。
 
+> ### v0.9.1 更正（上一条「quick note 的 `category`」写错了）
+>
+> 原文保留在上一段不改，但**结论是错的**，在这里更正 —— 发布说明是用户能看到的
+> 唯一一份「这个版本做了什么」，写错了比代码里写错更难发现：它会让用户在 v0.9.1
+> 里去找 v0.9 白干的活。
+>
+> 1. **修掉「快记类别无法落库」的是 R-QB-1 / T-QB，不是 `d14-bulk`。**
+>    R-QB-1 是 v0.9 期间插队做的一件事（PRD-v09 §20.2「快记弹层每题可选掌握度与分类
+>    并按其落库」），与整段录入（`d14-bulk`）是两条独立路径。
+> 2. **「逐题手录路径不变」是错误推论。** 实读代码：`QuickNote.tsx:29` 有
+>    `category: QuestionCategory | null`、`:71` 有 `patchLine({ category })`、
+>    `:86` 把 `line.category` 写进 `QuestionDraft`，`App.tsx` 的 `addQuickNote` →
+>    `lib/interview.ts` 的 `buildQuestionRows` → `category: draft.category ?? null`。
+>    整条链路通畅，**逐题手录路径同样能落库**。
+> 3. v0.9.1 为此补了一条回归断言（`QuickNote.test.tsx` 的「★ v0.9.1 勘误回归」），
+>    万一将来有人真的把这条路径改回去，测试会红。
+
 ## 5. 升级与回滚
 
 - 覆盖 `index.html` 即完成升级，localStorage 数据自动迁移（4 → 5）。

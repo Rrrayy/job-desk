@@ -13,6 +13,7 @@ import { useState } from 'react';
 import type { AppApi } from '../../lib/api';
 import type { AISettings } from '../../types';
 import { isLocalBaseUrl } from '../../ai/settings';
+import { CLS } from '../../lib/classTokens';
 
 /** 一键预设：只填地址，模型名留给用户 */
 const PRESETS: Array<{ label: string; baseURL: string }> = [
@@ -50,11 +51,11 @@ export function AiSettingsPanel({ api }: { api: AppApi }): JSX.Element {
           : `${api.ai.readyReason ?? 'AI 未配置'}。未配置时入口是灰的，不会弹错误框。`}
       </p>
 
-      <div className="drawer__grid">
-        <label className="field">
-          <span className="field__label">服务地址（含 /v1）</span>
+      <div className={CLS.X}>
+        <label className={CLS.g}>
+          <span className={CLS.a}>服务地址（含 /v1）</span>
           <input
-            className="input"
+            className={CLS.f}
             value={baseURL}
             placeholder="http://127.0.0.1:11434/v1"
             data-testid="ai-base-url"
@@ -62,10 +63,10 @@ export function AiSettingsPanel({ api }: { api: AppApi }): JSX.Element {
             onBlur={() => save({ baseURL: baseURL.trim() })}
           />
         </label>
-        <label className="field field--narrow">
-          <span className="field__label">模型名</span>
+        <label className={CLS.e}>
+          <span className={CLS.a}>模型名</span>
           <input
-            className="input"
+            className={CLS.f}
             value={model}
             placeholder="qwen2.5:7b"
             data-testid="ai-model"
@@ -73,10 +74,10 @@ export function AiSettingsPanel({ api }: { api: AppApi }): JSX.Element {
             onBlur={() => save({ model: model.trim() })}
           />
         </label>
-        <label className="field field--narrow">
-          <span className="field__label">API Key（本地可空）</span>
+        <label className={CLS.e}>
+          <span className={CLS.a}>API Key（本地可空）</span>
           <input
-            className="input"
+            className={CLS.f}
             type="password"
             defaultValue={ai.apiKey ?? ''}
             autoComplete="off"
@@ -86,26 +87,26 @@ export function AiSettingsPanel({ api }: { api: AppApi }): JSX.Element {
         </label>
       </div>
 
-      <div className="btn-row">
+      <div className={CLS.r}>
         {PRESETS.map((preset) => (
-          <button key={preset.baseURL} type="button" className="btn btn--small" onClick={() => applyPreset(preset.baseURL)}>
+          <button key={preset.baseURL} type="button" className={CLS.b} onClick={() => applyPreset(preset.baseURL)}>
             {preset.label}
           </button>
         ))}
       </div>
 
-      <p className="field__hint">
+      <p className={CLS.c}>
         {local
           ? '本机端口：请求只到这台电脑，不出公网。'
           : ai.baseURL
             ? '⚠ 地址不在本机 —— 勾选发送的内容会明文经过网络离开这台电脑。'
             : '没填地址时不会发出任何请求。'}
       </p>
-      <p className="field__hint">
+      <p className={CLS.c}>
         API Key 明文保存，会随导出备份一起走。请求日志 {api.db.requestLog.length} 条
         （时间 / 地址 / 模型 / 字段指纹，无原文）。
         {api.db.requestLog.length > 0 ? (
-          <button type="button" className="link-btn" onClick={api.ai.clearRequestLog}>
+          <button type="button" className={CLS.k} onClick={api.ai.clearRequestLog}>
             清空
           </button>
         ) : null}

@@ -7,6 +7,7 @@ import { useMemo } from 'react';
 import type { AppApi } from '../lib/api';
 import { buildTodos } from '../lib/rules';
 import { pendingReviewInterviews } from '../lib/interview';
+import { CLS } from '../lib/classTokens';
 
 export function TodoBar({ api }: { api: AppApi }) {
   const todos = useMemo(() => buildTodos(api.db, api.now), [api.db, api.now]);
@@ -46,7 +47,7 @@ export function TodoBar({ api }: { api: AppApi }) {
           onClick={() => firstStale && api.focusApp(firstStale.app.id)}
           title="点击跳到最该处理的那一家"
         >
-          <span className="pill__dot" />
+          <span className={CLS.L} />
           {staleCount} 家已沉默
           <span className="pill__extra">最长 {Math.max(...todos.stale.map((item) => item.days))} 天</span>
         </button>
@@ -55,11 +56,11 @@ export function TodoBar({ api }: { api: AppApi }) {
       {todayCount > 0 && firstToday ? (
         <button
           type="button"
-          className="pill pill--blue"
+          className={CLS.aH}
           onClick={() => api.openDetail(firstToday.app.id)}
           title="打开这家的面试详情"
         >
-          <span className="pill__dot" />
+          <span className={CLS.L} />
           今天有 {todayCount} 场面试
         </button>
       ) : null}
@@ -67,11 +68,11 @@ export function TodoBar({ api }: { api: AppApi }) {
       {resultCount > 0 ? (
         <button
           type="button"
-          className="pill pill--blue"
+          className={CLS.aH}
           onClick={() => api.openDetail(todos.needResult[0].app.id)}
           title="面试完了但还没记结果"
         >
-          <span className="pill__dot" />
+          <span className={CLS.L} />
           {resultCount} 场待记结果
         </button>
       ) : null}
@@ -79,10 +80,10 @@ export function TodoBar({ api }: { api: AppApi }) {
       {warnCount > 0 ? (
         <button
           type="button"
-          className="pill pill--amber"
+          className={CLS.ay}
           onClick={() => firstWarn && api.focusApp(firstWarn.app.id)}
         >
-          <span className="pill__dot" />
+          <span className={CLS.L} />
           {warnCount} 家该跟进了
         </button>
       ) : null}
@@ -90,10 +91,10 @@ export function TodoBar({ api }: { api: AppApi }) {
       {wishCount > 0 ? (
         <button
           type="button"
-          className="pill pill--amber"
+          className={CLS.ay}
           onClick={() => api.openDetail(todos.wishlistExpired[0].app.id)}
         >
-          <span className="pill__dot" />
+          <span className={CLS.L} />
           {wishCount} 家还想投吗？
         </button>
       ) : null}
@@ -101,11 +102,11 @@ export function TodoBar({ api }: { api: AppApi }) {
       {reviewCount > 0 ? (
         <button
           type="button"
-          className="pill pill--blue"
+          className={CLS.aH}
           onClick={() => api.setInsightsTab('interview')}
           title="记完面经就会从这条清单里消失"
         >
-          <span className="pill__dot" />
+          <span className={CLS.L} />
           {reviewCount} 场面试待复盘
         </button>
       ) : null}
@@ -113,11 +114,11 @@ export function TodoBar({ api }: { api: AppApi }) {
       {stagedCount > 0 ? (
         <button
           type="button"
-          className="pill pill--amber"
+          className={CLS.ay}
           onClick={() => api.openSync()}
           title="同步时没能自动判定的记录，一条都没丢，等你归类"
         >
-          <span className="pill__dot" />
+          <span className={CLS.L} />
           {conflictStagedCount > 0
             ? `${conflictStagedCount} 条冲突待决`
             : `${stagedCount} 条同步待确认`}

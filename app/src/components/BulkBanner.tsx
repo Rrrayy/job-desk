@@ -8,6 +8,7 @@
 
 import { BUDGET, formatBytes } from '../lib/budget';
 import type { BudgetLevel } from '../lib/budget';
+import { CLS } from '../lib/classTokens';
 
 export interface BulkBannerProps {
   level: BudgetLevel;
@@ -24,17 +25,17 @@ export function BulkBanner({ level, size, onExport, onOpenSettings }: BulkBanner
 
   if (level === 'block') {
     return (
-      <div className="banner banner--error">
+      <div className={CLS.ag}>
         <strong>⚠ 数据已超过存储上限，这次改动没有保存成功</strong>
         <span>
           当前 {formatBytes(size)} / 上限约 {formatBytes(BUDGET.block)}（{percent}%）。
           请立刻导出备份，然后删掉不用的投递或较长的面经备注。
         </span>
-        <div className="drawer__actions">
-          <button type="button" className="btn btn--small btn--primary" onClick={onExport}>
+        <div className={CLS.p}>
+          <button type="button" className={CLS.o} onClick={onExport}>
             导出备份
           </button>
-          <button type="button" className="btn btn--small" onClick={onOpenSettings}>
+          <button type="button" className={CLS.b} onClick={onOpenSettings}>
             去清理
           </button>
         </div>
@@ -43,17 +44,17 @@ export function BulkBanner({ level, size, onExport, onOpenSettings }: BulkBanner
   }
 
   return (
-    <div className="banner banner--warn">
+    <div className={CLS.as}>
       <strong>存储占用偏高</strong>
       <span>
         当前 {formatBytes(size)}（约 {percent}% 上限）。数据都在你自己的浏览器里，
         建议先导出一份备份，再删掉不再关注的投递。
       </span>
-      <div className="drawer__actions">
-        <button type="button" className="btn btn--small" onClick={onExport}>
+      <div className={CLS.p}>
+        <button type="button" className={CLS.b} onClick={onExport}>
           导出备份
         </button>
-        <button type="button" className="btn btn--small" onClick={onOpenSettings}>
+        <button type="button" className={CLS.b} onClick={onOpenSettings}>
           设置
         </button>
       </div>

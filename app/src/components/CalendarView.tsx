@@ -20,6 +20,7 @@ import {
   weekdayOf,
 } from '../lib/date';
 import { companyLabel, cx } from '../lib/util';
+import { CLS } from '../lib/classTokens';
 
 interface Cell {
   date: Date;
@@ -134,9 +135,9 @@ export function CalendarView({ api }: { api: AppApi }) {
 
   return (
     <div className="page">
-      <div className="board-head">
-        <h2 className="page__title">面试日历</h2>
-        <span className="page__sub">
+      <div className={CLS.ao}>
+        <h2 className={CLS.am}>面试日历</h2>
+        <span className={CLS.ad}>
           {db.interviews.length} 场面试 · {db.events.length} 条日程
           {conflictTotal > 0 ? ` · ⚠ ${conflictTotal} 处时间冲突` : ' · 暂无时间冲突'}
         </span>
@@ -148,7 +149,7 @@ export function CalendarView({ api }: { api: AppApi }) {
             <div className="cal__nav">
               <button
                 type="button"
-                className="icon-btn"
+                className={CLS.m}
                 onClick={() => setCursor(addMonths(cursor, -1))}
                 title="上个月"
                 aria-label="上个月"
@@ -160,7 +161,7 @@ export function CalendarView({ api }: { api: AppApi }) {
               </span>
               <button
                 type="button"
-                className="icon-btn"
+                className={CLS.m}
                 onClick={() => setCursor(addMonths(cursor, 1))}
                 title="下个月"
                 aria-label="下个月"
@@ -168,24 +169,24 @@ export function CalendarView({ api }: { api: AppApi }) {
                 ›
               </button>
             </div>
-            <div className="btn-row">
+            <div className={CLS.r}>
               <button
                 type="button"
-                className="btn btn--small"
+                className={CLS.b}
                 onClick={() => setQuickOpen((open) => !open)}
               >
                 ＋ 记一件事
               </button>
               <button
                 type="button"
-                className={cx('btn btn--small', !importOpen && 'btn--primary')}
+                className={cx(CLS.b, !importOpen && 'btn--primary')}
                 onClick={() => setImportOpen((open) => !open)}
               >
                 导入课表
               </button>
               <button
                 type="button"
-                className="btn btn--small"
+                className={CLS.b}
                 onClick={() => {
                   setCursor(new Date(now.getFullYear(), now.getMonth(), 1));
                   setSelected(toDateISO(now));
@@ -262,10 +263,10 @@ export function CalendarView({ api }: { api: AppApi }) {
 
           {importOpen ? (
             <div className="cal__import">
-              <p className="field__hint">
+              <p className={CLS.c}>
                 一行一节课，从课表 App / 教务网页直接复制就行（周几 + 时间 + 名字，顺序随意）：
               </p>
-              <p className="field__hint">
+              <p className={CLS.c}>
                 <code>周一 08:00-09:40 数据结构</code>
               </p>
               <textarea
@@ -276,7 +277,7 @@ export function CalendarView({ api }: { api: AppApi }) {
                 onChange={(event) => setImportText(event.target.value)}
               />
               {parsed.ok.length > 0 || parsed.skipped.length > 0 ? (
-                <p className="field__hint">
+                <p className={CLS.c}>
                   识别出 <strong>{parsed.ok.length}</strong> 节课
                   {parsed.skipped.length > 0 ? `，${parsed.skipped.length} 行没认出来` : ''}
                 </p>
@@ -286,28 +287,28 @@ export function CalendarView({ api }: { api: AppApi }) {
                   ✕ {line} —— {reason}
                 </p>
               ))}
-              <div className="btn-row">
+              <div className={CLS.r}>
                 <button
                   type="button"
-                  className="btn btn--small btn--primary"
+                  className={CLS.o}
                   disabled={parsed.ok.length === 0}
                   onClick={confirmImport}
                 >
                   导入 {parsed.ok.length > 0 ? `${parsed.ok.length} 节` : ''}
                 </button>
-                <button type="button" className="btn btn--small" onClick={() => setImportOpen(false)}>
+                <button type="button" className={CLS.b} onClick={() => setImportOpen(false)}>
                   收起
                 </button>
               </div>
-              <p className="field__hint">导入会替换之前的课表；手动记的事不受影响。</p>
+              <p className={CLS.c}>导入会替换之前的课表；手动记的事不受影响。</p>
             </div>
           ) : null}
 
           {quickOpen ? (
             <div className="cal__import">
-              <p className="field__hint">记在 {selectedDate.getMonth() + 1} 月 {selectedDate.getDate()} 日：</p>
+              <p className={CLS.c}>记在 {selectedDate.getMonth() + 1} 月 {selectedDate.getDate()} 日：</p>
               <input
-                className="input"
+                className={CLS.f}
                 value={quickTitle}
                 placeholder="什么事？（例：导师组会 / 体检 / 交材料）"
                 onChange={(event) => setQuickTitle(event.target.value)}
@@ -317,24 +318,24 @@ export function CalendarView({ api }: { api: AppApi }) {
               />
               <div className="cal__import-times">
                 <input
-                  className="input input--compact"
+                  className={CLS.G}
                   type="time"
                   value={quickStart}
                   onChange={(event) => setQuickStart(event.target.value)}
                 />
-                <span className="muted">至</span>
+                <span className={CLS.d}>至</span>
                 <input
-                  className="input input--compact"
+                  className={CLS.G}
                   type="time"
                   value={quickEnd}
                   onChange={(event) => setQuickEnd(event.target.value)}
                 />
               </div>
-              <div className="btn-row">
-                <button type="button" className="btn btn--small btn--primary" onClick={confirmQuickAdd}>
+              <div className={CLS.r}>
+                <button type="button" className={CLS.o} onClick={confirmQuickAdd}>
                   记下
                 </button>
-                <button type="button" className="btn btn--small" onClick={() => setQuickOpen(false)}>
+                <button type="button" className={CLS.b} onClick={() => setQuickOpen(false)}>
                   取消
                 </button>
               </div>
@@ -379,12 +380,12 @@ export function CalendarView({ api }: { api: AppApi }) {
           {dayInterviews.length === 0 ? (
             dayEvents.length === 0 ? (
               <div className="quiet">
-                <p className="quiet__title">这天什么都没有。</p>
-                <p className="quiet__text">点上面的「记一件事」把要紧事标上来，撞了会提醒。</p>
+                <p className={CLS.Z}>这天什么都没有。</p>
+                <p className={CLS.an}>点上面的「记一件事」把要紧事标上来，撞了会提醒。</p>
               </div>
             ) : (
               <div className="quiet">
-                <p className="quiet__title">这天没有面试。</p>
+                <p className={CLS.Z}>这天没有面试。</p>
               </div>
             )
           ) : (
@@ -423,7 +424,7 @@ export function CalendarView({ api }: { api: AppApi }) {
                     <div className="cal__item-actions">
                       <button
                         type="button"
-                        className="btn btn--tiny"
+                        className={CLS.h}
                         onClick={() => app && api.openDetail(app.id)}
                       >
                         打开这家

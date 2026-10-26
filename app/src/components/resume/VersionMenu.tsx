@@ -20,6 +20,7 @@ import type { AppApi } from '../../lib/api';
 import type { Resume, ResumeVersion } from '../../types';
 import { fmtDateTime } from '../../lib/date';
 import { cx } from '../../lib/util';
+import { CLS } from '../../lib/classTokens';
 
 export interface VersionMenuProps {
   api: AppApi;
@@ -85,7 +86,7 @@ export function VersionMenu({ api, resume, onBeforeSave }: VersionMenuProps) {
 
       <div className="ver-menu__save">
         <input
-          className="input input--compact"
+          className={CLS.G}
           type="text"
           value={label}
           placeholder="新版本名（留空自动 v1、v2…）"
@@ -100,15 +101,15 @@ export function VersionMenu({ api, resume, onBeforeSave }: VersionMenuProps) {
             save();
           }}
         />
-        <button type="button" className="btn btn--small btn--primary" onClick={save}>
+        <button type="button" className={CLS.o} onClick={save}>
           存为新版本
         </button>
       </div>
-      <p className="field__hint">
+      <p className={CLS.c}>
         存下来的版本是冻结快照：之后继续改草稿不会改到它；要改就用「以此版本为草稿」。
       </p>
       {quotaHint ? <p className="ver-menu__quota">{quotaHint}</p> : null}
-      {error ? <p className="field__hint field__hint--danger">{error}</p> : null}
+      {error ? <p className={CLS.s}>{error}</p> : null}
 
       {versions.length === 0 ? (
         <p className="ver-menu__empty">还没有版本。投出去之前先存一版，投递才绑得住「当时那份」。</p>
@@ -120,9 +121,9 @@ export function VersionMenu({ api, resume, onBeforeSave }: VersionMenuProps) {
             return (
               <li className={cx('ver-item', isPrimary && 'ver-item--primary')} key={version.id}>
                 {renamingId === version.id ? (
-                  <div className="ver-item__row">
+                  <div className={CLS.aO}>
                     <input
-                      className="input input--compact"
+                      className={CLS.G}
                       type="text"
                       value={renameText}
                       aria-label="版本名"
@@ -136,24 +137,24 @@ export function VersionMenu({ api, resume, onBeforeSave }: VersionMenuProps) {
                         if (event.key === 'Escape') setRenamingId(null);
                       }}
                     />
-                    <button type="button" className="btn btn--tiny" onClick={commitRename}>
+                    <button type="button" className={CLS.h} onClick={commitRename}>
                       保存
                     </button>
-                    <button type="button" className="btn btn--tiny btn--ghost" onClick={() => setRenamingId(null)}>
+                    <button type="button" className={CLS.F} onClick={() => setRenamingId(null)}>
                       取消
                     </button>
                   </div>
                 ) : (
                   <>
-                    <div className="ver-item__row">
+                    <div className={CLS.aO}>
                       <span className="ver-item__label">{version.label}</span>
                       {isPrimary ? <span className="ver-item__badge">主版本</span> : null}
                       <span className="ver-item__meta">{fmtDateTime(version.createdAt)}</span>
                     </div>
-                    <div className="ver-item__acts">
+                    <div className={CLS.ak}>
                       <button
                         type="button"
-                        className="btn btn--tiny"
+                        className={CLS.h}
                         onClick={() => {
                           setConfirmDraftId(version.id);
                           setConfirmDeleteId(null);
@@ -161,12 +162,12 @@ export function VersionMenu({ api, resume, onBeforeSave }: VersionMenuProps) {
                       >
                         以此版本为草稿
                       </button>
-                      <button type="button" className="btn btn--tiny btn--ghost" onClick={() => startRename(version)}>
+                      <button type="button" className={CLS.F} onClick={() => startRename(version)}>
                         重命名
                       </button>
                       <button
                         type="button"
-                        className="btn btn--tiny btn--ghost"
+                        className={CLS.F}
                         disabled={isPrimary}
                         title={isPrimary ? '已经是主版本' : '新建投递时默认绑定这一版'}
                         onClick={() => api.resume.setPrimary(version.id)}
@@ -175,7 +176,7 @@ export function VersionMenu({ api, resume, onBeforeSave }: VersionMenuProps) {
                       </button>
                       <button
                         type="button"
-                        className="btn btn--tiny btn--danger-ghost"
+                        className={CLS.x}
                         onClick={() => {
                           setConfirmDeleteId(version.id);
                           setConfirmDraftId(null);
@@ -193,10 +194,10 @@ export function VersionMenu({ api, resume, onBeforeSave }: VersionMenuProps) {
                       「{version.label}」的内容会复制成当前草稿 —— 当前草稿里没存版本的内容会丢，
                       已冻结的版本本身不变。
                     </p>
-                    <div className="ver-item__acts">
+                    <div className={CLS.ak}>
                       <button
                         type="button"
-                        className="btn btn--tiny btn--primary"
+                        className={CLS.ap}
                         onClick={() => {
                           onBeforeSave();
                           api.resume.adoptAsDraft(version.id);
@@ -205,7 +206,7 @@ export function VersionMenu({ api, resume, onBeforeSave }: VersionMenuProps) {
                       >
                         确认覆盖草稿
                       </button>
-                      <button type="button" className="btn btn--tiny btn--ghost" onClick={() => setConfirmDraftId(null)}>
+                      <button type="button" className={CLS.F} onClick={() => setConfirmDraftId(null)}>
                         取消
                       </button>
                     </div>
@@ -218,15 +219,15 @@ export function VersionMenu({ api, resume, onBeforeSave }: VersionMenuProps) {
                       {/* A-12：这句话必须排第一 —— 用户此刻最怕的是「投递也跟着没了」 */}
                       投递记录会保留，绑定处显示「{version.label}（已删除）」。
                     </p>
-                    <p className="field__hint">
+                    <p className={CLS.c}>
                       {refs > 0
                         ? `有 ${refs} 条投递绑在这一版上；删除后它们不会丢，只是不再指向一个可查看的版本。`
                         : '没有投递绑在这一版上。删除后进回收站，30 天后自动清理。'}
                     </p>
-                    <div className="ver-item__acts">
+                    <div className={CLS.ak}>
                       <button
                         type="button"
-                        className="btn btn--tiny btn--danger-ghost"
+                        className={CLS.x}
                         onClick={() => {
                           api.resume.deleteVersion(version.id);
                           setConfirmDeleteId(null);
@@ -234,7 +235,7 @@ export function VersionMenu({ api, resume, onBeforeSave }: VersionMenuProps) {
                       >
                         确认删除
                       </button>
-                      <button type="button" className="btn btn--tiny btn--ghost" onClick={() => setConfirmDeleteId(null)}>
+                      <button type="button" className={CLS.F} onClick={() => setConfirmDeleteId(null)}>
                         取消
                       </button>
                     </div>
@@ -260,17 +261,17 @@ export function VersionMenu({ api, resume, onBeforeSave }: VersionMenuProps) {
             <ul className="ver-list ver-list--trash">
               {trashed.map((version) => (
                 <li className="ver-item" key={version.id}>
-                  <div className="ver-item__row">
+                  <div className={CLS.aO}>
                     <span className="ver-item__label">{version.label}</span>
                     <span className="ver-item__meta">删除于 {fmtDateTime(version.deletedAt ?? '')}</span>
                   </div>
-                  <div className="ver-item__acts">
-                    <button type="button" className="btn btn--tiny" onClick={() => api.resume.restoreVersion(version.id)}>
+                  <div className={CLS.ak}>
+                    <button type="button" className={CLS.h} onClick={() => api.resume.restoreVersion(version.id)}>
                       恢复
                     </button>
                     <button
                       type="button"
-                      className="btn btn--tiny btn--danger-ghost"
+                      className={CLS.x}
                       onClick={() => api.resume.purgeVersion(version.id)}
                     >
                       永久删除

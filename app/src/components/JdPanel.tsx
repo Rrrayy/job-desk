@@ -17,6 +17,7 @@ import { copyText, cx, safeHref } from '../lib/util';
 import type { AppApi } from '../lib/api';
 import type { Application } from '../types';
 import { Field } from './Field';
+import { CLS } from '../lib/classTokens';
 
 /** 哪些解析字段允许「采用」写入（companyName 只展示不写，见文件头注释） */
 const ADOPTABLE_FIELDS = ['jobTitle', 'city', 'salaryText'] as const;
@@ -124,7 +125,7 @@ export function JdPanel({ api, app }: { api: AppApi; app: Application }) {
         hint="J 键可快速打开（详情页打开时）"
       />
 
-      <div className="jd-panel__actions">
+      <div className={CLS.av}>
         {href && !dead && (
           <a className="btn" href={href} target="_blank" rel="noopener noreferrer" title={app.jdUrl}>
             ↗ 打开 JD
@@ -178,8 +179,8 @@ export function JdPanel({ api, app }: { api: AppApi; app: Application }) {
             onChange={(event) => setPasteText(event.target.value)}
             placeholder="在招聘页 Ctrl+A 全选复制，整页粘进来"
           />
-          <div className="jd-panel__actions">
-            <button type="button" className="btn btn--primary" onClick={runParse} disabled={!pasteText.trim()}>
+          <div className={CLS.av}>
+            <button type="button" className={CLS.j} onClick={runParse} disabled={!pasteText.trim()}>
               解析
             </button>
             <button
@@ -214,13 +215,13 @@ export function JdPanel({ api, app }: { api: AppApi; app: Application }) {
               </ul>
 
               {digest.hints.daysPerWeek && (
-                <p className="jd-panel__hint">线索：每周 {digest.hints.daysPerWeek} 天（供参考，不自动写入）</p>
+                <p className={CLS.aM}>线索：每周 {digest.hints.daysPerWeek} 天（供参考，不自动写入）</p>
               )}
               {digest.hints.durationMonths && (
-                <p className="jd-panel__hint">线索：实习 {digest.hints.durationMonths} 个月（供参考，不自动写入）</p>
+                <p className={CLS.aM}>线索：实习 {digest.hints.durationMonths} 个月（供参考，不自动写入）</p>
               )}
               {digest.record?.companyName && (
-                <p className="jd-panel__hint">
+                <p className={CLS.aM}>
                   识别到公司「{digest.record.companyName}」—— 公司名不自动写入：改名会影响这家公司的全部投递，请到公司页手改。
                 </p>
               )}
@@ -252,8 +253,8 @@ export function JdPanel({ api, app }: { api: AppApi; app: Application }) {
                 </label>
               </div>
 
-              <div className="jd-panel__actions">
-                <button type="button" className="btn btn--primary" onClick={applyAdopted}>
+              <div className={CLS.av}>
+                <button type="button" className={CLS.j} onClick={applyAdopted}>
                   应用勾选项
                 </button>
                 <button

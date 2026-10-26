@@ -8,6 +8,7 @@ import type { PlatformId } from '../../types';
 import { PLATFORM_LABEL } from '../../adapters/registry';
 import { MAX_CAPTURE_FILE_BYTES, readTextFile } from '../../lib/sync/capture';
 import { cx } from '../../lib/util';
+import { CLS } from '../../lib/classTokens';
 
 export interface Step1CaptureProps {
   text: string;
@@ -153,13 +154,13 @@ export function Step1Capture(props: Step1CaptureProps) {
   };
 
   return (
-    <section className="sync__step">
-      <div className="sync__step-head">
-        <h3 className="sync__step-title">① 抓取</h3>
+    <section className={CLS.S}>
+      <div className={CLS.P}>
+        <h3 className={CLS.O}>① 抓取</h3>
         <label className="sync__platform">
-          <span className="field__label">平台</span>
+          <span className={CLS.a}>平台</span>
           <select
-            className="select select--compact"
+            className={CLS.q}
             value={platform}
             onChange={(event) => onPlatform(event.target.value as PlatformId)}
           >
@@ -217,7 +218,7 @@ export function Step1Capture(props: Step1CaptureProps) {
       </div>
 
       <div className="sync__row">
-        <button type="button" className="btn btn--small" onClick={() => fileRef.current?.click()}>
+        <button type="button" className={CLS.b} onClick={() => fileRef.current?.click()}>
           选择文件
         </button>
         <input
@@ -233,7 +234,7 @@ export function Step1Capture(props: Step1CaptureProps) {
         />
         <button
           type="button"
-          className="btn btn--small btn--primary"
+          className={CLS.o}
           onClick={onParse}
           disabled={parsing || text.trim().length === 0}
         >
@@ -247,8 +248,8 @@ export function Step1Capture(props: Step1CaptureProps) {
         ) : null}
       </div>
 
-      {fileError ? <div className="notice notice--danger">{fileError}</div> : null}
-      {error ? <div className="notice notice--danger">{error}</div> : null}
+      {fileError ? <div className={CLS.M}>{fileError}</div> : null}
+      {error ? <div className={CLS.M}>{error}</div> : null}
 
       <div className="sync__ext">
         <strong>扩展通道（可选）</strong>
@@ -257,7 +258,7 @@ export function Step1Capture(props: Step1CaptureProps) {
           再回到这里按 Ctrl+V。扩展只读你屏幕上已经能看到的内容，只申请 <code>activeTab</code> +{' '}
           <code>scripting</code>，不申请任何域名权限。
         </p>
-        <p className="muted">
+        <p className={CLS.d}>
           抓不到时的建议：先用 Ctrl+A / Ctrl+C 整页复制（这条路径永远可用），或修改
           <code> extension/selectors.json </code> 里的选择器。
         </p>

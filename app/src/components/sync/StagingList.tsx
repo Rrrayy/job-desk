@@ -11,6 +11,7 @@ import { ALL_STATUSES, STATUS_LABEL } from '../../lib/rules';
 import { PLATFORM_LABEL } from '../../adapters/registry';
 import { STAGING_LIMIT } from '../../lib/sync/engine';
 import { copyText } from '../../lib/util';
+import { CLS } from '../../lib/classTokens';
 
 export interface StagingListProps {
   items: StagedSyncItem[];
@@ -55,7 +56,7 @@ export function StagingList(props: StagingListProps) {
     return (
       <button
         type="button"
-        className="btn btn--small"
+        className={CLS.b}
         data-testid={`ai-retry-${item.id}`}
         disabled={!aiReady || raw.length === 0}
         title={hint}
@@ -73,14 +74,14 @@ export function StagingList(props: StagingListProps) {
 
   if (items.length === 0) {
     return (
-      <section className="sync__step">
-        <div className="sync__step-head">
-          <h3 className="sync__step-title">暂存区</h3>
+      <section className={CLS.S}>
+        <div className={CLS.P}>
+          <h3 className={CLS.O}>暂存区</h3>
         </div>
-        <div className="empty-block">
-          <div className="empty-block__emoji">🗂</div>
-          <div className="empty-block__title">没有待归类的记录</div>
-          <p className="empty-block__text">
+        <div className={CLS.C}>
+          <div className={CLS.y}>🗂</div>
+          <div className={CLS.z}>没有待归类的记录</div>
+          <p className={CLS.A}>
             同步时没能自动判定的记录会放在这里 —— 一条都不会丢，只是需要你告诉它属于哪个阶段。
           </p>
         </div>
@@ -91,16 +92,16 @@ export function StagingList(props: StagingListProps) {
   const nearlyFull = items.length >= Math.floor(limit * 0.9);
 
   return (
-    <section className="sync__step">
-      <div className="sync__step-head">
-        <h3 className="sync__step-title">暂存区（{items.length}）</h3>
+    <section className={CLS.S}>
+      <div className={CLS.P}>
+        <h3 className={CLS.O}>暂存区（{items.length}）</h3>
         <div className="sync__staging-actions">
           {confirmClear ? (
             <>
-              <span className="muted">确认丢掉全部 {items.length} 条？</span>
+              <span className={CLS.d}>确认丢掉全部 {items.length} 条？</span>
               <button
                 type="button"
-                className="btn btn--small btn--danger"
+                className={CLS.V}
                 onClick={() => {
                   onClear();
                   setConfirmClear(false);
@@ -108,12 +109,12 @@ export function StagingList(props: StagingListProps) {
               >
                 确认忽略
               </button>
-              <button type="button" className="btn btn--small" onClick={() => setConfirmClear(false)}>
+              <button type="button" className={CLS.b} onClick={() => setConfirmClear(false)}>
                 取消
               </button>
             </>
           ) : (
-            <button type="button" className="btn btn--small" onClick={() => setConfirmClear(true)}>
+            <button type="button" className={CLS.b} onClick={() => setConfirmClear(true)}>
               全部忽略
             </button>
           )}
@@ -121,14 +122,14 @@ export function StagingList(props: StagingListProps) {
       </div>
 
       {nearlyFull ? (
-        <div className="notice notice--warn">
+        <div className={CLS.N}>
           暂存区上限 {limit} 条，当前已 {items.length} 条。超过上限时会自动丢弃最旧的（会提示条数），
           建议先把旧的清掉。
         </div>
       ) : null}
 
       {onAiRetry && !aiReady ? (
-        <p className="field__hint" data-testid="ai-staging-blocked">
+        <p className={CLS.c} data-testid="ai-staging-blocked">
           「用 AI 重试解析」暂时置灰：{aiReason ?? 'AI 服务未配置'}。置灰不等于报错 —— 配好之后这些行原样还在。
         </p>
       ) : null}
@@ -143,23 +144,23 @@ export function StagingList(props: StagingListProps) {
               <li key={item.id} className="sync__staging-item sync__staging-item--unparsed">
                 <div className="sync__staging-head">
                   <span className="sync__staging-company sync__staging-company--unknown">（没解析出公司名）</span>
-                  <span className="sync__badge sync__badge--staged">{REASON_TEXT[item.reason]}</span>
-                  <span className="sync__source">
+                  <span className={CLS.aT}>{REASON_TEXT[item.reason]}</span>
+                  <span className={CLS.aQ}>
                     {PLATFORM_LABEL[item.platform]} · {isoMinute(item.capturedAt)}
                   </span>
                 </div>
 
                 <pre className="sync__staging-snippet">{snippet || '（原文片段已丢失）'}</pre>
 
-                <div className="sync__staging-raw">
+                <div className={CLS.aw}>
                   {item.reasonText ? `为什么没认出来：${item.reasonText}` : '没能从这一段里认出公司、岗位和状态。'}
                 </div>
 
-                <div className="sync__staging-controls">
+                <div className={CLS.aU}>
                   {aiButton(item)}
                   <button
                     type="button"
-                    className="btn btn--small"
+                    className={CLS.b}
                     disabled={snippet.length === 0}
                     onClick={() => {
                       void copyText(snippet).then((ok) => setCopiedId(ok ? item.id : null));
@@ -168,11 +169,11 @@ export function StagingList(props: StagingListProps) {
                     {copiedId === item.id ? '已复制 ✓' : '复制原文'}
                   </button>
                   {onManualAdd ? (
-                    <button type="button" className="btn btn--small btn--primary" onClick={onManualAdd}>
+                    <button type="button" className={CLS.o} onClick={onManualAdd}>
                       手动补录一条
                     </button>
                   ) : null}
-                  <button type="button" className="btn btn--small" onClick={() => onResolve(item.id, null)}>
+                  <button type="button" className={CLS.b} onClick={() => onResolve(item.id, null)}>
                     忽略这条
                   </button>
                 </div>
@@ -185,8 +186,8 @@ export function StagingList(props: StagingListProps) {
             <li key={item.id} className="sync__staging-item">
               <div className="sync__staging-head">
                 <span className="sync__staging-company">{item.parsed.companyName || '（没抓到公司名）'}</span>
-                <span className="sync__badge sync__badge--staged">{REASON_TEXT[item.reason]}</span>
-                <span className="sync__source">
+                <span className={CLS.aT}>{REASON_TEXT[item.reason]}</span>
+                <span className={CLS.aQ}>
                   {PLATFORM_LABEL[item.platform]} · {isoMinute(item.capturedAt)}
                 </span>
               </div>
@@ -194,23 +195,23 @@ export function StagingList(props: StagingListProps) {
               <div className="sync__staging-job">{item.parsed.jobTitle || '（没抓到岗位名）'}</div>
 
               {item.platformStatusRaw ? (
-                <div className="sync__staging-raw">
+                <div className={CLS.aw}>
                   平台原文状态：<q>{item.platformStatusRaw}</q>
                 </div>
               ) : null}
 
               {item.candidateAppId ? (
-                <div className="sync__staging-raw">
+                <div className={CLS.aw}>
                   疑似已有投递（id 尾号 {item.candidateAppId.slice(-4)}）—— 也可以直接忽略，稍后在列表里手工合并。
                 </div>
               ) : null}
 
-              <div className="sync__staging-controls">
+              <div className={CLS.aU}>
                 {aiButton(item)}
                 <label className="sync__staging-pick">
-                  <span className="field__label">归到</span>
+                  <span className={CLS.a}>归到</span>
                   <select
-                    className="select select--compact"
+                    className={CLS.q}
                     value={target}
                     onChange={(event) => setPicked((prev) => ({ ...prev, [item.id]: event.target.value as Status }))}
                   >
@@ -223,12 +224,12 @@ export function StagingList(props: StagingListProps) {
                 </label>
                 <button
                   type="button"
-                  className="btn btn--small btn--primary"
+                  className={CLS.o}
                   onClick={() => onResolve(item.id, target)}
                 >
                   确认归到「{STATUS_LABEL[target]}」
                 </button>
-                <button type="button" className="btn btn--small" onClick={() => onResolve(item.id, null)}>
+                <button type="button" className={CLS.b} onClick={() => onResolve(item.id, null)}>
                   忽略这条
                 </button>
               </div>

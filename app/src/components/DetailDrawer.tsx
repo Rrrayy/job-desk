@@ -47,12 +47,13 @@ import { BindVersionSelect } from './BindVersionSelect';
 import { JdPanel } from './JdPanel';
 import { ReportCard } from './resume/ReportCard';
 import { AiScenarioPanel } from './ai/AiScenarioPanel';
+import { CLS } from '../lib/classTokens';
 
 export function DetailDrawer({ api }: { api: AppApi }) {
   const app = api.db.applications.find((item) => item.id === api.selectedId);
   if (!app) return null;
   return (
-    <div className="drawer-overlay" onClick={api.closeDetail}>
+    <div className={CLS.H} onClick={api.closeDetail}>
       <aside className="drawer" onClick={(event) => event.stopPropagation()}>
         <DetailBody api={api} app={app} />
       </aside>
@@ -175,9 +176,9 @@ function DetailBody({ api, app }: { api: AppApi; app: Application }) {
 
   return (
     <>
-      <header className="drawer__head">
-        <div className="drawer__title-wrap">
-          <h2 className="drawer__title">
+      <header className={CLS.K}>
+        <div className={CLS.ah}>
+          <h2 className={CLS.I}>
             {company ? company.name : '未知公司'} · {app.jobTitle}
           </h2>
           <div className="drawer__chips">
@@ -192,12 +193,12 @@ function DetailBody({ api, app }: { api: AppApi; app: Application }) {
             ) : deadline.level === 'soon' ? (
               <span className="chip chip--amber">{deadline.text}</span>
             ) : deadline.days !== null ? (
-              <span className="chip chip--quiet">{deadline.text}</span>
+              <span className={CLS.aj}>{deadline.text}</span>
             ) : null}
             {muteLeft !== null ? (
               <button
                 type="button"
-                className="chip chip--quiet"
+                className={CLS.aj}
                 title="点这里立刻取消静音"
                 onClick={() => {
                   update({ mutedUntil: null });
@@ -207,7 +208,7 @@ function DetailBody({ api, app }: { api: AppApi; app: Application }) {
                 静音中 · 还剩 {muteLeft} 天
               </button>
             ) : null}
-            {app.priority ? <span className="chip chip--quiet">{'★'.repeat(app.priority)}</span> : null}
+            {app.priority ? <span className={CLS.aj}>{'★'.repeat(app.priority)}</span> : null}
             {app.status === 'rejected' ? (
               <button
                 type="button"
@@ -238,17 +239,17 @@ function DetailBody({ api, app }: { api: AppApi; app: Application }) {
             </p>
           ) : null}
         </div>
-        <button type="button" className="icon-btn" onClick={api.closeDetail} title="关闭（Esc）" aria-label="关闭">
+        <button type="button" className={CLS.m} onClick={api.closeDetail} title="关闭（Esc）" aria-label="关闭">
           ✕
         </button>
       </header>
 
-      <div className="drawer__body">
+      <div className={CLS.J}>
         {/* ---------------- 下一步（第一屏必须是行动） ---------------- */}
-        <section className="drawer__section">
-          <h3 className="drawer__section-title">下一步</h3>
-          <div className="drawer__actions">
-            <button type="button" className="btn btn--primary btn--small" onClick={() => void handleFollowup()}>
+        <section className={CLS.n}>
+          <h3 className={CLS.i}>下一步</h3>
+          <div className={CLS.p}>
+            <button type="button" className={CLS.af} onClick={() => void handleFollowup()}>
               去催一下
             </button>
             {/*
@@ -257,7 +258,7 @@ function DetailBody({ api, app }: { api: AppApi; app: Application }) {
             */}
             <button
               type="button"
-              className="btn btn--small"
+              className={CLS.b}
               data-testid="ai-d15-entry"
               disabled={!api.ai.ready}
               title={api.ai.ready ? '生成一段可直接发给 HR 的话术' : api.ai.readyReason ?? 'AI 未配置'}
@@ -271,7 +272,7 @@ function DetailBody({ api, app }: { api: AppApi; app: Application }) {
             */}
             <button
               type="button"
-              className="btn btn--small"
+              className={CLS.b}
               data-testid="ai-d20-entry"
               disabled={!api.ai.ready}
               title={api.ai.ready ? '对照 JD 分析这份投递的匹配度' : api.ai.readyReason ?? 'AI 未配置'}
@@ -279,10 +280,10 @@ function DetailBody({ api, app }: { api: AppApi; app: Application }) {
             >
               🤖 分析这份投递
             </button>
-            {!app.jdText ? <p className="field__hint">还没有 JD 留档 —— 先在上面贴一份，分析才有依据。</p> : null}
+            {!app.jdText ? <p className={CLS.c}>还没有 JD 留档 —— 先在上面贴一份，分析才有依据。</p> : null}
             <button
               type="button"
-              className="btn btn--small"
+              className={CLS.b}
               onClick={() => {
                 setNoteType('chat');
                 document.getElementById('quick-note')?.focus();
@@ -290,12 +291,12 @@ function DetailBody({ api, app }: { api: AppApi; app: Application }) {
             >
               记一条沟通
             </button>
-            <button type="button" className="btn btn--small" onClick={() => setFormOpen(true)}>
+            <button type="button" className={CLS.b} onClick={() => setFormOpen(true)}>
               约面试
             </button>
             <button
               type="button"
-              className="btn btn--small btn--danger-ghost"
+              className={CLS.ae}
               onClick={() => {
                 api.changeStatus(app.id, 'rejected');
                 // 状态先落库，再非阻塞地递上一个「挂在哪一轮」的小选择区，绝不拦人
@@ -306,7 +307,7 @@ function DetailBody({ api, app }: { api: AppApi; app: Application }) {
               标为已挂
             </button>
           </div>
-          {api.ai.ready ? null : <p className="field__hint">{api.ai.readyReason}</p>}
+          {api.ai.ready ? null : <p className={CLS.c}>{api.ai.readyReason}</p>}
           {rejectPickerOpen ? (
             <RejectRoundPicker
               value={app.rejectedAtRound}
@@ -318,14 +319,14 @@ function DetailBody({ api, app }: { api: AppApi; app: Application }) {
             <div className="script-box">
               <div className="script-box__head">
                 <span>可以直接复制给 HR：</span>
-                <button type="button" className="link-btn" onClick={() => setScript(null)}>
+                <button type="button" className={CLS.k} onClick={() => setScript(null)}>
                   收起
                 </button>
               </div>
-              <textarea className="textarea" rows={3} readOnly value={script} />
+              <textarea className={CLS.T} rows={3} readOnly value={script} />
             </div>
           ) : null}
-          <div className="drawer__row">
+          <div className={CLS.B}>
             <SelectField<Status>
               label="改状态"
               value={app.status}
@@ -340,7 +341,7 @@ function DetailBody({ api, app }: { api: AppApi; app: Application }) {
               narrow
             />
           </div>
-          <div className="drawer__row">
+          <div className={CLS.B}>
             <Field
               label="截止日期"
               type="date"
@@ -353,19 +354,19 @@ function DetailBody({ api, app }: { api: AppApi; app: Application }) {
               }
               narrow
             />
-            <div className="field field--narrow">
-              <span className="field__label">暂时别催</span>
-              <div className="drawer__actions">
-                <button type="button" className="btn btn--tiny" onClick={() => muteFor(3)}>
+            <div className={CLS.e}>
+              <span className={CLS.a}>暂时别催</span>
+              <div className={CLS.p}>
+                <button type="button" className={CLS.h} onClick={() => muteFor(3)}>
                   3 天
                 </button>
-                <button type="button" className="btn btn--tiny" onClick={() => muteFor(7)}>
+                <button type="button" className={CLS.h} onClick={() => muteFor(7)}>
                   7 天
                 </button>
                 {muteLeft !== null ? (
                   <button
                     type="button"
-                    className="btn btn--tiny"
+                    className={CLS.h}
                     onClick={() => {
                       update({ mutedUntil: null });
                       api.toast('已取消静音');
@@ -375,18 +376,18 @@ function DetailBody({ api, app }: { api: AppApi; app: Application }) {
                   </button>
                 ) : null}
               </div>
-              <span className="field__hint">静音只停软提醒，截止照旧提醒</span>
+              <span className={CLS.c}>静音只停软提醒，截止照旧提醒</span>
             </div>
           </div>
         </section>
 
         {/* ---------------- 概览 ---------------- */}
-        <section className="drawer__section">
-          <h3 className="drawer__section-title">概览</h3>
+        <section className={CLS.n}>
+          <h3 className={CLS.i}>概览</h3>
           <InfoRow label="投递日" value={app.appliedAt ? fmtDate(app.appliedAt) : '还没投'} />
           <InfoRow label="状态变更" value={fmtDateTime(app.statusChangedAt)} />
           <InfoRow label="最近互动" value={fmtDateTime(app.lastActivityAt)} />
-          <div className="drawer__grid">
+          <div className={CLS.X}>
             <Field label="岗位名" value={app.jobTitle} onCommit={(value) => update({ jobTitle: value.trim() || app.jobTitle })} />
             <Field label="城市" value={app.city || ''} onCommit={(value) => update({ city: value.trim() || undefined })} placeholder="北京" narrow />
             <SelectField<Channel>
@@ -465,9 +466,9 @@ function DetailBody({ api, app }: { api: AppApi; app: Application }) {
             onCommit={(value) => company && api.updateCompany(company.id, { impression: value.trim() || undefined })}
             placeholder="例如：面试官偏八股，节奏快"
           />
-          <div className="drawer__row">
-            <label className="field field--narrow">
-              <span className="field__label">心动程度</span>
+          <div className={CLS.B}>
+            <label className={CLS.e}>
+              <span className={CLS.a}>心动程度</span>
               <div className="stars-input">
                 {[1, 2, 3].map((level) => (
                   <button
@@ -487,13 +488,13 @@ function DetailBody({ api, app }: { api: AppApi; app: Application }) {
               <>
                 <div className="reject-block">
                   <div className="reject-block__head">
-                    <span className="field__label">挂在哪一轮</span>
+                    <span className={CLS.a}>挂在哪一轮</span>
                     {app.rejectedAtRound === null || app.rejectedAtRound === undefined ? (
-                      <button type="button" className="link-btn" onClick={() => setRejectPickerOpen(true)}>
+                      <button type="button" className={CLS.k} onClick={() => setRejectPickerOpen(true)}>
                         轮次未记 · 点这里补录
                       </button>
                     ) : (
-                      <span className="chip chip--quiet">{rejectedRoundLabel(app.rejectedAtRound)}</span>
+                      <span className={CLS.aj}>{rejectedRoundLabel(app.rejectedAtRound)}</span>
                     )}
                   </div>
                   <div className="reject-picker__chips">
@@ -539,10 +540,10 @@ function DetailBody({ api, app }: { api: AppApi; app: Application }) {
         </section>
 
         {/* ---------------- 面试 ---------------- */}
-        <section className="drawer__section">
-          <div className="drawer__section-head">
-            <h3 className="drawer__section-title">面试（{interviews.length}）</h3>
-            <button type="button" className="link-btn" onClick={() => setFormOpen(!formOpen)}>
+        <section className={CLS.n}>
+          <div className={CLS.w}>
+            <h3 className={CLS.i}>面试（{interviews.length}）</h3>
+            <button type="button" className={CLS.k} onClick={() => setFormOpen(!formOpen)}>
               {formOpen ? '收起' : '＋ 加一场'}
             </button>
           </div>
@@ -556,27 +557,27 @@ function DetailBody({ api, app }: { api: AppApi; app: Application }) {
           />
           {(app.status === 'scheduled' || app.status === 'interviewing') && interviews.length === 0 ? (
             // P1 R-PIPE-7：老记录的轮次补录引导。可忽略，不拦截任何操作。
-            <p className="muted">
+            <p className={CLS.d}>
               这条停在面试阶段但还没记轮次 —— 想起来了点「＋ 加一场」补一下，不补也不影响使用。
             </p>
           ) : null}
 
           {formOpen ? (
             <div className="interview-form">
-              <div className="drawer__row">
-                <label className="field">
-                  <span className="field__label">时间</span>
+              <div className={CLS.B}>
+                <label className={CLS.g}>
+                  <span className={CLS.a}>时间</span>
                   <input
-                    className="input"
+                    className={CLS.f}
                     type="datetime-local"
                     value={formAt}
                     onChange={(event) => setFormAt(event.target.value)}
                   />
                 </label>
-                <label className="field field--narrow">
-                  <span className="field__label">轮次{isWrittenForm ? '（笔试固定第 0 轮）' : ''}</span>
+                <label className={CLS.e}>
+                  <span className={CLS.a}>轮次{isWrittenForm ? '（笔试固定第 0 轮）' : ''}</span>
                   <input
-                    className="input"
+                    className={CLS.f}
                     type="number"
                     min={isWrittenForm ? 0 : 1}
                     value={isWrittenForm ? '0' : formRound}
@@ -584,10 +585,10 @@ function DetailBody({ api, app }: { api: AppApi; app: Application }) {
                     onChange={(event) => setFormRound(event.target.value)}
                   />
                 </label>
-                <label className="field field--narrow">
-                  <span className="field__label">类型</span>
+                <label className={CLS.e}>
+                  <span className={CLS.a}>类型</span>
                   <select
-                    className="select"
+                    className={CLS.D}
                     value={formKind}
                     onChange={(event) => setFormKind(event.target.value as InterviewKind | '')}
                   >
@@ -599,10 +600,10 @@ function DetailBody({ api, app }: { api: AppApi; app: Application }) {
                     ))}
                   </select>
                 </label>
-                <label className="field field--narrow">
-                  <span className="field__label">形式</span>
+                <label className={CLS.e}>
+                  <span className={CLS.a}>形式</span>
                   <select
-                    className="select"
+                    className={CLS.D}
                     value={formFormat}
                     onChange={(event) => setFormFormat(event.target.value as InterviewFormat)}
                   >
@@ -621,7 +622,7 @@ function DetailBody({ api, app }: { api: AppApi; app: Application }) {
                 placeholder="飞书会议 / 杭州西溪园区 A 座"
               />
               {draftConflicts.length > 0 ? (
-                <div className="notice notice--warn">
+                <div className={CLS.N}>
                   <strong>⚠ 时间冲突</strong>
                   {draftConflicts.map((message) => (
                     <p key={message}>{message}</p>
@@ -629,11 +630,11 @@ function DetailBody({ api, app }: { api: AppApi; app: Application }) {
                   <p className="notice__foot">只是提醒，仍然可以保存。</p>
                 </div>
               ) : null}
-              <div className="drawer__row">
-                <button type="button" className="btn btn--primary btn--small" onClick={submitInterview}>
+              <div className={CLS.B}>
+                <button type="button" className={CLS.af} onClick={submitInterview}>
                   保存面试
                 </button>
-                <button type="button" className="btn btn--small" onClick={() => setFormOpen(false)}>
+                <button type="button" className={CLS.b} onClick={() => setFormOpen(false)}>
                   取消
                 </button>
               </div>
@@ -641,7 +642,7 @@ function DetailBody({ api, app }: { api: AppApi; app: Application }) {
           ) : null}
 
           {interviews.length === 0 ? (
-            <p className="muted">还没有面试记录。约上了就记一条，日历会自动标出来。</p>
+            <p className={CLS.d}>还没有面试记录。约上了就记一条，日历会自动标出来。</p>
           ) : (
             <ul className="iv-list">
               {interviews.map((interview) => (
@@ -652,10 +653,10 @@ function DetailBody({ api, app }: { api: AppApi; app: Application }) {
         </section>
 
         {/* ---------------- 时间线 ---------------- */}
-        <section className="drawer__section">
-          <div className="drawer__section-head">
-            <h3 className="drawer__section-title">时间线（{notes.length}）</h3>
-            <span className="card__hint">记一条，红色沉默就消失了</span>
+        <section className={CLS.n}>
+          <div className={CLS.w}>
+            <h3 className={CLS.i}>时间线（{notes.length}）</h3>
+            <span className={CLS.u}>记一条，红色沉默就消失了</span>
           </div>
 
           <div className="quick-note">
@@ -673,7 +674,7 @@ function DetailBody({ api, app }: { api: AppApi; app: Application }) {
             </div>
             <textarea
               id="quick-note"
-              className="textarea"
+              className={CLS.T}
               rows={2}
               value={noteText}
               placeholder="Enter 提交 / Shift+Enter 换行"
@@ -688,7 +689,7 @@ function DetailBody({ api, app }: { api: AppApi; app: Application }) {
             <div className="quick-note__foot">
               <button
                 type="button"
-                className="btn btn--primary btn--small"
+                className={CLS.af}
                 onClick={submitNote}
                 disabled={noteText.trim().length === 0}
               >
@@ -698,7 +699,7 @@ function DetailBody({ api, app }: { api: AppApi; app: Application }) {
           </div>
 
           {notes.length === 0 ? (
-            <p className="muted">还没有任何记录。第一次沟通、第一句「已读」，都值得记下来。</p>
+            <p className={CLS.d}>还没有任何记录。第一次沟通、第一句「已读」，都值得记下来。</p>
           ) : (
             <ol className="timeline">
               {notes.map((note) => (
@@ -713,7 +714,7 @@ function DetailBody({ api, app }: { api: AppApi; app: Application }) {
                       {note.auto ? null : (
                         <button
                           type="button"
-                          className="link-btn link-btn--danger"
+                          className={CLS.aq}
                           onClick={() => {
                             api.deleteNote(note.id);
                             api.toast('已删除这条记录');
@@ -732,14 +733,14 @@ function DetailBody({ api, app }: { api: AppApi; app: Application }) {
         </section>
 
         {/* ---------------- 底部：删除 ---------------- */}
-        <section className="drawer__section drawer__section--danger">
+        <section className={CLS.aS}>
           {confirmDelete ? (
-            <div className="notice notice--danger">
+            <div className={CLS.M}>
               删掉「{app.jobTitle}」这条投递？时间线和面试记录会一起消失，不能撤销。
-              <div className="drawer__row">
+              <div className={CLS.B}>
                 <button
                   type="button"
-                  className="btn btn--small btn--danger"
+                  className={CLS.V}
                   onClick={() => {
                     api.deleteApplication(app.id);
                     api.closeDetail();
@@ -747,13 +748,13 @@ function DetailBody({ api, app }: { api: AppApi; app: Application }) {
                 >
                   确认删除
                 </button>
-                <button type="button" className="btn btn--small" onClick={() => setConfirmDelete(false)}>
+                <button type="button" className={CLS.b} onClick={() => setConfirmDelete(false)}>
                   取消
                 </button>
               </div>
             </div>
           ) : (
-            <button type="button" className="btn btn--small btn--danger-ghost" onClick={() => setConfirmDelete(true)}>
+            <button type="button" className={CLS.ae} onClick={() => setConfirmDelete(true)}>
               删除这条投递
             </button>
           )}
@@ -803,7 +804,7 @@ function RejectRoundPicker({
         <span>
           挂在哪一轮？<span className="reject-picker__opt">（选填，不选也能保存）</span>
         </span>
-        <button type="button" className="link-btn" onClick={onSkip}>
+        <button type="button" className={CLS.k} onClick={onSkip}>
           先不记
         </button>
       </div>
@@ -909,11 +910,11 @@ function statusLabelOf(status: Status): string {
         </div>
       ) : null}
 
-      <div className="drawer__row">
-        <label className="field field--narrow">
-          <span className="field__label">结果</span>
+      <div className={CLS.B}>
+        <label className={CLS.e}>
+          <span className={CLS.a}>结果</span>
           <select
-            className="select"
+            className={CLS.D}
             value={interview.result}
             onChange={(event) => patch({ result: event.target.value as Interview['result'] })}
           >
@@ -937,18 +938,18 @@ function statusLabelOf(status: Status): string {
           <>
             <button
               type="button"
-              className="link-btn"
+              className={CLS.k}
               onClick={() => api.openExperience(existingExperience.id)}
             >
               已有 {experienceQuestionCount} 题 ▸
             </button>
-            <span className="muted">继续补「我当时怎么答的」</span>
+            <span className={CLS.d}>继续补「我当时怎么答的」</span>
           </>
         ) : (
           <>
             <button
               type="button"
-              className="btn btn--small"
+              className={CLS.b}
               onClick={() =>
                 api.openQuickNote({
                   applicationId: interview.applicationId,
@@ -961,7 +962,7 @@ function statusLabelOf(status: Status): string {
             >
               记面经
             </button>
-            <span className="muted">一行一题，面完趁热记</span>
+            <span className={CLS.d}>一行一题，面完趁热记</span>
           </>
         )}
       </div>
@@ -982,7 +983,7 @@ function statusLabelOf(status: Status): string {
         </ul>
         <div className="prep-add">
           <input
-            className="input input--compact"
+            className={CLS.G}
             value={newItem}
             placeholder="＋ 加一条准备项"
             onChange={(event) => setNewItem(event.target.value)}
@@ -997,10 +998,10 @@ function statusLabelOf(status: Status): string {
       </div>
 
       <div className="iv-card__foot">
-        <span className="muted">{fmtTime(interview.scheduledAt)} 开始</span>
+        <span className={CLS.d}>{fmtTime(interview.scheduledAt)} 开始</span>
         <button
           type="button"
-          className="link-btn link-btn--danger"
+          className={CLS.aq}
           onClick={() => {
             api.deleteInterview(interview.id);
             api.toast('已删除这场面试');

@@ -1,3 +1,4 @@
+import { CLS } from '../../lib/classTokens';
 /**
  * `rich_bullets` 字段（ARCH A-06：5 种字段类型只新写 3 个组件，这是第 1 个）。
  *
@@ -45,7 +46,7 @@ export function BulletsField(props: BulletsFieldProps) {
 
   return (
     <div className="bullets">
-      <span className="field__label">{label}</span>
+      <span className={CLS.a}>{label}</span>
       <div className="bullets__rows">
         {rows.map((line, index) => (
           <div className="bullets__row" key={index}>
@@ -59,7 +60,7 @@ export function BulletsField(props: BulletsFieldProps) {
             <div className="bullets__acts">
               <button
                 type="button"
-                className="btn btn--tiny"
+                className={CLS.h}
                 aria-label={`上移第 ${index + 1} 条要点`}
                 disabled={index === 0}
                 onClick={() => onChange(moved(value, index, index - 1))}
@@ -68,7 +69,7 @@ export function BulletsField(props: BulletsFieldProps) {
               </button>
               <button
                 type="button"
-                className="btn btn--tiny"
+                className={CLS.h}
                 aria-label={`下移第 ${index + 1} 条要点`}
                 disabled={index >= value.length - 1}
                 onClick={() => onChange(moved(value, index, index + 1))}
@@ -77,7 +78,7 @@ export function BulletsField(props: BulletsFieldProps) {
               </button>
               <button
                 type="button"
-                className="btn btn--tiny btn--danger-ghost"
+                className={CLS.x}
                 aria-label={`删除第 ${index + 1} 条要点`}
                 onClick={() => removeAt(index)}
               >
@@ -90,14 +91,14 @@ export function BulletsField(props: BulletsFieldProps) {
       <div className="bullets__foot">
         <button
           type="button"
-          className="btn btn--tiny"
+          className={CLS.h}
           // 空数组时那行「空行」只存在于渲染里，不在数据里：再点「加一条」必须
           // 先把这行坐实，否则用户看到的是「怎么点都没反应」（`[...[], '']` = `['']` = 还是一行）
           onClick={() => onChange([...(value.length > 0 ? value : ['']), ''])}
         >
           + 加一条要点
         </button>
-        {hint ? <span className="field__hint">{hint}</span> : null}
+        {hint ? <span className={CLS.c}>{hint}</span> : null}
       </div>
     </div>
   );

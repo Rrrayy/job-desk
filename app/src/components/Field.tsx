@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from 'react';
 import { cx, orDash } from '../lib/util';
+import { CLS } from '../lib/classTokens';
 
 export interface FieldProps {
   label?: string;
@@ -39,10 +40,10 @@ export function Field(props: FieldProps) {
   };
 
   return (
-    <label className={cx('field', narrow && 'field--narrow')}>
-      {label ? <span className="field__label">{label}</span> : null}
+    <label className={cx(CLS.g, narrow && 'field--narrow')}>
+      {label ? <span className={CLS.a}>{label}</span> : null}
       <input
-        className="input"
+        className={CLS.f}
         type={type}
         value={draft}
         min={min}
@@ -62,7 +63,7 @@ export function Field(props: FieldProps) {
           }
         }}
       />
-      {hint ? <span className="field__hint">{hint}</span> : null}
+      {hint ? <span className={CLS.c}>{hint}</span> : null}
     </label>
   );
 }
@@ -80,10 +81,10 @@ export interface SelectFieldProps<T extends string> {
 export function SelectField<T extends string>(props: SelectFieldProps<T>) {
   const { label, value, options, onChange, placeholder = '请选择', narrow } = props;
   return (
-    <label className={cx('field', narrow && 'field--narrow')}>
-      {label ? <span className="field__label">{label}</span> : null}
+    <label className={cx(CLS.g, narrow && 'field--narrow')}>
+      {label ? <span className={CLS.a}>{label}</span> : null}
       <select
-        className="select"
+        className={CLS.D}
         value={value}
         onChange={(event) => onChange(event.target.value as T)}
       >

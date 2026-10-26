@@ -20,6 +20,7 @@ import { TEMPLATE_LIST } from '../../resume/templates';
 import { fmtDateTime } from '../../lib/date';
 import { RESUME_SAMPLE_MIN, buildResumeStats } from '../../lib/rules';
 import { cx } from '../../lib/util';
+import { CLS } from '../../lib/classTokens';
 
 /** 一份简历的投递统计（从版本级聚合归回简历级；旧文本桶不归属任何简历） */
 interface ResumeStats {
@@ -75,21 +76,21 @@ export function ResumeList({ api }: { api: AppApi }) {
       <header className="resume-home__head">
         <div>
           <h2 className="resume-home__title">简历</h2>
-          <p className="field__hint">
+          <p className={CLS.c}>
             草稿可以一直改；投出去的那一版要「存为新版本」冻结下来，投递才绑得住「当时那份」。
           </p>
         </div>
-        <button type="button" className="btn btn--primary" onClick={() => setCreating((open) => !open)}>
+        <button type="button" className={CLS.j} onClick={() => setCreating((open) => !open)}>
           ＋ 新建简历
         </button>
       </header>
 
       {creating ? (
         <div className="resume-home__new">
-          <label className="field">
-            <span className="field__label">名字</span>
+          <label className={CLS.g}>
+            <span className={CLS.a}>名字</span>
             <input
-              className="input"
+              className={CLS.f}
               type="text"
               value={name}
               placeholder="例：前端开发 - 主投"
@@ -103,10 +104,10 @@ export function ResumeList({ api }: { api: AppApi }) {
               }}
             />
           </label>
-          <label className="field">
-            <span className="field__label">模板</span>
+          <label className={CLS.g}>
+            <span className={CLS.a}>模板</span>
             <select
-              className="input"
+              className={CLS.f}
               value={templateId}
               aria-label="模板"
               onChange={(event) => setTemplateId(event.target.value as TemplateId)}
@@ -119,10 +120,10 @@ export function ResumeList({ api }: { api: AppApi }) {
             </select>
           </label>
           <div className="resume-home__new-acts">
-            <button type="button" className="btn btn--primary" onClick={submitCreate}>
+            <button type="button" className={CLS.j} onClick={submitCreate}>
               创建
             </button>
-            <button type="button" className="btn btn--ghost" onClick={() => setCreating(false)}>
+            <button type="button" className={CLS.Q} onClick={() => setCreating(false)}>
               取消
             </button>
           </div>
@@ -168,17 +169,17 @@ export function ResumeList({ api }: { api: AppApi }) {
             <ul className="resume-rows resume-rows--trash">
               {trashed.map((resume) => (
                 <li className="resume-row resume-row--trash" key={resume.id}>
-                  <div className="resume-row__main">
+                  <div className={CLS.aA}>
                     <span className="resume-row__name">{resume.name}</span>
                     <span className="resume-row__meta">删除于 {fmtDateTime(resume.deletedAt ?? '')}</span>
                   </div>
-                  <div className="resume-row__acts">
-                    <button type="button" className="btn btn--tiny" onClick={() => api.resume.restore(resume.id)}>
+                  <div className={CLS.az}>
+                    <button type="button" className={CLS.h} onClick={() => api.resume.restore(resume.id)}>
                       恢复
                     </button>
                     <button
                       type="button"
-                      className="btn btn--tiny btn--danger-ghost"
+                      className={CLS.x}
                       onClick={() => api.resume.purge(resume.id)}
                     >
                       永久删除
@@ -215,9 +216,9 @@ function ResumeRow(props: ResumeRowProps) {
   return (
     <li className={cx('resume-row', isPrimary && 'resume-row--primary')}>
       {renaming ? (
-        <div className="resume-row__main">
+        <div className={CLS.aA}>
           <input
-            className="input input--compact"
+            className={CLS.G}
             type="text"
             value={renameText}
             aria-label="简历名字"
@@ -232,10 +233,10 @@ function ResumeRow(props: ResumeRowProps) {
               if (event.key === 'Escape') onEndRename();
             }}
           />
-          <div className="resume-row__acts">
+          <div className={CLS.az}>
             <button
               type="button"
-              className="btn btn--tiny"
+              className={CLS.h}
               onClick={() => {
                 api.resume.rename(resume.id, renameText);
                 onEndRename();
@@ -243,14 +244,14 @@ function ResumeRow(props: ResumeRowProps) {
             >
               保存
             </button>
-            <button type="button" className="btn btn--tiny btn--ghost" onClick={onEndRename}>
+            <button type="button" className={CLS.F} onClick={onEndRename}>
               取消
             </button>
           </div>
         </div>
       ) : (
         <>
-          <div className="resume-row__main">
+          <div className={CLS.aA}>
             <button type="button" className="resume-row__name" onClick={() => api.resume.open(resume.id)}>
               {resume.name}
             </button>
@@ -268,16 +269,16 @@ function ResumeRow(props: ResumeRowProps) {
               ) : null}
             </span>
           </div>
-          <div className="resume-row__acts">
-            <button type="button" className="btn btn--tiny btn--primary" onClick={() => api.resume.open(resume.id)}>
+          <div className={CLS.az}>
+            <button type="button" className={CLS.ap} onClick={() => api.resume.open(resume.id)}>
               打开
             </button>
-            <button type="button" className="btn btn--tiny btn--ghost" onClick={onStartRename}>
+            <button type="button" className={CLS.F} onClick={onStartRename}>
               重命名
             </button>
             <button
               type="button"
-              className="btn btn--tiny btn--ghost"
+              className={CLS.F}
               title="复制内容，不带版本历史"
               onClick={() => {
                 const id = api.resume.duplicate(resume.id);
@@ -288,7 +289,7 @@ function ResumeRow(props: ResumeRowProps) {
             </button>
             <button
               type="button"
-              className="btn btn--tiny btn--danger-ghost"
+              className={CLS.x}
               onClick={() => api.resume.softDelete(resume.id)}
             >
               删除

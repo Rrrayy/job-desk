@@ -15,6 +15,7 @@
 
 import { useEffect, useRef, useState } from 'react';
 import { PRINT_HINT_LINES, printResume } from '../../resume/print';
+import { CLS } from '../../lib/classTokens';
 
 export interface PrintButtonProps {
   /** 打印前 flush 草稿（T05 传 useResumeDraft 的 flush） */
@@ -65,10 +66,10 @@ export function PrintButton({ onBeforePrint, label = '打印 / 存为 PDF' }: Pr
       >
         {label}
       </button>
-      {error ? <span className="field__hint field__hint--danger">{error}</span> : null}
+      {error ? <span className={CLS.s}>{error}</span> : null}
 
       {hintOpen ? (
-        <div className="overlay" role="presentation" onClick={closeHint}>
+        <div className={CLS.U} role="presentation" onClick={closeHint}>
           <div
             className="modal print-hint"
             role="dialog"
@@ -89,7 +90,7 @@ export function PrintButton({ onBeforePrint, label = '打印 / 存为 PDF' }: Pr
               <button type="button" className="btn" onClick={closeHint}>
                 取消
               </button>
-              <button type="button" className="btn btn--primary" ref={confirmRef} onClick={run}>
+              <button type="button" className={CLS.j} ref={confirmRef} onClick={run}>
                 继续打印
               </button>
             </div>

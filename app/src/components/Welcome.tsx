@@ -1,3 +1,4 @@
+import { CLS } from '../lib/classTokens';
 /** 首次打开的欢迎层：两个入口，绝不自动灌示例数据。 */
 
 export interface WelcomeProps {
@@ -22,7 +23,7 @@ export function Welcome({ onLoadSample, onStart }: WelcomeProps) {
           <li>面试撞课会提醒你，撞期也提醒你</li>
         </ul>
         <div className="welcome__actions">
-          <button type="button" className="btn btn--primary btn--lg" onClick={onLoadSample}>
+          <button type="button" className={CLS.W} onClick={onLoadSample}>
             加载示例数据看看
           </button>
           <button type="button" className="btn btn--lg" onClick={onStart}>

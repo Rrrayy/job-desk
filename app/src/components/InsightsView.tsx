@@ -21,6 +21,7 @@ import { EXPERIENCE_RESULT_LABEL, pendingReviewInterviews, questionsOf } from '.
 import { InsightsTabs } from './interview/InsightsTabs';
 import { InterviewStats } from './interview/InterviewStats';
 import { QuestionBank } from './interview/QuestionBank';
+import { CLS } from '../lib/classTokens';
 
 const pct = (value: number): string => `${Math.round(value * 100)}%`;
 
@@ -31,8 +32,8 @@ export function InsightsView({ api }: { api: AppApi }) {
 
   return (
     <div className="page">
-      <div className="board-head">
-        <h2 className="page__title">复盘</h2>
+      <div className={CLS.ao}>
+        <h2 className={CLS.am}>复盘</h2>
         <InsightsTabs tab={tab} onChange={api.setInsightsTab} pendingCount={pendingReview.length} />
       </div>
 
@@ -56,13 +57,13 @@ function DataTab({ api }: { api: AppApi }) {
 
   if (total === 0) {
     return (
-      <div className="empty-block">
-        <div className="empty-block__emoji">📈</div>
-        <h2 className="empty-block__title">先有数据，才有复盘。</h2>
-        <p className="empty-block__text">
+      <div className={CLS.C}>
+        <div className={CLS.y}>📈</div>
+        <h2 className={CLS.z}>先有数据，才有复盘。</h2>
+        <p className={CLS.A}>
           数据还不够，先记录 5 家 —— 到那时候这里会长出漏斗、渠道回复率和每周节奏。
         </p>
-        <button type="button" className="btn btn--primary btn--lg" onClick={() => api.openNew()}>
+        <button type="button" className={CLS.W} onClick={() => api.openNew()}>
           ＋ 记第一家
         </button>
       </div>
@@ -71,7 +72,7 @@ function DataTab({ api }: { api: AppApi }) {
 
   return (
     <>
-      <span className="page__sub">
+      <span className={CLS.ad}>
         共 {total} 条投递 · 本周新增 {weekly} 家
       </span>
 
@@ -82,13 +83,13 @@ function DataTab({ api }: { api: AppApi }) {
       ) : null}
 
       <div className="insight-grid">
-        <section className="card">
-          <header className="card__head">
-            <h2 className="card__title">漏斗</h2>
-            <span className="card__hint">每一阶段 = 走到这一步及以后的公司数</span>
+        <section className={CLS.v}>
+          <header className={CLS.t}>
+            <h2 className={CLS.l}>漏斗</h2>
+            <span className={CLS.u}>每一阶段 = 走到这一步及以后的公司数</span>
           </header>
           {topCount === 0 ? (
-            <p className="muted">还没有投出去任何一家，漏斗是空的。</p>
+            <p className={CLS.d}>还没有投出去任何一家，漏斗是空的。</p>
           ) : (
             <div className="funnel">
               {funnel.map((stage, index) => {
@@ -110,24 +111,24 @@ function DataTab({ api }: { api: AppApi }) {
           )}
         </section>
 
-        <section className="card">
-          <header className="card__head">
-            <h2 className="card__title">渠道回复率</h2>
-            <span className="card__hint">走到「已沟通」及以后算有回复</span>
+        <section className={CLS.v}>
+          <header className={CLS.t}>
+            <h2 className={CLS.l}>渠道回复率</h2>
+            <span className={CLS.u}>走到「已沟通」及以后算有回复</span>
           </header>
           {channels.length === 0 ? (
-            <p className="muted">还没记录渠道。</p>
+            <p className={CLS.d}>还没记录渠道。</p>
           ) : (
             <ul className="stat-list">
               {channels.map((stat) => (
                 <li key={stat.channel} className="stat-row">
-                  <span className="stat-row__label">{CHANNEL_LABEL[stat.channel]}</span>
-                  <div className="stat-row__track">
+                  <span className={CLS.aI}>{CHANNEL_LABEL[stat.channel]}</span>
+                  <div className={CLS.aJ}>
                     <div className="stat-row__bar" style={{ width: `${Math.max(3, stat.rate * 100)}%` }} />
                   </div>
-                  <span className="stat-row__value">
+                  <span className={CLS.aK}>
                     {pct(stat.rate)}
-                    <span className="stat-row__sub">
+                    <span className={CLS.aN}>
                       {stat.replied}/{stat.total}
                     </span>
                   </span>
@@ -135,18 +136,18 @@ function DataTab({ api }: { api: AppApi }) {
               ))}
             </ul>
           )}
-          <p className="card__foot">
+          <p className={CLS.R}>
             样本少于 3 家的渠道，百分比仅供参考 —— 内推 1 家 100% 不代表什么。
           </p>
         </section>
 
-        <section className="card">
-          <header className="card__head">
-            <h2 className="card__title">简历版本面试率</h2>
-            <span className="card__hint">有任意面试记录即算进面</span>
+        <section className={CLS.v}>
+          <header className={CLS.t}>
+            <h2 className={CLS.l}>简历版本面试率</h2>
+            <span className={CLS.u}>有任意面试记录即算进面</span>
           </header>
           {resumes.length === 0 ? (
-            <p className="muted">还没记录简历版本。</p>
+            <p className={CLS.d}>还没记录简历版本。</p>
           ) : (
             <ul className="stat-list">
               {resumes.map((stat) => (
@@ -154,16 +155,16 @@ function DataTab({ api }: { api: AppApi }) {
                 // 被删的版本还共用同一段兜底文案 —— 用 id 当 key 才不会撞键。
                 // 没有 id 的两类桶（旧数据 / 未标注）文案天然不同，退回用文案即可。
                 <li key={stat.versionId ?? stat.label} className="stat-row">
-                  <span className="stat-row__label">{stat.version}</span>
-                  <div className="stat-row__track">
+                  <span className={CLS.aI}>{stat.version}</span>
+                  <div className={CLS.aJ}>
                     <div
                       className="stat-row__bar stat-row__bar--alt"
                       style={{ width: `${Math.max(3, stat.rate * 100)}%` }}
                     />
                   </div>
-                  <span className="stat-row__value">
+                  <span className={CLS.aK}>
                     {pct(stat.rate)}
-                    <span className="stat-row__sub">
+                    <span className={CLS.aN}>
                       {stat.interviewed}/{stat.total}
                     </span>
                   </span>
@@ -173,10 +174,10 @@ function DataTab({ api }: { api: AppApi }) {
           )}
         </section>
 
-        <section className="card">
-          <header className="card__head">
-            <h2 className="card__title">每周投递量</h2>
-            <span className="card__hint">最近 8 周</span>
+        <section className={CLS.v}>
+          <header className={CLS.t}>
+            <h2 className={CLS.l}>每周投递量</h2>
+            <span className={CLS.u}>最近 8 周</span>
           </header>
           <div className="weeks">
             {weeks.map((week, index) => (
@@ -192,7 +193,7 @@ function DataTab({ api }: { api: AppApi }) {
               </div>
             ))}
           </div>
-          <p className="card__foot">
+          <p className={CLS.R}>
             本周 {weekly}/{db.settings.weeklyApplyGoal} 家。
             {weekly > 12 ? '投得有点猛了，先把跟进做完再撒网。' : '节奏还行，稳住。'}
           </p>
@@ -219,12 +220,12 @@ function InterviewTab({ api, pendingCount }: { api: AppApi; pendingCount: number
   return (
     <>
       <div className="exp__head">
-        <span className="page__sub">
+        <span className={CLS.ad}>
           {experiences.length} 场面经 · {db.questions.length} 道题
           {pendingCount > 0 ? ` · ${pendingCount} 场面试还没复盘` : ''}
         </span>
         <div className="exp__head-actions">
-          <button type="button" className="btn btn--primary btn--small" onClick={() => api.openQuickNote()}>
+          <button type="button" className={CLS.af} onClick={() => api.openQuickNote()}>
             ＋ 记面经
           </button>
           <label className="exp__desensitize">
@@ -237,7 +238,7 @@ function InterviewTab({ api, pendingCount }: { api: AppApi; pendingCount: number
           </label>
           <button
             type="button"
-            className="btn btn--small"
+            className={CLS.b}
             onClick={() => api.exportExperienceMarkdown(experiences, { desensitize })}
             disabled={experiences.length === 0}
           >
@@ -246,29 +247,29 @@ function InterviewTab({ api, pendingCount }: { api: AppApi; pendingCount: number
         </div>
       </div>
 
-      <section className="card">
-        <header className="card__head">
-          <h2 className="card__title">面经统计</h2>
-          <span className="card__hint">哪类题最容易挂 · 这家爱问什么</span>
+      <section className={CLS.v}>
+        <header className={CLS.t}>
+          <h2 className={CLS.l}>面经统计</h2>
+          <span className={CLS.u}>哪类题最容易挂 · 这家爱问什么</span>
         </header>
         <InterviewStats db={db} />
       </section>
 
-      <section className="card">
-        <header className="card__head">
-          <h2 className="card__title">题库与复习</h2>
-          <span className="card__hint">不会的排前面，到期的标红</span>
+      <section className={CLS.v}>
+        <header className={CLS.t}>
+          <h2 className={CLS.l}>题库与复习</h2>
+          <span className={CLS.u}>不会的排前面，到期的标红</span>
         </header>
         <QuestionBank api={api} onRecord={() => api.openQuickNote()} />
       </section>
 
-      <section className="card">
-        <header className="card__head">
-          <h2 className="card__title">面经列表</h2>
-          <span className="card__hint">点开补「我当时怎么答的」</span>
+      <section className={CLS.v}>
+        <header className={CLS.t}>
+          <h2 className={CLS.l}>面经列表</h2>
+          <span className={CLS.u}>点开补「我当时怎么答的」</span>
         </header>
         {experiences.length === 0 ? (
-          <p className="muted">还没有面经。点右上角「＋ 记面经」，一行一题，90 秒能记 5 题。</p>
+          <p className={CLS.d}>还没有面经。点右上角「＋ 记面经」，一行一题，90 秒能记 5 题。</p>
         ) : (
           <ul className="exp__list">
             {experiences.map((experience) => {

@@ -9,6 +9,7 @@
 
 import type { DB } from '../../types';
 import { statsByCategory, statsByCompany, statsByRootCause } from '../../lib/interview';
+import { CLS } from '../../lib/classTokens';
 
 export function InterviewStats({ db }: { db: DB }) {
   const byCategory = statsByCategory(db);
@@ -19,10 +20,10 @@ export function InterviewStats({ db }: { db: DB }) {
 
   if (totalQuestions === 0) {
     return (
-      <div className="empty-block">
-        <div className="empty-block__emoji">📝</div>
-        <div className="empty-block__title">还没有面经数据</div>
-        <p className="empty-block__text">
+      <div className={CLS.C}>
+        <div className={CLS.y}>📝</div>
+        <div className={CLS.z}>还没有面经数据</div>
+        <p className={CLS.A}>
           面完一场就点「＋ 记面经」，一行一题记下来（Enter 连记，90 秒能记 5 题）。
           记满 3 场之后，这里会告诉你「哪类题最容易挂」和「这家公司爱问什么」。
         </p>
@@ -33,25 +34,25 @@ export function InterviewStats({ db }: { db: DB }) {
   return (
     <div className="exp__stats">
       <div className="exp__stat-cards">
-        <div className="exp__stat-card">
-          <span className="exp__stat-value">{totalExperiences}</span>
-          <span className="exp__stat-label">场面试</span>
+        <div className={CLS.aL}>
+          <span className={CLS.aG}>{totalExperiences}</span>
+          <span className={CLS.aE}>场面试</span>
         </div>
-        <div className="exp__stat-card">
-          <span className="exp__stat-value">{totalQuestions}</span>
-          <span className="exp__stat-label">道题</span>
+        <div className={CLS.aL}>
+          <span className={CLS.aG}>{totalQuestions}</span>
+          <span className={CLS.aE}>道题</span>
         </div>
-        <div className="exp__stat-card">
-          <span className="exp__stat-value">{db.questions.filter((q) => q.mastery === 0).length}</span>
-          <span className="exp__stat-label">还不会</span>
+        <div className={CLS.aL}>
+          <span className={CLS.aG}>{db.questions.filter((q) => q.mastery === 0).length}</span>
+          <span className={CLS.aE}>还不会</span>
         </div>
       </div>
 
-      <section className="exp__stat-block">
-        <h3 className="exp__stat-title">哪类题最容易挂</h3>
+      <section className={CLS.aD}>
+        <h3 className={CLS.aF}>哪类题最容易挂</h3>
         <p className="exp__stat-hint">分母是「挂掉的场次数」—— 同一场里同类题只算一次，避免一道题重复计。</p>
         {byCategory.length === 0 ? (
-          <p className="muted">还没有标记分类的题目。记面经时顺手选一下分类就能看出来。</p>
+          <p className={CLS.d}>还没有标记分类的题目。记面经时顺手选一下分类就能看出来。</p>
         ) : (
           <ul className="exp__bars">
             {byCategory.map((stat) => (
@@ -69,17 +70,17 @@ export function InterviewStats({ db }: { db: DB }) {
         )}
       </section>
 
-      <section className="exp__stat-block">
-        <h3 className="exp__stat-title">公司高频题（Top 5 公司）</h3>
+      <section className={CLS.aD}>
+        <h3 className={CLS.aF}>公司高频题（Top 5 公司）</h3>
         {byCompany.length === 0 ? (
-          <p className="muted">还没有数据。</p>
+          <p className={CLS.d}>还没有数据。</p>
         ) : (
           <ul className="exp__company-list">
             {byCompany.map((company) => (
               <li key={company.companyName} className="exp__company-item">
                 <div className="exp__company-head">
                   <strong>{company.companyName}</strong>
-                  <span className="muted">{company.totalQuestions} 题</span>
+                  <span className={CLS.d}>{company.totalQuestions} 题</span>
                 </div>
                 <ul className="exp__company-questions">
                   {company.items.slice(0, 3).map((item) => (
@@ -95,10 +96,10 @@ export function InterviewStats({ db }: { db: DB }) {
         )}
       </section>
 
-      <section className="exp__stat-block">
-        <h3 className="exp__stat-title">挂的原因分布</h3>
+      <section className={CLS.aD}>
+        <h3 className={CLS.aF}>挂的原因分布</h3>
         {byRootCause.length === 0 ? (
-          <p className="muted">还没有标记原因。复盘时标一次，下次就知道该练什么。</p>
+          <p className={CLS.d}>还没有标记原因。复盘时标一次，下次就知道该练什么。</p>
         ) : (
           <ul className="exp__bars">
             {byRootCause.map((stat) => {

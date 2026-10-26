@@ -18,6 +18,7 @@ import type { Application } from '../types';
 import { candidateVersions, resolveBoundVersion } from '../resume/bind';
 import { fmtDateTime } from '../lib/date';
 import { cx } from '../lib/util';
+import { CLS } from '../lib/classTokens';
 
 const STATE_TEXT: Record<string, string> = {
   bound: '',
@@ -37,8 +38,8 @@ export function BindVersionSelect({ api, app }: { api: AppApi; app: Application 
 
   return (
     <div className="bind">
-      <label className="field">
-        <span className="field__label">简历版本</span>
+      <label className={CLS.g}>
+        <span className={CLS.a}>简历版本</span>
         <select
           className={cx('input bind__select', view.state === 'dangling' && 'bind__select--dangling')}
           aria-label="绑定的简历版本"

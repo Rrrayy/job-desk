@@ -12,6 +12,7 @@ import { rowSummaryText } from '../../lib/sync/engine';
 import { ALL_STATUSES, STATUS_LABEL } from '../../lib/rules';
 import type { Status } from '../../types';
 import { KindBadge, ConfidenceBadge } from './badges';
+import { CLS } from '../../lib/classTokens';
 
 export interface Step3ConfirmProps {
   plan: MergePlan;
@@ -33,9 +34,9 @@ export function Step3Confirm(props: Step3ConfirmProps) {
   const conflictCount = plan.rows.filter((row) => row.kind === 'conflict').length;
 
   return (
-    <section className="sync__step">
-      <div className="sync__step-head">
-        <h3 className="sync__step-title">③ 逐项确认</h3>
+    <section className={CLS.S}>
+      <div className={CLS.P}>
+        <h3 className={CLS.O}>③ 逐项确认</h3>
         <span className="sync__hint">
           已勾选 <strong>{checkedCount}</strong> / 可写{' '}
           {plan.rows.filter((row) => SELECTABLE.includes(row.kind)).length}
@@ -43,21 +44,21 @@ export function Step3Confirm(props: Step3ConfirmProps) {
       </div>
 
       <div className="sync__bulk">
-        <button type="button" className="btn btn--small" onClick={() => onCheckOnly('new')}>
+        <button type="button" className={CLS.b} onClick={() => onCheckOnly('new')}>
           只勾新增（{plan.counts.new}）
         </button>
-        <button type="button" className="btn btn--small" onClick={() => onCheckOnly('update')}>
+        <button type="button" className={CLS.b} onClick={() => onCheckOnly('update')}>
           只勾更新（{plan.counts.update}）
         </button>
         <button
           type="button"
-          className="btn btn--small btn--primary"
+          className={CLS.o}
           onClick={onCheckConflicts}
           disabled={conflictCount === 0}
         >
           全勾冲突（{conflictCount}）
         </button>
-        <button type="button" className="btn btn--small" onClick={onUncheckAll}>
+        <button type="button" className={CLS.b} onClick={onUncheckAll}>
           全不勾
         </button>
         <span className="muted sync__bulk-hint">默认勾选按「高置信度优先」，冲突默认不勾。</span>
@@ -117,7 +118,7 @@ export function Step3Confirm(props: Step3ConfirmProps) {
                     <label className="sync__manual-status">
                       <span>人工指定状态（当场归类，按新增写入）：</span>
                       <select
-                        className="select select--compact"
+                        className={CLS.q}
                         value=""
                         onChange={(event) => {
                           const value = event.target.value as Status;
@@ -156,7 +157,7 @@ export function Step3Confirm(props: Step3ConfirmProps) {
       </ul>
 
       {checkedCount === 0 ? (
-        <div className="notice notice--warn">
+        <div className={CLS.N}>
           当前一条都没勾。确认合并不会修改任何投递，但会把「待归类 / 冲突」的行放进暂存区。
         </div>
       ) : null}

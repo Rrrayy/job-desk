@@ -10,6 +10,7 @@ import type { Channel, Status } from '../types';
 import { CHANNEL_LABEL, CHANNEL_OPTIONS, STATUS_LABEL } from '../lib/rules';
 import { todayISO } from '../lib/date';
 import { cx } from '../lib/util';
+import { CLS } from '../lib/classTokens';
 
 export interface QuickAddProps {
   api: AppApi;
@@ -110,7 +111,7 @@ export function QuickAdd({ api, initialStatus, onClose }: QuickAddProps) {
 
   return (
     <div
-      className="overlay"
+      className={CLS.U}
       onClick={onClose}
       onKeyDown={(event) => {
         if (event.key === 'Escape') {
@@ -120,17 +121,17 @@ export function QuickAdd({ api, initialStatus, onClose }: QuickAddProps) {
       }}
     >
       <div className="modal modal--quickadd" onClick={(event) => event.stopPropagation()}>
-        <header className="modal__head">
-          <h2 className="modal__title">＋ 记一家</h2>
-          <button type="button" className="icon-btn" onClick={onClose} title="关闭（Esc）" aria-label="关闭">
+        <header className={CLS.ac}>
+          <h2 className={CLS.Y}>＋ 记一家</h2>
+          <button type="button" className={CLS.m} onClick={onClose} title="关闭（Esc）" aria-label="关闭">
             ✕
           </button>
         </header>
 
-        <div className="modal__body">
+        <div className={CLS.aa}>
           <div className="qa-row">
-            <label className="field">
-              <span className="field__label">公司名 *</span>
+            <label className={CLS.g}>
+              <span className={CLS.a}>公司名 *</span>
               <input
                 ref={companyRef}
                 className="input input--lg"
@@ -148,8 +149,8 @@ export function QuickAdd({ api, initialStatus, onClose }: QuickAddProps) {
                 }}
               />
             </label>
-            <label className="field">
-              <span className="field__label">岗位名 *</span>
+            <label className={CLS.g}>
+              <span className={CLS.a}>岗位名 *</span>
               <input
                 ref={jobRef}
                 className="input input--lg"
@@ -213,14 +214,14 @@ export function QuickAdd({ api, initialStatus, onClose }: QuickAddProps) {
 
           {more ? (
             <div className="qa-more-grid">
-              <label className="field field--narrow">
-                <span className="field__label">城市</span>
-                <input className="input" value={city} onChange={(event) => setCity(event.target.value)} placeholder="北京" />
+              <label className={CLS.e}>
+                <span className={CLS.a}>城市</span>
+                <input className={CLS.f} value={city} onChange={(event) => setCity(event.target.value)} placeholder="北京" />
               </label>
-              <label className="field field--narrow">
-                <span className="field__label">渠道</span>
+              <label className={CLS.e}>
+                <span className={CLS.a}>渠道</span>
                 <select
-                  className="select"
+                  className={CLS.D}
                   value={channel}
                   onChange={(event) => setChannel(event.target.value as Channel | '')}
                 >
@@ -232,37 +233,37 @@ export function QuickAdd({ api, initialStatus, onClose }: QuickAddProps) {
                   ))}
                 </select>
               </label>
-              <label className="field field--narrow">
-                <span className="field__label">投递日期</span>
+              <label className={CLS.e}>
+                <span className={CLS.a}>投递日期</span>
                 <input
-                  className="input"
+                  className={CLS.f}
                   type="date"
                   value={appliedAt}
                   onChange={(event) => setAppliedAt(event.target.value)}
                 />
               </label>
-              <label className="field field--narrow">
-                <span className="field__label">简历版本</span>
+              <label className={CLS.e}>
+                <span className={CLS.a}>简历版本</span>
                 <input
-                  className="input"
+                  className={CLS.f}
                   value={resumeVersion}
                   onChange={(event) => setResumeVersion(event.target.value)}
                   placeholder="v3-前端-项目版"
                 />
               </label>
-              <label className="field field--narrow">
-                <span className="field__label">薪资原文</span>
+              <label className={CLS.e}>
+                <span className={CLS.a}>薪资原文</span>
                 <input
-                  className="input"
+                  className={CLS.f}
                   value={salaryText}
                   onChange={(event) => setSalaryText(event.target.value)}
                   placeholder="200-300/天"
                 />
               </label>
-              <label className="field field--narrow">
-                <span className="field__label">每周到岗（天）</span>
+              <label className={CLS.e}>
+                <span className={CLS.a}>每周到岗（天）</span>
                 <input
-                  className="input"
+                  className={CLS.f}
                   type="number"
                   min={1}
                   max={7}
@@ -271,10 +272,10 @@ export function QuickAdd({ api, initialStatus, onClose }: QuickAddProps) {
                   placeholder="3"
                 />
               </label>
-              <label className="field field--narrow">
-                <span className="field__label">可实习（月）</span>
+              <label className={CLS.e}>
+                <span className={CLS.a}>可实习（月）</span>
                 <input
-                  className="input"
+                  className={CLS.f}
                   type="number"
                   min={1}
                   value={durationMonths}
@@ -282,10 +283,10 @@ export function QuickAdd({ api, initialStatus, onClose }: QuickAddProps) {
                   placeholder="4"
                 />
               </label>
-              <label className="field">
-                <span className="field__label">JD 链接</span>
+              <label className={CLS.g}>
+                <span className={CLS.a}>JD 链接</span>
                 <input
-                  className="input"
+                  className={CLS.f}
                   value={jdUrl}
                   onChange={(event) => setJdUrl(event.target.value)}
                   placeholder="https://"
@@ -297,7 +298,7 @@ export function QuickAdd({ api, initialStatus, onClose }: QuickAddProps) {
           {added > 0 ? <p className="qa-toast">+{added}，继续记下一家</p> : null}
         </div>
 
-        <footer className="modal__foot">
+        <footer className={CLS.ab}>
           <span className={cx('qa-hint', !canSave && 'is-warn')}>
             {canSave ? 'Enter 保存，Esc 退出' : '填公司名和岗位名就能保存'}
           </span>
@@ -305,7 +306,7 @@ export function QuickAdd({ api, initialStatus, onClose }: QuickAddProps) {
             <button type="button" className="btn" onClick={onClose}>
               关掉
             </button>
-            <button type="button" className="btn btn--primary" onClick={save} disabled={!canSave}>
+            <button type="button" className={CLS.j} onClick={save} disabled={!canSave}>
               {duplicate && !dupConfirmed ? '仍然保存' : '保存并继续'}
             </button>
           </div>

@@ -28,6 +28,7 @@ import { PrintButton } from './PrintButton';
 import { VersionMenu } from './VersionMenu';
 import { AiScenarioPanel } from '../ai/AiScenarioPanel';
 import { ReportCard } from './ReportCard';
+import { CLS } from '../../lib/classTokens';
 
 export function ResumeEditor({ api, resume }: { api: AppApi; resume: Resume }) {
   const { draft, update, flush } = useResumeDraft({
@@ -77,7 +78,7 @@ export function ResumeEditor({ api, resume }: { api: AppApi; resume: Resume }) {
   return (
     <div className="resume-editor">
       <header className="resume-editor__bar">
-        <button type="button" className="btn btn--small btn--ghost" onClick={() => api.resume.close()}>
+        <button type="button" className={CLS.E} onClick={() => api.resume.close()}>
           ← 全部简历
         </button>
         <h2 className="resume-editor__name">{resume.name}</h2>
@@ -89,7 +90,7 @@ export function ResumeEditor({ api, resume }: { api: AppApi; resume: Resume }) {
           <PrintButton onBeforePrint={flush} />
           <button
             type="button"
-            className="btn btn--small btn--ghost"
+            className={CLS.E}
             disabled={!aiReady}
             title={aiReady ? '选中一个板块让 AI 重写' : api.ai.readyReason ?? 'AI 服务未配置'}
             onClick={() => setAiScenario('d19-polish')}
@@ -98,7 +99,7 @@ export function ResumeEditor({ api, resume }: { api: AppApi; resume: Resume }) {
           </button>
           <button
             type="button"
-            className="btn btn--small btn--ghost"
+            className={CLS.E}
             disabled={!aiReady}
             title={aiReady ? '按目标岗位诊断 1–3 个板块' : api.ai.readyReason ?? 'AI 服务未配置'}
             onClick={() => setAiScenario('d19-diag')}

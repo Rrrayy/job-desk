@@ -16,6 +16,7 @@
 
 import { useState } from 'react';
 import type { PreviewField } from '../../ai/types';
+import { CLS } from '../../lib/classTokens';
 
 /** 默认勾选基线（PRD 验收 8）。改动这里必须同步 SendPreviewDialog.test.tsx 的基线断言 */
 export const SEND_PREVIEW_DEFAULT_CHECKED: ReadonlySet<string> = new Set([
@@ -77,7 +78,7 @@ export function SendPreviewDialog(props: SendPreviewDialogProps): JSX.Element {
   const selectedCount = fields.filter((field) => checked.has(field.name)).length;
 
   return (
-    <div className="overlay" onClick={onCancel}>
+    <div className={CLS.U} onClick={onCancel}>
       <div
         className="modal"
         role="dialog"
@@ -86,18 +87,18 @@ export function SendPreviewDialog(props: SendPreviewDialogProps): JSX.Element {
         data-testid="send-preview"
         onClick={(event) => event.stopPropagation()}
       >
-        <header className="modal__head">
-          <h2 className="modal__title">{title}</h2>
-          <button type="button" className="icon-btn" onClick={onCancel} aria-label="关闭">
+        <header className={CLS.ac}>
+          <h2 className={CLS.Y}>{title}</h2>
+          <button type="button" className={CLS.m} onClick={onCancel} aria-label="关闭">
             ×
           </button>
         </header>
-        <div className="modal__body">
-          <p className="field__hint" data-testid="send-preview-meta">
+        <div className={CLS.aa}>
+          <p className={CLS.c} data-testid="send-preview-meta">
             模型 <strong>{model || '（未配置）'}</strong> @ <code>{baseURL || '（未配置）'}</code>
             {isLocal ? ' · 本机端口，请求不出公网' : ''}
           </p>
-          <p className="field__hint">
+          <p className={CLS.c}>
             下方是这次请求会带上的内容。**只勾选你愿意发给这个模型的字段**；
             取消则什么都不发送。本次确认只对这一次发送生效。
           </p>
@@ -105,36 +106,36 @@ export function SendPreviewDialog(props: SendPreviewDialogProps): JSX.Element {
             {fields.map((field) => {
               const isChecked = field.locked || checked.has(field.name);
               return (
-                <label key={field.name} className="field" data-testid={`preview-field-${field.name}`}>
+                <label key={field.name} className={CLS.g} data-testid={`preview-field-${field.name}`}>
                   <input
                     type="checkbox"
                     checked={isChecked}
                     disabled={field.locked === true}
                     onChange={(event) => toggle(field.name, event.target.checked)}
                   />
-                  <span className="field__label">
+                  <span className={CLS.a}>
                     {field.label}
                     {field.locked ? '（必发）' : ''}
                   </span>
-                  <span className="field__hint">{field.value || '（空）'}</span>
+                  <span className={CLS.c}>{field.value || '（空）'}</span>
                 </label>
               );
             })}
           </div>
           {selectedCount === 0 ? (
-            <p className="field__hint field__hint--danger">没有勾选任何字段 —— 空请求没有意义，发送按钮已禁用。</p>
+            <p className={CLS.s}>没有勾选任何字段 —— 空请求没有意义，发送按钮已禁用。</p>
           ) : null}
         </div>
-        <footer className="modal__foot">
-          <span className="field__hint">
+        <footer className={CLS.ab}>
+          <span className={CLS.c}>
             发起方 <code>{pluginId}</code> · 已选 {selectedCount} / {fields.length} 项
           </span>
-          <button type="button" className="btn btn--ghost" onClick={onCancel}>
+          <button type="button" className={CLS.Q} onClick={onCancel}>
             取消
           </button>
           <button
             type="button"
-            className="btn btn--primary"
+            className={CLS.j}
             data-testid="send-preview-confirm"
             onClick={confirm}
             disabled={selectedCount === 0}

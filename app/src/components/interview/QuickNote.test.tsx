@@ -16,6 +16,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { QuickNote } from './QuickNote';
 import type { AppApi, QuickNoteInput, QuickNoteResult } from '../../lib/api';
 import { emptyDB } from '../../lib/defaults';
+import { buildQuestionRows } from '../../lib/interview';
 
 const NOW = new Date(2026, 9, 20, 10, 0, 0);
 
@@ -221,5 +222,54 @@ describe('QuickNote 逐题选择掌握度 / 分类（jsdom）', () => {
 
     expect(api.toast).toHaveBeenCalledWith(expect.stringContaining('1 题重复或超长已跳过'));
     expect(onClose).toHaveBeenCalledTimes(1);
+  });
+
+  /**
+   * ★ v0.9.1 勘误回归（RELEASE-NOTES-v0.9.0 §4 第 3 条的更正）。
+   *
+   * 发布说明曾写「快记类别无法落库由整段录入路径（d14-bulk）修复；**逐题手录路径不变**」。
+   * 这是错的 —— 逐题手录路径一直是通的，修它的是 R-QB-1 / T-QB。
+   *
+   * 这条断言的价值不是「今天它是对的」（上面几条已经证明了），而是**把勘误变成一个
+   * 可执行的结论**：它把 QuickNote 吐出来的 items 真的喂给 `buildQuestionRows`
+   * （App.addQuickNote 用的就是它），断言最终写进库的 `Question.category` 就等于
+   * 用户在下拉里选的那个分类。将来任何人把这条链路改回去（删掉 `line.category`、
+   * 改掉入参字段名、把 `?? null` 写死），这里会红，而不会被一句「路径不变」糊过去。
+   */
+  it('★ v0.9.1 勘误回归：逐题手录路径的 category 真的落库（发布说明 §4 曾写错）', async () => {
+    const api = makeApi();
+    await render(api);
+
+    // 只录一题（不经过任何「整段录入」入口），把分类改成算法
+    await act(async () => setValue(companyInput(), '字节跳动'));
+    await act(async () => setValue(draftInput(), '手写 Promise.all'));
+    await act(async () => pressEnter(draftInput()));
+    await act(async () => setSelect(pick(1, '分类'), 'algo'));
+    await act(async () => setSelect(pick(1, '掌握度'), '2'));
+    await act(async () => clickText('记完了'));
+
+    const input = firstCall(api);
+    // 走真实的下游写库函数（App.addQuickNote 就是这一行）
+    const experience = {
+      id: 'exp_1',
+      applicationId: null,
+      companyName: input.experience.companyName,
+      interviewDate: input.experience.interviewDate,
+      round: null,
+      result: input.experience.result,
+      source: 'self' as const,
+      createdAt: '2026-10-20T02:00:00.000Z',
+      updatedAt: '2026-10-20T02:00:00.000Z',
+    };
+    const rows = buildQuestionRows({
+      experience,
+      items: input.items,
+      now: '2026-10-20T02:00:00.000Z',
+      makeId: (prefix) => `${prefix}_1`,
+    });
+
+    expect(rows).toHaveLength(1);
+    expect(rows[0].category).toBe('algo');
+    expect(rows[0].mastery).toBe(2);
   });
 });

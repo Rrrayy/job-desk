@@ -7,14 +7,15 @@ import type { MergePlan, PlannedRow } from '../../lib/sync/types';
 import { fieldLabel, rowSummaryText } from '../../lib/sync/engine';
 import { STATUS_LABEL } from '../../lib/rules';
 import { KindBadge, ConfidenceBadge, BlockedHint } from './badges';
+import { CLS } from '../../lib/classTokens';
 
 export function Step2Preview({ plan }: { plan: MergePlan }) {
   const { counts } = plan;
 
   return (
-    <section className="sync__step">
-      <div className="sync__step-head">
-        <h3 className="sync__step-title">② 预览差异</h3>
+    <section className={CLS.S}>
+      <div className={CLS.P}>
+        <h3 className={CLS.O}>② 预览差异</h3>
         <span className="sync__hint">识别 {plan.parsedCount} 条</span>
       </div>
 
@@ -27,7 +28,7 @@ export function Step2Preview({ plan }: { plan: MergePlan }) {
       </div>
 
       {plan.unparsed.length > 0 ? (
-        <div className="notice notice--warn">
+        <div className={CLS.N}>
           <strong>{plan.unparsed.length} 条没解析出来（不会丢，会进「待归类」）</strong>
           <ul className="sync__unparsed">
             {plan.unparsed.slice(0, 8).map((item, index) => (
@@ -38,7 +39,7 @@ export function Step2Preview({ plan }: { plan: MergePlan }) {
             ))}
           </ul>
           {plan.unparsed.length > 8 ? (
-            <p className="muted">还有 {plan.unparsed.length - 8} 条，合并后在暂存区可以逐条处理。</p>
+            <p className={CLS.d}>还有 {plan.unparsed.length - 8} 条，合并后在暂存区可以逐条处理。</p>
           ) : null}
         </div>
       ) : null}

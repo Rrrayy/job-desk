@@ -230,12 +230,27 @@ export function restoreResume(draft: DB, resumeId: string): boolean {
   return true;
 }
 
-/** 永久删除简历（连同其下全部版本，含回收站里的）—— 不可撤销，UI 必须二次确认 */
+/**
+ * 永久删除简历（连同其下全部版本，含回收站里的）—— 不可撤销，UI 必须二次确认。
+ *
+ * ★ v0.9.1 补：主版本指针若指向这份简历下的版本，一并摘掉。
+ * 之前这里留着悬空指针，而 `softDeleteVersion` / `purgeVersion` 都会摘 ——
+ * 同一件事三条路径两种做法，等于「删到哪种程度才取消默认绑定」变成了碰运气。
+ * 指针本身不是用户资产（它只是「新建投递默认绑谁」），但**指向一个已经不存在的东西**
+ * 会让「默认绑定」在用户不知情的情况下失效，所以按铁律 6 归到「不许静默变」的一侧。
+ */
 export function purgeResume(draft: DB, resumeId: string): boolean {
   const exists = draft.resumes.some((resume) => resume.id === resumeId);
   if (!exists) return false;
   draft.resumes = draft.resumes.filter((resume) => resume.id !== resumeId);
+  const owned = new Set(
+    draft.resumeVersions.filter((version) => version.resumeId === resumeId).map((version) => version.id),
+  );
   draft.resumeVersions = draft.resumeVersions.filter((version) => version.resumeId !== resumeId);
+  const primary = draft.settings.defaultResumeVersionId;
+  if (primary !== undefined && owned.has(primary)) {
+    draft.settings = { ...draft.settings, defaultResumeVersionId: undefined };
+  }
   return true;
 }
 
@@ -291,10 +306,15 @@ export function renameVersion(draft: DB, versionId: string, label: string): bool
  *
  * 只允许指向**活着的**版本：主版本是「新建投递时默认绑定谁」，
  * 指向一个回收站里的版本等于默认绑一个已经删掉的东西。
+ *
+ * 返回 `false` 的两种情形都是「什么都没改」：目标不存在 / 已软删，或者
+ * **它本来就是主版本**。后者刻意也算 false —— 与 `renameVersion`「名字没变不算改动」
+ * 同款口径，`runResumeOp` 据此不再压一个「撤销了也不会发生任何事」的撤销点。
  */
 export function setPrimaryVersion(draft: DB, versionId: string): boolean {
   const target = draft.resumeVersions.find((version) => version.id === versionId && !isDeleted(version));
   if (!target) return false;
+  if (draft.settings.defaultResumeVersionId === versionId) return false;
   draft.settings = { ...draft.settings, defaultResumeVersionId: versionId };
   return true;
 }
@@ -328,6 +348,61 @@ export function purgeVersion(draft: DB, versionId: string): boolean {
     draft.settings = { ...draft.settings, defaultResumeVersionId: undefined };
   }
   return true;
+}
+
+/* ------------------------------ 主版本指针的告知（v0.9.1 / T1-b） ------------------------------ */
+
+/**
+ * 按 id 取版本名，用于告知文案。
+ *
+ * 已软删的版本名后面补「（已删除）」：用户需要知道「被顶掉的是哪一版」，
+ * 而那一版可能已经在回收站里 —— 悬空指针是设计的一部分（A-12），不是异常。
+ *
+ * @param db 当前库（**取用时的**，不是 mutate 之后的）
+ * @param versionId 版本 id；`null` / `undefined` 返回空串（调用方据此判断「还没设过」）
+ * @returns 版本名；找不到这个 id 时回退成「（已删除）」
+ */
+export function labelOfVersion(db: DB, versionId: string | null | undefined): string {
+  if (!versionId) return '';
+  const version = db.resumeVersions.find((item) => item.id === versionId);
+  if (!version) return '（已删除）';
+  return isDeleted(version) ? `${version.label}（已删除）` : version.label;
+}
+
+/**
+ * 主版本指针变化后要说给用户听的话。**指针没变就返回 null**（不打扰）。
+ *
+ * 这个函数存在的理由（v0.9.1 之前是一笔确认为真的欠账）：
+ * `setPrimaryVersion` / `softDeleteVersion` / `purgeVersion` 都会静默改写
+ * `settings.defaultResumeVersionId`，而它决定「新建投递默认绑哪一版」——
+ * 用户在完全不知情的情况下，新投递就会绑到另一份（或没有）版本上。
+ * v0.9 的落地偏差记录第 2 条写的就是「必须让『被顶掉』可见」，但代码里没做。
+ *
+ * 做成纯函数而不是把四段字符串散在 App.tsx 里，是为了能直接断言文案
+ * （App 没有组件级测试宿主，把文案留在 `useCallback` 里就只能靠手点验证）。
+ *
+ * @param before 变化前的指针（`null` = 没设过）
+ * @param after 变化后的指针（`null` = 被取消）
+ * @param beforeLabel 变化前指向的那一版的名字（用于「从『A』改为『B』」）
+ * @param afterLabel 变化后指向的那一版的名字
+ * @param removedWord 被取消时的动作词，默认「已删除」；永久删除传「已永久删除」
+ * @returns 告知文案；指针没变返回 `null`
+ */
+export function primaryPointerNotice(
+  before: string | null,
+  after: string | null,
+  beforeLabel: string,
+  afterLabel: string,
+  removedWord = '已删除',
+): string | null {
+  if (before === after) return null;
+  if (after === null) {
+    return `主版本已取消（${beforeLabel} ${removedWord}），新建投递不再默认绑定`;
+  }
+  if (before === null) {
+    return `已设「${afterLabel}」为主版本（新建投递默认绑这一版）`;
+  }
+  return `主版本已从「${beforeLabel}」改为「${afterLabel}」`;
 }
 
 /**

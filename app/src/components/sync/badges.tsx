@@ -6,6 +6,7 @@
 import type { Confidence } from '../../adapters/types';
 import type { PlannedRow } from '../../lib/sync/types';
 import { cx } from '../../lib/util';
+import { CLS } from '../../lib/classTokens';
 
 const CONFIDENCE_TEXT: Record<Confidence, string> = {
   high: '高',
@@ -47,7 +48,7 @@ export function kindText(kind: PlannedRow['kind']): string {
 
 /** 「来源：BOSS 同步 · 3/12 10:20」这类灰色小字 */
 export function SourceLine({ text }: { text: string }) {
-  return <span className="sync__source">{text}</span>;
+  return <span className={CLS.aQ}>{text}</span>;
 }
 
 export function BlockedHint({ row }: { row: PlannedRow }) {

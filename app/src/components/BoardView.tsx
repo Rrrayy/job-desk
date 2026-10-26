@@ -27,6 +27,7 @@ import {
 } from '../lib/rules';
 import { parseFlexible, relativeCountdown, toDateISO } from '../lib/date';
 import { companyLabel, cx } from '../lib/util';
+import { CLS } from '../lib/classTokens';
 
 interface DropPanelState {
   appId: string;
@@ -169,7 +170,7 @@ export function BoardView({ api }: { api: AppApi }) {
           ) : null}
 
           {suggestion.kind === 'followup' && !silence.level ? (
-            <span className="badge badge--quiet">{silence.text || '刚聊过'}</span>
+            <span className={CLS.at}>{silence.text || '刚聊过'}</span>
           ) : null}
 
           {roundBadge ? <span className="badge badge--round">{roundBadge}</span> : null}
@@ -181,8 +182,8 @@ export function BoardView({ api }: { api: AppApi }) {
             </span>
           ) : null}
 
-          {app.daysPerWeek ? <span className="badge badge--quiet">{app.daysPerWeek} 天/周</span> : null}
-          {noteCount > 0 ? <span className="badge badge--quiet">{noteCount} 条记录</span> : null}
+          {app.daysPerWeek ? <span className={CLS.at}>{app.daysPerWeek} 天/周</span> : null}
+          {noteCount > 0 ? <span className={CLS.at}>{noteCount} 条记录</span> : null}
         </div>
 
         <div className="app-card__foot">
@@ -191,7 +192,7 @@ export function BoardView({ api }: { api: AppApi }) {
           </span>
           <button
             type="button"
-            className="btn btn--tiny"
+            className={CLS.h}
             onClick={(event) => {
               event.stopPropagation();
               api.openDetail(app.id);
@@ -232,9 +233,9 @@ export function BoardView({ api }: { api: AppApi }) {
 
   return (
     <div className="page page--board">
-      <div className="board-head">
-        <h2 className="page__title">看板</h2>
-        <span className="page__sub">
+      <div className={CLS.ao}>
+        <h2 className={CLS.am}>看板</h2>
+        <span className={CLS.ad}>
           共 {totalActive} 条在推进 · {endedCount} 条已结束 · 拖卡片到别的列就能改状态
         </span>
         <button
@@ -248,11 +249,11 @@ export function BoardView({ api }: { api: AppApi }) {
       </div>
 
       {db.applications.length === 0 ? (
-        <div className="empty-block">
-          <div className="empty-block__emoji">🗂</div>
-          <h2 className="empty-block__title">看板还是空的。</h2>
-          <p className="empty-block__text">先去 BOSS 上聊一个，然后回来记一笔 —— 3 秒的事。</p>
-          <button type="button" className="btn btn--primary btn--lg" onClick={() => api.openNew()}>
+        <div className={CLS.C}>
+          <div className={CLS.y}>🗂</div>
+          <h2 className={CLS.z}>看板还是空的。</h2>
+          <p className={CLS.A}>先去 BOSS 上聊一个，然后回来记一笔 —— 3 秒的事。</p>
+          <button type="button" className={CLS.W} onClick={() => api.openNew()}>
             ＋ 记第一家
           </button>
         </div>
@@ -281,20 +282,20 @@ export function BoardView({ api }: { api: AppApi }) {
                     // 拖到「已约面」的折叠 chip 上落的就是「已约面」，不会串列。
                     <button
                       type="button"
-                      className="board__col-head board__col-head--clickable"
+                      className={CLS.aR}
                       title="点击展开面试段"
                       onClick={() => setStageFolded(false)}
                       style={{ borderTopColor: STATUS_TONE[status] }}
                     >
-                      <span className="board__col-name">{STATUS_LABEL[status]} ▸</span>
-                      <span className="board__count">{list.length}</span>
+                      <span className={CLS.aB}>{STATUS_LABEL[status]} ▸</span>
+                      <span className={CLS.aP}>{list.length}</span>
                     </button>
                   ) : (
                     <>
                       <div className="board__col-head" style={{ borderTopColor: STATUS_TONE[status] }}>
-                        <span className="board__col-name">{STATUS_LABEL[status]}</span>
+                        <span className={CLS.aB}>{STATUS_LABEL[status]}</span>
                         <span className="board__col-head-right">
-                          <span className="board__count">{list.length}</span>
+                          <span className={CLS.aP}>{list.length}</span>
                           <button
                             type="button"
                             className="col-add"
@@ -318,12 +319,12 @@ export function BoardView({ api }: { api: AppApi }) {
             <div className={cx('board__col board__col--ended', endedOpen && 'is-open')}>
               <button
                 type="button"
-                className="board__col-head board__col-head--clickable"
+                className={CLS.aR}
                 onClick={() => setEndedOpen(!endedOpen)}
                 style={{ borderTopColor: '#C9CDD8' }}
               >
-                <span className="board__col-name">已结束 {endedOpen ? '▾' : '▸'}</span>
-                <span className="board__count">{endedCount}</span>
+                <span className={CLS.aB}>已结束 {endedOpen ? '▾' : '▸'}</span>
+                <span className={CLS.aP}>{endedCount}</span>
               </button>
               {endedOpen ? (
                 <div className="board__col-body">
@@ -433,15 +434,15 @@ function DropPanel({ api, state, onClose }: DropPanelProps) {
             : '顺手记一句？不填也没关系，状态已经生效了。'}
         </p>
         <div className="drop-panel__row">
-          <label className="field field--narrow">
-            <span className="field__label">日期</span>
-            <input className="input" type="date" value={date} onChange={(event) => setDate(event.target.value)} />
+          <label className={CLS.e}>
+            <span className={CLS.a}>日期</span>
+            <input className={CLS.f} type="date" value={date} onChange={(event) => setDate(event.target.value)} />
           </label>
           {isInterviewStage ? (
-            <label className="field field--narrow">
-              <span className="field__label">轮次{isWritten ? '（笔试固定第 0 轮）' : ''}</span>
+            <label className={CLS.e}>
+              <span className={CLS.a}>轮次{isWritten ? '（笔试固定第 0 轮）' : ''}</span>
               <input
-                className="input"
+                className={CLS.f}
                 type="number"
                 min={isWritten ? 0 : 1}
                 disabled={isWritten}
@@ -453,10 +454,10 @@ function DropPanel({ api, state, onClose }: DropPanelProps) {
           ) : null}
         </div>
         {isInterviewStage && !isWritten ? (
-          <label className="field field--narrow">
-            <span className="field__label">类型</span>
+          <label className={CLS.e}>
+            <span className={CLS.a}>类型</span>
             <select
-              className="select"
+              className={CLS.D}
               value={kind}
               onChange={(event) => setKind(event.target.value as InterviewKind | '')}
             >
@@ -469,11 +470,11 @@ function DropPanel({ api, state, onClose }: DropPanelProps) {
             </select>
           </label>
         ) : null}
-        <label className="field">
-          <span className="field__label">备注</span>
+        <label className={CLS.g}>
+          <span className={CLS.a}>备注</span>
           <textarea
             ref={noteRef}
-            className="textarea"
+            className={CLS.T}
             rows={2}
             autoFocus
             placeholder="例如：HR 说下周安排一面"
@@ -491,7 +492,7 @@ function DropPanel({ api, state, onClose }: DropPanelProps) {
           <button type="button" className="btn" onClick={onClose}>
             跳过
           </button>
-          <button type="button" className="btn btn--primary" onClick={submit}>
+          <button type="button" className={CLS.j} onClick={submit}>
             记下
           </button>
         </div>

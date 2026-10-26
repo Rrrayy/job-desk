@@ -11,6 +11,7 @@
 
 import { Component, type ErrorInfo, type ReactNode } from 'react';
 import { downloadRawJSON } from '../lib/storage';
+import { CLS } from '../lib/classTokens';
 
 const STORAGE_KEY = 'jobdesk.v1';
 
@@ -82,7 +83,7 @@ export class ErrorBoundary extends Component<Props, State> {
           </p>
           <pre className="crash__stack">{error.name}: {error.message}</pre>
           <div className="crash__actions">
-            <button type="button" className="btn btn--primary" onClick={() => window.location.reload()}>
+            <button type="button" className={CLS.j} onClick={() => window.location.reload()}>
               重新加载
             </button>
             <button type="button" className="btn" onClick={this.handleDownload}>

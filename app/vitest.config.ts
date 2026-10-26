@@ -12,7 +12,11 @@ export default defineConfig({
   cacheDir: 'node_modules/.vite-test',
   test: {
     environment: 'node',
-    include: ['src/**/*.test.ts', 'src/**/*.test.tsx'],
+    // v0.9.1 修订：include 原来只有 `src/**`，导致 `scripts/check-no-network.test.mjs`
+    // （v0.8 T03 写的门禁自测）**从未被执行过** —— 写了测试但没接进 runner，
+    // 等于没有测试。这里把 `scripts/**/*.test.mjs` 一并纳入（门禁脚本也是产品的一部分，
+    // 它的自测必须真的跑）。三个门禁脚本自测都是纯 node，不碰 jsdom。
+    include: ['src/**/*.test.ts', 'src/**/*.test.tsx', 'scripts/**/*.test.mjs'],
     // v0.5.1 起组件测试破例引入 jsdom（用户拍板）：默认仍是 node（D-04 不变），
     // 需要组件环境的测试文件在第一行写 `// @vitest-environment jsdom`
     environmentMatchGlobs: [['src/**/*.test.tsx', 'jsdom']],

@@ -11,6 +11,7 @@
  */
 
 import type { AIReport, AIVerdict } from '../../types';
+import { CLS } from '../../lib/classTokens';
 
 const VERDICT_LABEL: Record<AIVerdict, string> = {
   strong_match: '强匹配',
@@ -38,15 +39,15 @@ export function ReportCard({ report }: { report: AIReport }): JSX.Element {
                 {dimension.label || dimension.key || '维度'} · {VERDICT_LABEL[dimension.verdict]}
               </span>
               {dimension.evidenceFromResume ? (
-                <p className="report-card__evidence">简历：{dimension.evidenceFromResume}</p>
+                <p className={CLS.aV}>简历：{dimension.evidenceFromResume}</p>
               ) : null}
-              {dimension.evidenceFromJd ? <p className="report-card__evidence">JD：{dimension.evidenceFromJd}</p> : null}
+              {dimension.evidenceFromJd ? <p className={CLS.aV}>JD：{dimension.evidenceFromJd}</p> : null}
               {dimension.gapDescription ? <p className="report-card__gap">{dimension.gapDescription}</p> : null}
             </li>
           ))}
         </ul>
       ) : (
-        <p className="field__hint">模型没有给出维度判定 —— 只有一段总评。</p>
+        <p className={CLS.c}>模型没有给出维度判定 —— 只有一段总评。</p>
       )}
 
       <details className="report-card__body">

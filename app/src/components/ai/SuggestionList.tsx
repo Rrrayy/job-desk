@@ -10,6 +10,7 @@
 
 import { useState } from 'react';
 import type { AISuggestion, AISuggestionTargetType } from '../../ai/types';
+import { CLS } from '../../lib/classTokens';
 
 const TARGET_LABEL: Record<AISuggestionTargetType, string> = {
   question: '新题',
@@ -55,41 +56,41 @@ export function SuggestionList(props: SuggestionListProps): JSX.Element {
   const allSelected = suggestions.length > 0 && selected.size === suggestions.length;
 
   if (suggestions.length === 0) {
-    return <p className="field__hint" data-testid="suggestion-empty">{emptyText}</p>;
+    return <p className={CLS.c} data-testid="suggestion-empty">{emptyText}</p>;
   }
 
   return (
     <div data-testid="suggestion-list">
-      <label className="field">
+      <label className={CLS.g}>
         <input
           type="checkbox"
           checked={allSelected}
           data-testid="suggestion-select-all"
           onChange={(event) => toggleAll(event.target.checked)}
         />
-        <span className="field__label">全选（{selected.size}/{suggestions.length}）</span>
+        <span className={CLS.a}>全选（{selected.size}/{suggestions.length}）</span>
       </label>
       {suggestions.map((suggestion) => (
-        <div key={suggestion.id} className="field" data-testid={`suggestion-${suggestion.id}`}>
+        <div key={suggestion.id} className={CLS.g} data-testid={`suggestion-${suggestion.id}`}>
           <label>
             <input
               type="checkbox"
               checked={selected.has(suggestion.id)}
               onChange={(event) => toggle(suggestion.id, event.target.checked)}
             />
-            <span className="field__label">
+            <span className={CLS.a}>
               【{TARGET_LABEL[suggestion.targetType]}·{suggestion.fieldPath}】{suggestion.content}
             </span>
           </label>
           {evidence && suggestion.evidence ? (
-            <span className="field__hint">证据：{suggestion.evidence}</span>
+            <span className={CLS.c}>证据：{suggestion.evidence}</span>
           ) : null}
         </div>
       ))}
-      <div className="drawer__actions">
+      <div className={CLS.p}>
         <button
           type="button"
-          className="btn btn--primary"
+          className={CLS.j}
           data-testid="suggestion-accept"
           disabled={selected.size === 0}
           onClick={() => confirm('accept')}
@@ -98,7 +99,7 @@ export function SuggestionList(props: SuggestionListProps): JSX.Element {
         </button>
         <button
           type="button"
-          className="btn btn--ghost"
+          className={CLS.Q}
           data-testid="suggestion-reject"
           disabled={selected.size === 0}
           onClick={() => confirm('reject')}

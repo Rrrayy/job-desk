@@ -22,6 +22,7 @@ import { Field } from '../Field';
 import { BulletsField } from './BulletsField';
 import { PhotoField } from './PhotoField';
 import { TagsField } from './TagsField';
+import { CLS } from '../../lib/classTokens';
 
 export interface SchemaFormProps {
   /** 当前模板的板块定义（由 `sectionsOf(templateId)` 给） */
@@ -75,7 +76,7 @@ export function SchemaForm(props: SchemaFormProps) {
                     <div className="resume-form__item-acts">
                       <button
                         type="button"
-                        className="btn btn--tiny"
+                        className={CLS.h}
                         aria-label={`上移第 ${index + 1} 条`}
                         disabled={index === 0}
                         onClick={() => onChange(moveItem(content, section.id, item.id, -1))}
@@ -84,7 +85,7 @@ export function SchemaForm(props: SchemaFormProps) {
                       </button>
                       <button
                         type="button"
-                        className="btn btn--tiny"
+                        className={CLS.h}
                         aria-label={`下移第 ${index + 1} 条`}
                         disabled={index === section.items.length - 1}
                         onClick={() => onChange(moveItem(content, section.id, item.id, 1))}
@@ -93,7 +94,7 @@ export function SchemaForm(props: SchemaFormProps) {
                       </button>
                       <button
                         type="button"
-                        className="btn btn--tiny btn--danger-ghost"
+                        className={CLS.x}
                         aria-label={`删除第 ${index + 1} 条`}
                         onClick={() => onChange(removeItem(content, section.id, item.id))}
                       >
@@ -149,7 +150,7 @@ function FieldControl({ field, item, content, sectionId, onChange }: FieldContro
 
   if (meta.type === 'rich_bullets') {
     return (
-      <div className="resume-form__field">
+      <div className={CLS.ai}>
         <BulletsField
           label={meta.label}
           value={item.bullets ?? []}
@@ -164,7 +165,7 @@ function FieldControl({ field, item, content, sectionId, onChange }: FieldContro
 
   if (meta.type === 'tags') {
     return (
-      <div className="resume-form__field">
+      <div className={CLS.ai}>
         <TagsField
           label={meta.label}
           value={fieldValueOf(item, meta.key)}
@@ -179,7 +180,7 @@ function FieldControl({ field, item, content, sectionId, onChange }: FieldContro
 
   if (meta.type === 'image') {
     return (
-      <div className="resume-form__field">
+      <div className={CLS.ai}>
         <PhotoField label={meta.label} value={fieldValueOf(item, meta.key)} onChange={write} hint={meta.hint} />
       </div>
     );
@@ -187,7 +188,7 @@ function FieldControl({ field, item, content, sectionId, onChange }: FieldContro
 
   // text / month：复用既有 <Field>（A-06），`live` 让预览不等失焦（验收 6）
   return (
-    <div className="resume-form__field">
+    <div className={CLS.ai}>
       <Field
         label={meta.label}
         type={meta.type}

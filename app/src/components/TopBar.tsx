@@ -5,6 +5,7 @@ import { VIEWS, type ViewKey } from '../lib/api';
 import { STATUS_LABEL } from '../lib/rules';
 import type { Status } from '../types';
 import { cx } from '../lib/util';
+import { CLS } from '../lib/classTokens';
 
 export interface SearchHit {
   id: string;
@@ -123,10 +124,10 @@ export function TopBar(props: TopBarProps) {
           同步
           {pendingSync > 0 ? <span className="topbar__sync-dot">{pendingSync}</span> : null}
         </button>
-        <button type="button" className="icon-btn" onClick={onSettings} title="设置" aria-label="打开设置">
+        <button type="button" className={CLS.m} onClick={onSettings} title="设置" aria-label="打开设置">
           ⚙
         </button>
-        <button type="button" className="btn btn--primary" onClick={onNew}>
+        <button type="button" className={CLS.j} onClick={onNew}>
           ＋ 记一家
         </button>
       </div>

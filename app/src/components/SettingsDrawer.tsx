@@ -14,6 +14,7 @@ import { CommunityImport } from './interview/CommunityImport';
 import { FileLinkPanel } from './FileLinkPanel';
 import { PluginsPanel } from './plugins/PluginsPanel';
 import { AiSettingsPanel } from './ai/AiSettingsPanel';
+import { CLS } from '../lib/classTokens';
 
 const PLATFORMS: PlatformId[] = ['boss', 'shixiseng', 'nowcoder', 'liepin', 'custom'];
 
@@ -132,27 +133,27 @@ export function SettingsDrawer({ api, onClose, importError, onDismissError, tras
   };
 
   return (
-    <div className="drawer-overlay" onClick={onClose}>
+    <div className={CLS.H} onClick={onClose}>
       <aside className="drawer drawer--settings" onClick={(event) => event.stopPropagation()}>
-        <header className="drawer__head">
-          <h2 className="drawer__title">设置</h2>
-          <button type="button" className="icon-btn" onClick={onClose} title="关闭（Esc）" aria-label="关闭">
+        <header className={CLS.K}>
+          <h2 className={CLS.I}>设置</h2>
+          <button type="button" className={CLS.m} onClick={onClose} title="关闭（Esc）" aria-label="关闭">
             ✕
           </button>
         </header>
 
-        <div className="drawer__body">
-          <section className="drawer__section">
-            <h3 className="drawer__section-title">沉默阈值（天）</h3>
-            <p className="field__hint">
+        <div className={CLS.J}>
+          <section className={CLS.n}>
+            <h3 className={CLS.i}>沉默阈值（天）</h3>
+            <p className={CLS.c}>
               内推 ×3 / 官网 ×2 / 其余 ×1；<strong>单独设置过阈值的公司不受此系数影响</strong>（按你填的天数算）。
             </p>
-            <div className="drawer__grid">
+            <div className={CLS.X}>
               {numberFields.map((field) => (
-                <label key={field.key} className="field field--narrow">
-                  <span className="field__label">{field.label}</span>
+                <label key={field.key} className={CLS.e}>
+                  <span className={CLS.a}>{field.label}</span>
                   <input
-                    className="input"
+                    className={CLS.f}
                     type="number"
                     min={1}
                     defaultValue={settings[field.key]}
@@ -160,10 +161,10 @@ export function SettingsDrawer({ api, onClose, importError, onDismissError, tras
                   />
                 </label>
               ))}
-              <label className="field">
-                <span className="field__label">默认简历版本</span>
+              <label className={CLS.g}>
+                <span className={CLS.a}>默认简历版本</span>
                 <input
-                  className="input"
+                  className={CLS.f}
                   defaultValue={settings.defaultResumeVersion || ''}
                   placeholder="v3-前端-项目版"
                   onBlur={(event) => api.updateSettings({ defaultResumeVersion: event.target.value.trim() })}
@@ -172,15 +173,15 @@ export function SettingsDrawer({ api, onClose, importError, onDismissError, tras
             </div>
           </section>
 
-          <section className="drawer__section">
-            <h3 className="drawer__section-title">课表与日程</h3>
-            <p className="field__hint">
+          <section className={CLS.n}>
+            <h3 className={CLS.i}>课表与日程</h3>
+            <p className={CLS.c}>
               日历上可以标注任何事：课、组会、急事。面试和日程在同一天的具体时间段撞上了，会自动提醒冲突。
             </p>
-            <div className="btn-row">
+            <div className={CLS.r}>
               <button
                 type="button"
-                className="btn btn--small"
+                className={CLS.b}
                 onClick={() => {
                   api.setView('calendar');
                   onClose();
@@ -189,28 +190,28 @@ export function SettingsDrawer({ api, onClose, importError, onDismissError, tras
                 去日历导入课表 / 记事情
               </button>
             </div>
-            <p className="field__hint">
+            <p className={CLS.c}>
               当前共 {db.events.length} 条日程（{db.events.filter((event) => event.kind === 'course').length} 节课 ·{' '}
               {db.events.filter((event) => event.kind !== 'course').length} 件事）。
             </p>
           </section>
 
-          <section className="drawer__section">
-            <h3 className="drawer__section-title">数据</h3>
-            <div className="btn-row">
-              <button type="button" className="btn btn--small" onClick={() => fileRef.current?.click()}>
+          <section className={CLS.n}>
+            <h3 className={CLS.i}>数据</h3>
+            <div className={CLS.r}>
+              <button type="button" className={CLS.b} onClick={() => fileRef.current?.click()}>
                 导入 JSON / CSV
               </button>
-              <button type="button" className="btn btn--small" onClick={api.exportData}>
+              <button type="button" className={CLS.b} onClick={api.exportData}>
                 导出 JSON
               </button>
-              <button type="button" className="btn btn--small" onClick={api.exportCsv}>
+              <button type="button" className={CLS.b} onClick={api.exportCsv}>
                 导出 CSV
               </button>
-              <button type="button" className="btn btn--small" onClick={api.exportIcs}>
+              <button type="button" className={CLS.b} onClick={api.exportIcs}>
                 导出日历
               </button>
-              <button type="button" className="btn btn--small" onClick={() => void api.exportPortable()}>
+              <button type="button" className={CLS.b} onClick={() => void api.exportPortable()}>
                 导出便携包
               </button>
               <input
@@ -226,15 +227,15 @@ export function SettingsDrawer({ api, onClose, importError, onDismissError, tras
               />
             </div>
             {importError ? (
-              <div className="notice notice--danger">
+              <div className={CLS.M}>
                 <strong>导入失败</strong>
                 <p>{importError}</p>
-                <button type="button" className="link-btn" onClick={onDismissError}>
+                <button type="button" className={CLS.k} onClick={onDismissError}>
                   知道了
                 </button>
               </div>
             ) : null}
-            <p className="field__hint">
+            <p className={CLS.c}>
               数据存在这个浏览器里（key: <code>jobdesk.v1</code>），当前用 <strong>{backendName}</strong>。
               双击打开文件时用 localStorage（上限约 5 MB）；通过 http(s) 访问时自动改用 IndexedDB，容量大得多。
               换电脑请先导出再导入。
@@ -246,13 +247,13 @@ export function SettingsDrawer({ api, onClose, importError, onDismissError, tras
                 {storage.ratio > 0.8 ? ' ——  快到上限了，建议先导出备份。' : '。'}
               </p>
             ) : null}
-            <p className="field__hint">
+            <p className={CLS.c}>
               <strong>备份只认 JSON</strong>（加密备份也是 JSON，会先要口令）。CSV 可以导入 ——
               从表格软件、别的求职工具导出的清单都能读，导入前会让你确认每一列对应哪个字段，
               认不出来的列会明确列出来，不会悄悄丢掉。但 CSV <strong>不是</strong>完整备份：
               时间线、面经、面试场次都不在里面。
             </p>
-            <p className="field__hint">
+            <p className={CLS.c}>
               <strong>导出便携包</strong>
               是把「应用本体 + 数据 + 使用说明」打成一个 zip，对方解压双击就能看，不用先装什么。
               想换电脑、发给同学看，用它；只是备份，用「导出 JSON」就够。
@@ -261,10 +262,10 @@ export function SettingsDrawer({ api, onClose, importError, onDismissError, tras
             {/* -------------------------- 回收站（v0.5） -------------------------- */}
             <div className="data-card">
               <div>
-                <div className="data-card__title">
+                <div className={CLS.ax}>
                   回收站{trashed.length > 0 ? ` · ${trashed.length} 条` : ''}
                 </div>
-                <div className="data-card__text">
+                <div className={CLS.aC}>
                   {trashed.length === 0
                     ? '删除的投递会在这里留 30 天，面试和沟通记录一并保留，随时能找回。'
                     : '删除的投递在这里留 30 天。到期自动永久删除，也可以现在就清空。'}
@@ -272,10 +273,10 @@ export function SettingsDrawer({ api, onClose, importError, onDismissError, tras
               </div>
               {trashed.length > 0 ? (
                 confirmEmptyTrash ? (
-                  <div className="btn-row">
+                  <div className={CLS.r}>
                     <button
                       type="button"
-                      className="btn btn--small btn--danger"
+                      className={CLS.V}
                       onClick={() => {
                         api.emptyTrash();
                         setConfirmEmptyTrash(false);
@@ -283,12 +284,12 @@ export function SettingsDrawer({ api, onClose, importError, onDismissError, tras
                     >
                       确认清空 {trashed.length} 条
                     </button>
-                    <button type="button" className="btn btn--small" onClick={() => setConfirmEmptyTrash(false)}>
+                    <button type="button" className={CLS.b} onClick={() => setConfirmEmptyTrash(false)}>
                       取消
                     </button>
                   </div>
                 ) : (
-                  <button type="button" className="btn btn--small" onClick={() => setConfirmEmptyTrash(true)}>
+                  <button type="button" className={CLS.b} onClick={() => setConfirmEmptyTrash(true)}>
                     清空回收站
                   </button>
                 )
@@ -312,10 +313,10 @@ export function SettingsDrawer({ api, onClose, importError, onDismissError, tras
                         </span>
                       </div>
                       <div className="trash-row__actions btn-row btn-row--tight">
-                        <button type="button" className="btn btn--tiny btn--primary" onClick={() => api.restoreApplication(app.id)}>
+                        <button type="button" className={CLS.ap} onClick={() => api.restoreApplication(app.id)}>
                           恢复
                         </button>
-                        <button type="button" className="btn btn--tiny" onClick={() => api.extendTrash(app.id)}>
+                        <button type="button" className={CLS.h} onClick={() => api.extendTrash(app.id)}>
                           再留 7 天
                         </button>
                         {purgeTarget === app.id ? (
@@ -330,12 +331,12 @@ export function SettingsDrawer({ api, onClose, importError, onDismissError, tras
                             >
                               确认永久删除
                             </button>
-                            <button type="button" className="btn btn--tiny" onClick={() => setPurgeTarget(null)}>
+                            <button type="button" className={CLS.h} onClick={() => setPurgeTarget(null)}>
                               取消
                             </button>
                           </>
                         ) : (
-                          <button type="button" className="btn btn--tiny btn--danger-ghost" onClick={() => setPurgeTarget(app.id)}>
+                          <button type="button" className={CLS.x} onClick={() => setPurgeTarget(app.id)}>
                             永久删除
                           </button>
                         )}
@@ -348,18 +349,18 @@ export function SettingsDrawer({ api, onClose, importError, onDismissError, tras
 
             <div className="data-card">
               <div>
-                <div className="data-card__title">示例数据（8 家，覆盖 7 种状态）</div>
-                <div className="data-card__text">
+                <div className={CLS.ax}>示例数据（8 家，覆盖 7 种状态）</div>
+                <div className={CLS.aC}>
                   {confirmSample
                     ? '加载示例会替换掉当前所有数据，确定吗？'
                     : '想快速看看产品长什么样，可以加载一份示例。'}
                 </div>
               </div>
               {confirmSample ? (
-                <div className="btn-row">
+                <div className={CLS.r}>
                   <button
                     type="button"
-                    className="btn btn--small btn--primary"
+                    className={CLS.o}
                     onClick={() => {
                       api.loadSampleData();
                       setConfirmSample(false);
@@ -367,12 +368,12 @@ export function SettingsDrawer({ api, onClose, importError, onDismissError, tras
                   >
                     确定加载
                   </button>
-                  <button type="button" className="btn btn--small" onClick={() => setConfirmSample(false)}>
+                  <button type="button" className={CLS.b} onClick={() => setConfirmSample(false)}>
                     取消
                   </button>
                 </div>
               ) : (
-                <button type="button" className="btn btn--small" onClick={() => setConfirmSample(true)}>
+                <button type="button" className={CLS.b} onClick={() => setConfirmSample(true)}>
                   加载示例数据
                 </button>
               )}
@@ -380,18 +381,18 @@ export function SettingsDrawer({ api, onClose, importError, onDismissError, tras
 
             <div className="data-card data-card--danger">
               <div>
-                <div className="data-card__title">回到初始状态</div>
-                <div className="data-card__text">
+                <div className={CLS.ax}>回到初始状态</div>
+                <div className={CLS.aC}>
                   {confirmClear
                     ? '这一步不可撤销：清空全部投递、面经、课表日程，设置恢复出厂。建议先导出备份。'
                     : `当前共 ${db.applications.length} 条投递 · ${db.events.length} 条日程。`}
                 </div>
               </div>
               {confirmClear ? (
-                <div className="btn-row">
+                <div className={CLS.r}>
                   <button
                     type="button"
-                    className="btn btn--small btn--danger"
+                    className={CLS.V}
                     onClick={() => {
                       api.clearAllData();
                       setConfirmClear(false);
@@ -399,14 +400,14 @@ export function SettingsDrawer({ api, onClose, importError, onDismissError, tras
                   >
                     确认回到初始状态
                   </button>
-                  <button type="button" className="btn btn--small" onClick={() => setConfirmClear(false)}>
+                  <button type="button" className={CLS.b} onClick={() => setConfirmClear(false)}>
                     取消
                   </button>
                 </div>
               ) : (
                 <button
                   type="button"
-                  className="btn btn--small btn--danger-ghost"
+                  className={CLS.ae}
                   onClick={() => setConfirmClear(true)}
                 >
                   回到初始状态
@@ -415,20 +416,20 @@ export function SettingsDrawer({ api, onClose, importError, onDismissError, tras
             </div>
           </section>
 
-          <section className="drawer__section">
-            <div className="drawer__section-head">
-              <h3 className="drawer__section-title">平台同步</h3>
-              <span className="muted">暂存区 {db.staging.length} 条</span>
+          <section className={CLS.n}>
+            <div className={CLS.w}>
+              <h3 className={CLS.i}>平台同步</h3>
+              <span className={CLS.d}>暂存区 {db.staging.length} 条</span>
             </div>
-            <p className="field__hint">
+            <p className={CLS.c}>
               同步只读你自己屏幕上的内容：不替你登录、不替你发请求、不在后台跑。
               <strong>它仍然可能被平台判定为异常使用</strong>，所以第一次打开会让你确认一次风险。
             </p>
-            <div className="drawer__grid">
-              <label className="field field--narrow">
-                <span className="field__label">默认平台</span>
+            <div className={CLS.X}>
+              <label className={CLS.e}>
+                <span className={CLS.a}>默认平台</span>
                 <select
-                  className="select"
+                  className={CLS.D}
                   value={settings.sync.defaultPlatform}
                   onChange={(event) => patchSync({ defaultPlatform: event.target.value as PlatformId })}
                 >
@@ -439,10 +440,10 @@ export function SettingsDrawer({ api, onClose, importError, onDismissError, tras
                   ))}
                 </select>
               </label>
-              <label className="field field--narrow">
-                <span className="field__label">平台时间刷新「最后活动」</span>
+              <label className={CLS.e}>
+                <span className={CLS.a}>平台时间刷新「最后活动」</span>
                 <select
-                  className="select"
+                  className={CLS.D}
                   value={settings.sync.autoRefreshActivity ? 'on' : 'off'}
                   onChange={(event) => patchSync({ autoRefreshActivity: event.target.value === 'on' })}
                 >
@@ -451,14 +452,14 @@ export function SettingsDrawer({ api, onClose, importError, onDismissError, tras
                 </select>
               </label>
             </div>
-            <div className="drawer__actions">
-              <button type="button" className="btn btn--small" onClick={api.openSync}>
+            <div className={CLS.p}>
+              <button type="button" className={CLS.b} onClick={api.openSync}>
                 打开同步面板
               </button>
               {settings.sync.riskAckAt ? (
                 <button
                   type="button"
-                  className="btn btn--small btn--danger-ghost"
+                  className={CLS.ae}
                   onClick={() => {
                     patchSync({ riskAckAt: undefined });
                     api.toast('已重置风险确认：下次打开同步会重新让你读一遍');
@@ -468,31 +469,31 @@ export function SettingsDrawer({ api, onClose, importError, onDismissError, tras
                 </button>
               ) : null}
             </div>
-            <p className="field__hint">
+            <p className={CLS.c}>
               {settings.sync.riskAckAt
                 ? `已于 ${formatLocalMinute(settings.sync.riskAckAt)} 确认过风险（之后不再弹窗）`
                 : '还没确认过风险 —— 下次打开同步面板会先让你读一段说明，勾选后才能继续。'}
             </p>
             {settings.lastMigration ? (
-              <p className="field__hint">
+              <p className={CLS.c}>
                 数据从 v{settings.lastMigration.from} 迁到 v{settings.lastMigration.to}（{settings.lastMigration.at.slice(0, 10)}）。
                 迁移前的原始数据还留在 <code>{settings.lastMigration.backupKey}</code>，保留 30 天。
               </p>
             ) : null}
           </section>
 
-          <section className="drawer__section">
-            <div className="drawer__section-head">
-              <h3 className="drawer__section-title">社区题库（可选）</h3>
-              <span className="muted">离线导入</span>
+          <section className={CLS.n}>
+            <div className={CLS.w}>
+              <h3 className={CLS.i}>社区题库（可选）</h3>
+              <span className={CLS.d}>离线导入</span>
             </div>
             <CommunityImport api={api} />
           </section>
 
-          <section className="drawer__section">
-            <div className="drawer__section-head">
-              <h3 className="drawer__section-title">文件联动与加密</h3>
-              <span className="muted">v0.6 可选</span>
+          <section className={CLS.n}>
+            <div className={CLS.w}>
+              <h3 className={CLS.i}>文件联动与加密</h3>
+              <span className={CLS.d}>v0.6 可选</span>
             </div>
             <FileLinkPanel
               api={api}
@@ -513,17 +514,17 @@ export function SettingsDrawer({ api, onClose, importError, onDismissError, tras
             />
           </section>
 
-          <section className="drawer__section">
-            <div className="drawer__section-head">
-              <h3 className="drawer__section-title">AI 服务（可选）</h3>
-              <span className="muted">{api.ai.ready ? '已配置' : '未配置'}</span>
+          <section className={CLS.n}>
+            <div className={CLS.w}>
+              <h3 className={CLS.i}>AI 服务（可选）</h3>
+              <span className={CLS.d}>{api.ai.ready ? '已配置' : '未配置'}</span>
             </div>
             <AiSettingsPanel api={api} />
           </section>
 
-          <section className="drawer__section">
-            <div className="drawer__section-head">
-              <h3 className="drawer__section-title">插件</h3>
+          <section className={CLS.n}>
+            <div className={CLS.w}>
+              <h3 className={CLS.i}>插件</h3>
             </div>
             <PluginsPanel
               plugins={api.plugins.list()}
@@ -535,37 +536,37 @@ export function SettingsDrawer({ api, onClose, importError, onDismissError, tras
             />
           </section>
 
-          <section className="drawer__section">
-            <div className="drawer__section-head">
-              <h3 className="drawer__section-title">存储占用</h3>
-              <span className="muted">
+          <section className={CLS.n}>
+            <div className={CLS.w}>
+              <h3 className={CLS.i}>存储占用</h3>
+              <span className={CLS.d}>
                 {budgetLevel === 'ok' ? '正常' : budgetLevel === 'warn' ? '接近上限' : '已超上限'}
               </span>
             </div>
             <div className="stat-row">
-              <span className="stat-row__label">本地数据</span>
-              <div className="stat-row__track">
+              <span className={CLS.aI}>本地数据</span>
+              <div className={CLS.aJ}>
                 <div
                   className={budgetLevel === 'block' ? 'stat-row__bar stat-row__bar--alt' : 'stat-row__bar'}
                   style={{ width: `${Math.max(2, budgetPercent)}%` }}
                 />
               </div>
-              <span className="stat-row__value">
+              <span className={CLS.aK}>
                 {formatBytes(dbSize)}
-                <span className="stat-row__sub">{budgetPercent}%</span>
+                <span className={CLS.aN}>{budgetPercent}%</span>
               </span>
             </div>
-            <p className="field__hint">
+            <p className={CLS.c}>
               上限按 {formatBytes(BUDGET.block)} 估算（localStorage 通常 5 MB 左右，写满之后 setItem
               会直接失败 —— 那才是最恶劣的一类 bug，所以这里把水位摆出来）。
               当前 {db.applications.length} 条投递 · {db.experiences.length} 场面经 · {questionCount} 道题 ·{' '}
               {noteCount} 条时间线。
             </p>
-            <p className="field__hint">换电脑、清浏览器缓存之前，先在上面「导出 JSON」存一份。</p>
+            <p className={CLS.c}>换电脑、清浏览器缓存之前，先在上面「导出 JSON」存一份。</p>
           </section>
 
-          <section className="drawer__section">
-            <h3 className="drawer__section-title">关于</h3>
+          <section className={CLS.n}>
+            <h3 className={CLS.i}>关于</h3>
             <div className="about-list">
               <div className="about-row">
                 <span>版本</span>
@@ -581,16 +582,16 @@ export function SettingsDrawer({ api, onClose, importError, onDismissError, tras
               </div>
             </div>
             {staleBackup ? (
-              <p className="field__hint">
+              <p className={CLS.c}>
                 距离上次导出已经超过 {reminderDays} 天（或从未导出）。清缓存、换浏览器、无痕模式都会让本地数据消失，
                 点上面的「导出 JSON」存一份，十秒的事。
               </p>
             ) : null}
-            <div className="drawer__row">
-              <label className="field field--narrow">
-                <span className="field__label">备份提醒</span>
+            <div className={CLS.B}>
+              <label className={CLS.e}>
+                <span className={CLS.a}>备份提醒</span>
                 <select
-                  className="input"
+                  className={CLS.f}
                   value={settings.backupReminderDays}
                   onChange={(event) =>
                     api.updateSettings({ backupReminderDays: Number(event.target.value) })
@@ -608,10 +609,10 @@ export function SettingsDrawer({ api, onClose, importError, onDismissError, tras
               </p>
             </div>
             {rollbackSize > 0 ? (
-              <div className="btn-row">
+              <div className={CLS.r}>
                 <button
                   type="button"
-                  className="btn btn--small"
+                  className={CLS.b}
                   onClick={() => {
                     const freed = purgeRollbackPoints();
                     setRollbackSize(0);
@@ -626,7 +627,7 @@ export function SettingsDrawer({ api, onClose, importError, onDismissError, tras
                 </button>
               </div>
             ) : null}
-            <p className="field__hint">
+            <p className={CLS.c}>
               数据只存在本地，不上传任何服务器、不发任何网络请求。
               <br />
               快捷键：N 新建 / 1-5 切视图 / ⌘K 搜索 / ⌘Z 撤销（可连按，最多 10 步）/ ⇧⌘Z 或 Ctrl+Y 重做 / Esc 关闭浮层。

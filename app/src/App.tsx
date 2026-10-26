@@ -70,6 +70,8 @@ import {
   applyResumeSlice,
   createResume,
   duplicateResume,
+  labelOfVersion,
+  primaryPointerNotice,
   purgeResume,
   purgeVersion,
   referencingApplications,
@@ -199,6 +201,7 @@ import { QuickNote } from './components/interview/QuickNote';
 import { ExperienceEditor } from './components/interview/ExperienceEditor';
 import { ResumeView } from './components/resume/ResumeView';
 import { AiScenarioPanel } from './components/ai/AiScenarioPanel';
+import { CLS } from './lib/classTokens';
 
 /**
  * 键盘 1..N 与视图的对应关系。
@@ -981,6 +984,43 @@ export default function App() {
     [mutate, pushUndo],
   );
 
+  /**
+   * 跑一次**会动主版本指针**的简历操作，指针真变了就把变化说出来（v0.9.1 / T1-b）。
+   *
+   * 为什么单独包一层：`setPrimaryVersion` / `softDeleteVersion` / `purgeVersion` /
+   * `purgeResume` 四条路径都会改写 `settings.defaultResumeVersionId`，而它决定
+   * 「新建投递默认绑哪一版」。v0.9 里这四条路径都是静默的 —— 用户在完全不知情的
+   * 情况下，下一次新建投递就绑到了另一份（或没有）版本上。四条路径各写一遍摘指针的
+   * 逻辑，迟早在「哪条路径忘了弹」上漂移，所以收在一个出口。
+   *
+   * @param label 撤销栈上的操作名
+   * @param recipe 改 draft 的纯操作（返回 false = 什么都没改，不入栈、不弹 toast）
+   * @param targetLabel 被删的那一版的名字（删 / 真删时传：此刻版本还没被标记删除，
+   *   取到的名字不带「（已删除）」后缀，否则文案会念成「v2（已删除） 已删除」）
+   * @param removedWord 被取消时的动作词（「已删除」/「已永久删除」）
+   */
+  const runPrimaryOp = useCallback(
+    (
+      label: string,
+      recipe: (draft: DB) => boolean,
+      targetLabel?: string,
+      removedWord?: string,
+    ): boolean => {
+      // `before` 必须在 mutate **之前**取（与 runResumeOp 内部的 snapshotResumes 同款纪律）
+      const dbBefore = dbRef.current;
+      const before = dbBefore.settings.defaultResumeVersionId ?? null;
+      const beforeLabel = targetLabel ?? labelOfVersion(dbBefore, before);
+      // 失败路径（指向已软删 / 不存在的版本）**不弹成功 toast**
+      if (!runResumeOp(label, recipe)) return false;
+      const dbAfter = dbRef.current;
+      const after = dbAfter.settings.defaultResumeVersionId ?? null;
+      const notice = primaryPointerNotice(before, after, beforeLabel, labelOfVersion(dbAfter, after), removedWord);
+      if (notice) showToast(notice);
+      return true;
+    },
+    [runResumeOp, showToast],
+  );
+
   const resumeCreate = useCallback(
     (input: { name: string; templateId: TemplateId }): string =>
       runResumeOp('新建简历', (draft) =>
@@ -1027,10 +1067,10 @@ export default function App() {
 
   const resumePurge = useCallback(
     (id: string): void => {
-      runResumeOp('永久删除简历', (draft) => purgeResume(draft, id));
+      runPrimaryOp('永久删除简历', (draft) => purgeResume(draft, id), undefined, '已永久删除');
       setResumeOpenedId((current) => (current === id ? null : current));
     },
-    [runResumeOp],
+    [runPrimaryOp],
   );
 
   const resumeSaveVersion = useCallback(
@@ -1052,16 +1092,20 @@ export default function App() {
 
   const resumeSetPrimary = useCallback(
     (versionId: string): void => {
-      runResumeOp('设为主版本', (draft) => setPrimaryVersion(draft, versionId));
+      runPrimaryOp('设为主版本', (draft) => setPrimaryVersion(draft, versionId));
     },
-    [runResumeOp],
+    [runPrimaryOp],
   );
 
   const resumeDeleteVersion = useCallback(
     (versionId: string): void => {
-      runResumeOp('删除版本', (draft) => softDeleteVersion(draft, versionId, new Date().toISOString()));
+      runPrimaryOp(
+        '删除版本',
+        (draft) => softDeleteVersion(draft, versionId, new Date().toISOString()),
+        labelOfVersion(dbRef.current, versionId),
+      );
     },
-    [runResumeOp],
+    [runPrimaryOp],
   );
 
   const resumeRestoreVersion = useCallback(
@@ -1073,9 +1117,14 @@ export default function App() {
 
   const resumePurgeVersion = useCallback(
     (versionId: string): void => {
-      runResumeOp('永久删除版本', (draft) => purgeVersion(draft, versionId));
+      runPrimaryOp(
+        '永久删除版本',
+        (draft) => purgeVersion(draft, versionId),
+        labelOfVersion(dbRef.current, versionId),
+        '已永久删除',
+      );
     },
-    [runResumeOp],
+    [runPrimaryOp],
   );
 
   const resumeAdoptAsDraft = useCallback(
@@ -2923,14 +2972,14 @@ export default function App() {
       <TodoBar api={api} />
 
       {loadError ? (
-        <div className="banner banner--error">
+        <div className={CLS.ag}>
           {loadError}
-          <button type="button" className="link-btn" onClick={loadSampleData}>
+          <button type="button" className={CLS.k} onClick={loadSampleData}>
             加载示例数据
           </button>
         </div>
       ) : null}
-      {saveError ? <div className="banner banner--error">{saveError}</div> : null}
+      {saveError ? <div className={CLS.ag}>{saveError}</div> : null}
       {/*
         v0.6 / P1：文件联动状态横幅。
         只在「出了事」的时候出现（只读 / 有未完成的写入），
@@ -2938,31 +2987,31 @@ export default function App() {
         「一切正常」占着，那只会训练用户忽略横幅。
       */}
       {readOnlyState.active ? (
-        <div className="banner banner--warn">
+        <div className={CLS.as}>
           <strong>文件联动已切换为只读</strong>
           <span>{readOnlyState.message}</span>
-          <div className="drawer__actions">
-            <button type="button" className="btn btn--small" onClick={() => void api.fileLink.retryPermission()}>
+          <div className={CLS.p}>
+            <button type="button" className={CLS.b} onClick={() => void api.fileLink.retryPermission()}>
               重试
             </button>
-            <button type="button" className="btn btn--small" onClick={api.fileLink.downloadRaw}>
+            <button type="button" className={CLS.b} onClick={api.fileLink.downloadRaw}>
               下载原始文件
             </button>
-            <button type="button" className="btn btn--small" onClick={() => void api.fileLink.saveAs()}>
+            <button type="button" className={CLS.b} onClick={() => void api.fileLink.saveAs()}>
               另存为新文件
             </button>
           </div>
         </div>
       ) : null}
       {pendingWrite ? (
-        <div className="banner banner--warn">
+        <div className={CLS.as}>
           <strong>有一次写入没写完</strong>
           <span>上次保存时浏览器被关掉或进程被结束。这条内容还在，可以现在补写进文件。</span>
-          <div className="drawer__actions">
-            <button type="button" className="btn btn--small" onClick={() => void api.fileLink.replayPending()}>
+          <div className={CLS.p}>
+            <button type="button" className={CLS.b} onClick={() => void api.fileLink.replayPending()}>
               补写
             </button>
-            <button type="button" className="btn btn--small btn--ghost" onClick={() => setPendingWrite(null)}>
+            <button type="button" className={CLS.E} onClick={() => setPendingWrite(null)}>
               稍后
             </button>
           </div>
@@ -3039,7 +3088,7 @@ export default function App() {
         />
       ) : null}
       {encryptedFile ? (
-        <div className="overlay" onClick={() => setEncryptedFile(null)}>
+        <div className={CLS.U} onClick={() => setEncryptedFile(null)}>
           <div
             className="modal"
             role="dialog"
@@ -3047,21 +3096,21 @@ export default function App() {
             aria-label="输入备份口令"
             onClick={(event) => event.stopPropagation()}
           >
-            <header className="modal__head">
-              <h2 className="modal__title">这份备份是加密的</h2>
-              <button type="button" className="icon-btn" onClick={() => setEncryptedFile(null)} aria-label="关闭">
+            <header className={CLS.ac}>
+              <h2 className={CLS.Y}>这份备份是加密的</h2>
+              <button type="button" className={CLS.m} onClick={() => setEncryptedFile(null)} aria-label="关闭">
                 ×
               </button>
             </header>
-            <div className="modal__body">
-              <p className="field__hint">
+            <div className={CLS.aa}>
+              <p className={CLS.c}>
                 <code>{encryptedFile.fileName}</code> 需要口令才能打开。
                 口令不会被保存在任何地方 —— 如果忘了，这份文件无法恢复。
               </p>
-              <label className="field">
-                <span className="field__label">口令</span>
+              <label className={CLS.g}>
+                <span className={CLS.a}>口令</span>
                 <input
-                  className="input"
+                  className={CLS.f}
                   type="password"
                   autoFocus
                   autoComplete="current-password"
@@ -3075,15 +3124,15 @@ export default function App() {
                   }}
                 />
               </label>
-              {encryptError ? <p className="field__hint field__hint--danger">{encryptError}</p> : null}
+              {encryptError ? <p className={CLS.s}>{encryptError}</p> : null}
             </div>
-            <footer className="modal__foot">
-              <button type="button" className="btn btn--ghost" onClick={() => setEncryptedFile(null)}>
+            <footer className={CLS.ab}>
+              <button type="button" className={CLS.Q} onClick={() => setEncryptedFile(null)}>
                 取消
               </button>
               <button
                 type="button"
-                className="btn btn--primary"
+                className={CLS.j}
                 onClick={() => void submitDecryptImport()}
                 disabled={decrypting}
               >

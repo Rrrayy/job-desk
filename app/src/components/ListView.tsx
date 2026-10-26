@@ -22,6 +22,7 @@ import { companyLabel, cx } from '../lib/util';
 import { isDeleted } from '../lib/trash';
 import { useVirtualList } from '../lib/virtual';
 import { DEFAULT_LIST_FILTERS, loadListFilters, saveListFilters, type ListFilterState } from '../lib/storage';
+import { CLS } from '../lib/classTokens';
 
 /**
  * 列表行高（px）。固定值 —— 虚拟滚动靠它算区间，改 CSS 必须同步改这里。
@@ -239,11 +240,11 @@ export function ListView({ api }: { api: AppApi }) {
   if (db.applications.length === 0) {
     return (
       <div className="page">
-        <div className="empty-block">
-          <div className="empty-block__emoji">📋</div>
-          <h2 className="empty-block__title">还没有任何投递记录。</h2>
-          <p className="empty-block__text">列表会把所有公司摊平给你看，但得先有一家。</p>
-          <button type="button" className="btn btn--primary btn--lg" onClick={() => api.openNew()}>
+        <div className={CLS.C}>
+          <div className={CLS.y}>📋</div>
+          <h2 className={CLS.z}>还没有任何投递记录。</h2>
+          <p className={CLS.A}>列表会把所有公司摊平给你看，但得先有一家。</p>
+          <button type="button" className={CLS.W} onClick={() => api.openNew()}>
             ＋ 记第一家
           </button>
         </div>
@@ -253,9 +254,9 @@ export function ListView({ api }: { api: AppApi }) {
 
   return (
     <div className="page">
-      <div className="board-head">
-        <h2 className="page__title">列表</h2>
-        <span className="page__sub">
+      <div className={CLS.ao}>
+        <h2 className={CLS.am}>列表</h2>
+        <span className={CLS.ad}>
           共 {db.applications.length} 条，当前筛选出 {rows.length} 条
         </span>
       </div>
@@ -263,7 +264,7 @@ export function ListView({ api }: { api: AppApi }) {
       <div className="filters">
         <div className="filters__group">
           <select
-            className="select select--compact"
+            className={CLS.q}
             value={statusFilter}
             onChange={(event) => setStatusFilter(event.target.value as 'all' | Status)}
           >
@@ -275,7 +276,7 @@ export function ListView({ api }: { api: AppApi }) {
             ))}
           </select>
           <select
-            className="select select--compact"
+            className={CLS.q}
             value={channelFilter}
             onChange={(event) => setChannelFilter(event.target.value as 'all' | Channel)}
           >
@@ -287,7 +288,7 @@ export function ListView({ api }: { api: AppApi }) {
             ))}
           </select>
           <select
-            className="select select--compact"
+            className={CLS.q}
             value={effectiveVersionFilter}
             onChange={(event) => setVersionFilter(event.target.value)}
           >
@@ -302,7 +303,7 @@ export function ListView({ api }: { api: AppApi }) {
           <div className="multiselect">
             <button
               type="button"
-              className={cx('select select--compact', 'multiselect__trigger', cityFilter.length > 0 && 'is-active')}
+              className={cx(CLS.q, 'multiselect__trigger', cityFilter.length > 0 && 'is-active')}
               onClick={() => setCityOpen(!cityOpen)}
               title="按城市筛选（可多选）"
             >
@@ -318,7 +319,7 @@ export function ListView({ api }: { api: AppApi }) {
                 <div className="ms-backdrop" onClick={() => setCityOpen(false)} />
                 <div className="multiselect__panel">
                   {cities.length === 0 ? (
-                    <p className="muted">还没有填过城市</p>
+                    <p className={CLS.d}>还没有填过城市</p>
                   ) : (
                     cities.map((city) => (
                       <label key={city.value || '__empty'} className="ms-option">
@@ -333,10 +334,10 @@ export function ListView({ api }: { api: AppApi }) {
                     ))
                   )}
                   <div className="multiselect__foot">
-                    <button type="button" className="link-btn" onClick={() => setCityFilter([])}>
+                    <button type="button" className={CLS.k} onClick={() => setCityFilter([])}>
                       清除城市
                     </button>
-                    <button type="button" className="link-btn" onClick={() => setCityOpen(false)}>
+                    <button type="button" className={CLS.k} onClick={() => setCityOpen(false)}>
                       收起
                     </button>
                   </div>
@@ -346,22 +347,22 @@ export function ListView({ api }: { api: AppApi }) {
           </div>
 
           <input
-            className="input input--compact"
+            className={CLS.G}
             placeholder="搜公司 / 岗位 / 城市"
             value={keyword}
             onChange={(event) => setKeyword(event.target.value)}
           />
         </div>
-        <button type="button" className="btn btn--small" onClick={clearFilters}>
+        <button type="button" className={CLS.b} onClick={clearFilters}>
           清除筛选
         </button>
       </div>
 
       {rows.length === 0 ? (
         <div className="quiet quiet--boxed">
-          <p className="quiet__title">这个筛选下没有公司。</p>
-          <p className="quiet__text">换个条件，或者把筛选清掉。</p>
-          <button type="button" className="btn btn--small" onClick={clearFilters}>
+          <p className={CLS.Z}>这个筛选下没有公司。</p>
+          <p className={CLS.an}>换个条件，或者把筛选清掉。</p>
+          <button type="button" className={CLS.b} onClick={clearFilters}>
             清除筛选
           </button>
         </div>
@@ -410,16 +411,16 @@ export function ListView({ api }: { api: AppApi }) {
                           <span className="cell-silence__hint">/ {staleAt} 天</span>
                         </span>
                       ) : (
-                        <span className="muted">—</span>
+                        <span className={CLS.d}>—</span>
                       )}
                     </td>
                     <td>
                       {row.app.nextActionAt ? (
                         fmtDate(row.app.nextActionAt)
                       ) : row.next ? (
-                        <span className="muted">{fmtDateTime(row.next.scheduledAt)} 面试</span>
+                        <span className={CLS.d}>{fmtDateTime(row.next.scheduledAt)} 面试</span>
                       ) : (
-                        <span className="muted">—</span>
+                        <span className={CLS.d}>—</span>
                       )}
                     </td>
                     <td>

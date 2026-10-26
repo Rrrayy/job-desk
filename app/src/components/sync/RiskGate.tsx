@@ -5,6 +5,7 @@
 
 import { useState } from 'react';
 import type { AppApi } from '../../lib/api';
+import { CLS } from '../../lib/classTokens';
 
 export function RiskGate({ api }: { api: AppApi }) {
   const [checked, setChecked] = useState(false);
@@ -28,7 +29,7 @@ export function RiskGate({ api }: { api: AppApi }) {
       <div className="sync__risk-actions">
         <button
           type="button"
-          className="btn btn--primary"
+          className={CLS.j}
           disabled={!checked}
           onClick={() => api.ackSyncRisk()}
         >

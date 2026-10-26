@@ -11,6 +11,7 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import type { Question } from '../../types';
 import type { AppApi } from '../../lib/api';
 import { CATEGORY_LABEL, MASTERY_LABEL } from '../../lib/interview';
+import { CLS } from '../../lib/classTokens';
 
 export interface ReviewCardsProps {
   questions: Question[];
@@ -69,11 +70,11 @@ export function ReviewCards({ questions, api, onExit }: ReviewCardsProps) {
 
   if (!current) {
     return (
-      <div className="empty-block">
-        <div className="empty-block__emoji">✅</div>
-        <div className="empty-block__title">这个筛选下没有题</div>
-        <p className="empty-block__text">换一个筛选条件，或者先去「＋ 记面经」记几道题。</p>
-        <div className="empty-block__actions">
+      <div className={CLS.C}>
+        <div className={CLS.y}>✅</div>
+        <div className={CLS.z}>这个筛选下没有题</div>
+        <p className={CLS.A}>换一个筛选条件，或者先去「＋ 记面经」记几道题。</p>
+        <div className={CLS.ar}>
           <button type="button" className="btn" onClick={onExit}>
             回到题库
           </button>
@@ -85,7 +86,7 @@ export function ReviewCards({ questions, api, onExit }: ReviewCardsProps) {
   return (
     <div className="qb__review">
       <div className="qb__review-head">
-        <button type="button" className="btn btn--small" onClick={onExit}>
+        <button type="button" className={CLS.b} onClick={onExit}>
           ← 回题库
         </button>
         <span className="qb__review-pos">{positionText}</span>
@@ -96,7 +97,7 @@ export function ReviewCards({ questions, api, onExit }: ReviewCardsProps) {
         <div className="qb__card-meta">
           <span className="chip">{current.category ? CATEGORY_LABEL[current.category] : '未分类'}</span>
           <span className="qb__difficulty">难度 {'★'.repeat(current.difficulty)}</span>
-          <span className="muted">复习 {current.reviewCount} 次</span>
+          <span className={CLS.d}>复习 {current.reviewCount} 次</span>
         </div>
 
         <div className="qb__card-body" ref={bodyRef}>
@@ -110,7 +111,7 @@ export function ReviewCards({ questions, api, onExit }: ReviewCardsProps) {
                   <p className="qb__answer-text">{current.myAnswer}</p>
                 </>
               ) : (
-                <p className="muted">这道题还没补「我当时怎么答的」。回头在面经编辑器里补上，比标 10 次掌握度都值。</p>
+                <p className={CLS.d}>这道题还没补「我当时怎么答的」。回头在面经编辑器里补上，比标 10 次掌握度都值。</p>
               )}
               {current.nextTime ? (
                 <>
@@ -126,7 +127,7 @@ export function ReviewCards({ questions, api, onExit }: ReviewCardsProps) {
 
         <div className="qb__card-actions">
           {!flipped ? (
-            <button type="button" className="btn btn--primary" onClick={() => setFlipped(true)}>
+            <button type="button" className={CLS.j} onClick={() => setFlipped(true)}>
               翻面看答案（空格）
             </button>
           ) : (
@@ -148,10 +149,10 @@ export function ReviewCards({ questions, api, onExit }: ReviewCardsProps) {
       </div>
 
       <div className="qb__review-foot">
-        <button type="button" className="btn btn--small" onClick={() => go(-1)}>
+        <button type="button" className={CLS.b} onClick={() => go(-1)}>
           ← 上一张
         </button>
-        <button type="button" className="btn btn--small" onClick={() => go(1)}>
+        <button type="button" className={CLS.b} onClick={() => go(1)}>
           下一张 →
         </button>
       </div>

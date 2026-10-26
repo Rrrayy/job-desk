@@ -19,6 +19,7 @@ import { useCallback, useEffect, useState } from 'react';
 import type { AppApi } from '../lib/api';
 import { ENCRYPTION_DISCLAIMER, assessPassword, detectCryptoCapability } from '../lib/crypto';
 import type { FileLinkCapability } from '../lib/fileLink/handle';
+import { CLS } from '../lib/classTokens';
 
 export interface FileLinkPanelProps {
   api: AppApi;
@@ -126,33 +127,33 @@ export function FileLinkPanel(props: FileLinkPanelProps) {
               ? '未连接'
               : '当前环境不支持联动'}
         </strong>
-        <span className="muted">能力：{capabilityInfo.title}</span>
+        <span className={CLS.d}>能力：{capabilityInfo.title}</span>
       </div>
 
-      {capability !== 'full' ? <p className="field__hint">{capabilityInfo.detail}</p> : null}
+      {capability !== 'full' ? <p className={CLS.c}>{capabilityInfo.detail}</p> : null}
 
       {fileName ? (
-        <p className="field__hint">
+        <p className={CLS.c}>
           联动文件：<code>{fileName}</code>
           {lastSyncedAt ? ` · 上次写入 ${describeAgo(lastSyncedAt, nowTick)}` : ''}
         </p>
       ) : null}
 
       {readOnlyMessage ? (
-        <div className="notice notice--warn">
+        <div className={CLS.N}>
           <strong>已切换为只读</strong>
           <p>{readOnlyMessage}</p>
-          <p className="field__hint">
+          <p className={CLS.c}>
             原始文件不会被自动修改或删除。请从下面三个出口里选一个：
           </p>
-          <div className="btn-row">
-            <button type="button" className="btn btn--small" onClick={props.onDownloadRaw}>
+          <div className={CLS.r}>
+            <button type="button" className={CLS.b} onClick={props.onDownloadRaw}>
               下载原始文件
             </button>
-            <button type="button" className="btn btn--small" onClick={props.onRetryPermission} disabled={props.busy}>
+            <button type="button" className={CLS.b} onClick={props.onRetryPermission} disabled={props.busy}>
               重试
             </button>
-            <button type="button" className="btn btn--small" onClick={props.onSaveAs} disabled={props.busy}>
+            <button type="button" className={CLS.b} onClick={props.onSaveAs} disabled={props.busy}>
               另存为新文件
             </button>
           </div>
@@ -166,8 +167,8 @@ export function FileLinkPanel(props: FileLinkPanelProps) {
             上次保存时浏览器被关掉或进程被结束，这条内容还没落进文件。重放之前会先比对文件内容，
             如果文件在这期间被别处改过，就不会重放，而是存成冲突副本。
           </p>
-          <div className="btn-row">
-            <button type="button" className="btn btn--small" onClick={props.onReplay} disabled={props.busy}>
+          <div className={CLS.r}>
+            <button type="button" className={CLS.b} onClick={props.onReplay} disabled={props.busy}>
               现在重放
             </button>
           </div>
@@ -175,24 +176,24 @@ export function FileLinkPanel(props: FileLinkPanelProps) {
       ) : null}
 
       {lastConflictFile ? (
-        <p className="field__hint field__hint--danger">
+        <p className={CLS.s}>
           最近一次冲突副本：<code>{lastConflictFile}</code>
           —— 文件在两次保存之间被外部修改过，工作台没有覆盖它，把你的版本另存成了这个副本。
         </p>
       ) : null}
 
-      <div className="btn-row">
-        <button type="button" className="btn btn--small" onClick={props.onConnect} disabled={capability !== 'full' || props.busy}>
+      <div className={CLS.r}>
+        <button type="button" className={CLS.b} onClick={props.onConnect} disabled={capability !== 'full' || props.busy}>
           {fileName ? '换一个文件' : '连接文件'}
         </button>
         {fileName ? (
-          <button type="button" className="btn btn--small btn--ghost" onClick={props.onDisconnect} disabled={props.busy}>
+          <button type="button" className={CLS.E} onClick={props.onDisconnect} disabled={props.busy}>
             断开联动
           </button>
         ) : null}
       </div>
 
-      <p className="field__hint">
+      <p className={CLS.c}>
         联动开启后，每次改动自动写进这个文件（同一时刻只写一次，连续改动只落最后一版）。
         写入前会重新读一遍文件比对内容，发现被外部改过就**不覆盖**，而是另存一个
         <code>data.conflict-日期-时刻.json</code> 让你自己决定。
@@ -207,22 +208,22 @@ export function FileLinkPanel(props: FileLinkPanelProps) {
         <div className="filelink__status">
           <span className={`filelink__dot ${settings.encryption?.enabled ? 'filelink__dot--ok' : ''}`} />
           <strong>{settings.encryption?.enabled ? '导出已加密' : '导出未加密'}</strong>
-          <span className="muted">AES-256-GCM · PBKDF2 60 万轮</span>
+          <span className={CLS.d}>AES-256-GCM · PBKDF2 60 万轮</span>
         </div>
 
         {cryptoCapability !== 'available' ? (
-          <p className="field__hint field__hint--danger">
+          <p className={CLS.s}>
             {cryptoCapability === 'insecure'
               ? '当前通过 http 打开，浏览器不提供加密能力。改用 https 或直接双击 index.html 后才能启用。'
               : '当前浏览器没有 Web Crypto 支持，无法启用加密。'}
           </p>
         ) : (
           <>
-            <div className="drawer__row">
-              <label className="field field--narrow">
-                <span className="field__label">口令</span>
+            <div className={CLS.B}>
+              <label className={CLS.e}>
+                <span className={CLS.a}>口令</span>
                 <input
-                  className="input"
+                  className={CLS.f}
                   type="password"
                   autoComplete="new-password"
                   value={password}
@@ -231,10 +232,10 @@ export function FileLinkPanel(props: FileLinkPanelProps) {
                 />
               </label>
               {!settings.encryption?.enabled ? (
-                <label className="field field--narrow">
-                  <span className="field__label">再输一次</span>
+                <label className={CLS.e}>
+                  <span className={CLS.a}>再输一次</span>
                   <input
-                    className="input"
+                    className={CLS.f}
                     type="password"
                     autoComplete="new-password"
                     value={confirmPassword}
@@ -248,12 +249,12 @@ export function FileLinkPanel(props: FileLinkPanelProps) {
                 口令强度：{strength.level === 'strong' ? '强' : strength.level === 'fair' ? '中' : '弱'} · {strength.hint}
               </p>
             ) : null}
-            {cryptoError ? <p className="field__hint field__hint--danger">{cryptoError}</p> : null}
-            <div className="btn-row">
+            {cryptoError ? <p className={CLS.s}>{cryptoError}</p> : null}
+            <div className={CLS.r}>
               {settings.encryption?.enabled ? (
                 <button
                   type="button"
-                  className="btn btn--small btn--ghost"
+                  className={CLS.E}
                   onClick={() => void toggleEncryption(false)}
                   disabled={cryptoBusy}
                 >
@@ -262,7 +263,7 @@ export function FileLinkPanel(props: FileLinkPanelProps) {
               ) : (
                 <button
                   type="button"
-                  className="btn btn--small"
+                  className={CLS.b}
                   onClick={() => void toggleEncryption(true)}
                   disabled={cryptoBusy || !password}
                 >
@@ -273,8 +274,8 @@ export function FileLinkPanel(props: FileLinkPanelProps) {
           </>
         )}
 
-        <p className="field__hint field__hint--danger">{ENCRYPTION_DISCLAIMER}</p>
-        <p className="field__hint">
+        <p className={CLS.s}>{ENCRYPTION_DISCLAIMER}</p>
+        <p className={CLS.c}>
           派生 60 万轮 PBKDF2 需要零点几秒，这是**故意**慢的。口令不会存进 localStorage、
           不会写进导出的文件、也不会出现在 URL 里。
         </p>

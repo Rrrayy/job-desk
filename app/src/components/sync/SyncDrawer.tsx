@@ -20,6 +20,7 @@ import { Step2Preview } from './Step2Preview';
 import { Step3Confirm } from './Step3Confirm';
 import { StagingList } from './StagingList';
 import { AiScenarioPanel } from '../ai/AiScenarioPanel';
+import { CLS } from '../../lib/classTokens';
 export type SyncStep = 1 | 2 | 3 | 4;
 
 export interface SyncDrawerProps {
@@ -165,11 +166,11 @@ export function SyncDrawer(props: SyncDrawerProps) {
   };
 
   return (
-    <div className="drawer-overlay" onClick={onClose}>
+    <div className={CLS.H} onClick={onClose}>
       <aside className="drawer drawer--sync" onClick={(event) => event.stopPropagation()}>
-        <header className="drawer__head">
-          <div className="drawer__title-wrap">
-            <h2 className="drawer__title">同步平台进度</h2>
+        <header className={CLS.K}>
+          <div className={CLS.ah}>
+            <h2 className={CLS.I}>同步平台进度</h2>
             <div className="sync__steps">
               {STEPS.map((item) => (
                 <span
@@ -187,12 +188,12 @@ export function SyncDrawer(props: SyncDrawerProps) {
               ))}
             </div>
           </div>
-          <button type="button" className="icon-btn" onClick={onClose} title="关闭（Esc）" aria-label="关闭">
+          <button type="button" className={CLS.m} onClick={onClose} title="关闭（Esc）" aria-label="关闭">
             ✕
           </button>
         </header>
 
-        <div className="drawer__body">
+        <div className={CLS.J}>
           {!riskAckAt ? (
             <RiskGate api={api} />
           ) : (
@@ -226,9 +227,9 @@ export function SyncDrawer(props: SyncDrawerProps) {
 
               {step === 4 ? (
                 <>
-                  <section className="sync__step">
-                    <div className="sync__step-head">
-                      <h3 className="sync__step-title">④ 已合并</h3>
+                  <section className={CLS.S}>
+                    <div className={CLS.P}>
+                      <h3 className={CLS.O}>④ 已合并</h3>
                     </div>
                     <div className="notice notice--ok">
                       写入 {checkedCount} 条
@@ -236,7 +237,7 @@ export function SyncDrawer(props: SyncDrawerProps) {
                       。刚才的 toast 里有「撤销」，点一下可以整体还原（逐字段回到合并前）。
                     </div>
                     {plan ? (
-                      <p className="muted">
+                      <p className={CLS.d}>
                         本次识别 {plan.parsedCount} 条，来源 {PLATFORM_LABEL[plan.platform]}，
                         抓取时间 {plan.capturedAt.slice(0, 16).replace('T', ' ')}。
                       </p>
@@ -260,32 +261,32 @@ export function SyncDrawer(props: SyncDrawerProps) {
         <footer className="sync__foot">
           <div className="sync__foot-left">
             {step > 1 && step < 4 ? (
-              <button type="button" className="btn btn--small" onClick={() => setStep((step - 1) as SyncStep)}>
+              <button type="button" className={CLS.b} onClick={() => setStep((step - 1) as SyncStep)}>
                 ← 上一步
               </button>
             ) : null}
             {step === 4 ? (
-              <button type="button" className="btn btn--small" onClick={reset}>
+              <button type="button" className={CLS.b} onClick={reset}>
                 ↻ 再同步一次
               </button>
             ) : null}
           </div>
           <div className="sync__foot-right">
-            <button type="button" className="btn btn--small" onClick={onClose}>
+            <button type="button" className={CLS.b} onClick={onClose}>
               放弃
             </button>
             {plan ? (
-              <button type="button" className="btn btn--small" onClick={handleExportPreview}>
+              <button type="button" className={CLS.b} onClick={handleExportPreview}>
                 只导出预览
               </button>
             ) : null}
             {step === 2 ? (
-              <button type="button" className="btn btn--small btn--primary" onClick={() => setStep(3)}>
+              <button type="button" className={CLS.o} onClick={() => setStep(3)}>
                 下一步：逐项确认 →
               </button>
             ) : null}
             {step === 3 ? (
-              <button type="button" className="btn btn--small btn--primary" onClick={handleCommit}>
+              <button type="button" className={CLS.o} onClick={handleCommit}>
                 确认合并
               </button>
             ) : null}

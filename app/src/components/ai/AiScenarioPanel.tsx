@@ -25,6 +25,7 @@ import { buildApplicationContext, modulesText } from '../../ai/context';
 import { clampText } from '../../lib/budget';
 import { SendPreviewDialog } from './SendPreviewDialog';
 import { SuggestionList } from './SuggestionList';
+import { CLS } from '../../lib/classTokens';
 
 /** D14 粘贴上限：面经正文上限 3000 字，整段贴进来也要放得下 */
 const PASTE_LIMIT = 5000;
@@ -258,7 +259,7 @@ export function AiScenarioPanel({ api, scenario, targetId, onClose, modules, onR
 
   return (
     <div
-      className="overlay"
+      className={CLS.U}
       onClick={(event) => {
         // 面板可能挂在别的浮层里（面经编辑器 / 同步抽屉）—— 冒泡上去会把它们一起关掉
         event.stopPropagation();
@@ -273,25 +274,25 @@ export function AiScenarioPanel({ api, scenario, targetId, onClose, modules, onR
         data-testid="ai-scenario-panel"
         onClick={(event) => event.stopPropagation()}
       >
-        <header className="modal__head">
-          <h2 className="modal__title">{title}</h2>
-          <button type="button" className="icon-btn" onClick={onClose} aria-label="关闭">
+        <header className={CLS.ac}>
+          <h2 className={CLS.Y}>{title}</h2>
+          <button type="button" className={CLS.m} onClick={onClose} aria-label="关闭">
             ×
           </button>
         </header>
 
-        <div className="modal__body">
-          <p className="field__hint">{hint}</p>
+        <div className={CLS.aa}>
+          <p className={CLS.c}>{hint}</p>
 
           {blocked ? (
-            <p className="field__hint field__hint--danger" data-testid="ai-blocked">
+            <p className={CLS.s} data-testid="ai-blocked">
               {blocked} —— 配好之前这个入口不会发出任何请求。
             </p>
           ) : null}
 
           {showModules ? (
             <div className="ai-modules" role="group" aria-label="选择简历模块">
-              <span className="field__label">{modulePick === 'one' ? '选择一个板块' : `选择 1–${MODULE_MAX} 个板块`}</span>
+              <span className={CLS.a}>{modulePick === 'one' ? '选择一个板块' : `选择 1–${MODULE_MAX} 个板块`}</span>
               <div className="ai-modules__list">
                 {modules.map((module) => (
                   <label key={module.id} className="ai-modules__item">
@@ -304,17 +305,17 @@ export function AiScenarioPanel({ api, scenario, targetId, onClose, modules, onR
                   </label>
                 ))}
               </div>
-              {moduleHint ? <p className="field__hint">{moduleHint}</p> : null}
+              {moduleHint ? <p className={CLS.c}>{moduleHint}</p> : null}
             </div>
           ) : null}
 
           {input ? (
-            <label className="field">
-              <span className="field__label">
+            <label className={CLS.g}>
+              <span className={CLS.a}>
                 {input.label}（≤{input.limit} 字）
               </span>
               <textarea
-                className="textarea"
+                className={CLS.T}
                 rows={6}
                 value={text}
                 placeholder={input.placeholder}
@@ -325,13 +326,13 @@ export function AiScenarioPanel({ api, scenario, targetId, onClose, modules, onR
           ) : null}
 
           {running ? (
-            <p className="field__hint" data-testid="ai-running">
+            <p className={CLS.c} data-testid="ai-running">
               模型正在生成…（最多等 60 秒，可以点「停止」）
             </p>
           ) : null}
 
           {error ? (
-            <p className="field__hint field__hint--danger" data-testid="ai-error">
+            <p className={CLS.s} data-testid="ai-error">
               {error}
             </p>
           ) : null}
@@ -350,9 +351,9 @@ export function AiScenarioPanel({ api, scenario, targetId, onClose, modules, onR
           ) : null}
         </div>
 
-        <footer className="modal__foot">
-          <span className="field__hint">下一步的预览里勾了什么，就只发什么</span>
-          <button type="button" className="btn btn--ghost" onClick={onClose}>
+        <footer className={CLS.ab}>
+          <span className={CLS.c}>下一步的预览里勾了什么，就只发什么</span>
+          <button type="button" className={CLS.Q} onClick={onClose}>
             {running ? '关闭' : '取消'}
           </button>
           {running ? (
@@ -367,7 +368,7 @@ export function AiScenarioPanel({ api, scenario, targetId, onClose, modules, onR
           ) : (
             <button
               type="button"
-              className="btn btn--primary"
+              className={CLS.j}
               data-testid="ai-generate"
               disabled={blocked !== null || emptyInput || moduleHint !== null}
               onClick={openPreview}

@@ -8,6 +8,7 @@
 
 import { useRef, useState } from 'react';
 import type { AppApi } from '../../lib/api';
+import { CLS } from '../../lib/classTokens';
 
 export function CommunityImport({ api }: { api: AppApi }) {
   const fileRef = useRef<HTMLInputElement | null>(null);
@@ -28,7 +29,7 @@ export function CommunityImport({ api }: { api: AppApi }) {
 
   return (
     <div className="exp__community">
-      <p className="field__hint">
+      <p className={CLS.c}>
         社区题库是<strong>离线</strong>的：你自己去 GitHub 下载 <code>community/</code> 里的 JSON，
         再拖进来。产品本身不会为你发起任何网络请求 —— 这是隐私承诺的一部分，不是偷懒。
       </p>
@@ -46,8 +47,8 @@ export function CommunityImport({ api }: { api: AppApi }) {
           handleFile(event.dataTransfer.files?.[0]);
         }}
       >
-        <span className="muted">把社区题库 .json 拖到这里</span>
-        <button type="button" className="btn btn--small" onClick={() => fileRef.current?.click()}>
+        <span className={CLS.d}>把社区题库 .json 拖到这里</span>
+        <button type="button" className={CLS.b} onClick={() => fileRef.current?.click()}>
           选择文件
         </button>
         <input
@@ -62,9 +63,9 @@ export function CommunityImport({ api }: { api: AppApi }) {
         />
       </div>
 
-      {error ? <div className="notice notice--danger">{error}</div> : null}
+      {error ? <div className={CLS.M}>{error}</div> : null}
 
-      <p className="muted">
+      <p className={CLS.d}>
         已导入 {communityCount} 篇社区面经（带「社区导入」角标、只读，不会被你的统计混进来当作自己的战绩）。
       </p>
     </div>

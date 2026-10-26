@@ -13,6 +13,7 @@
 
 import { useEffect, useState } from 'react';
 import { formatTags, parseTags } from '../../resume/schema';
+import { CLS } from '../../lib/classTokens';
 
 export interface TagsFieldProps {
   label: string;
@@ -41,10 +42,10 @@ export function TagsField(props: TagsFieldProps) {
 
   return (
     <div className="tags">
-      <label className="field">
-        <span className="field__label">{label}</span>
+      <label className={CLS.g}>
+        <span className={CLS.a}>{label}</span>
         <input
-          className="input"
+          className={CLS.f}
           type="text"
           value={draft}
           placeholder={placeholder}
@@ -71,7 +72,7 @@ export function TagsField(props: TagsFieldProps) {
           ))}
         </div>
       ) : null}
-      {hint ? <span className="field__hint">{hint}</span> : null}
+      {hint ? <span className={CLS.c}>{hint}</span> : null}
     </div>
   );
 }

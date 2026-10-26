@@ -29,6 +29,7 @@ import {
 import { toDateISO } from '../../lib/date';
 import { MasteryCategoryPicks } from './MasteryCategoryPicks';
 import { ReviewCards } from './ReviewCards';
+import { CLS } from '../../lib/classTokens';
 
 export interface QuestionBankProps {
   api: AppApi;
@@ -155,12 +156,12 @@ export function QuestionBank({ api, onRecord }: QuestionBankProps) {
 
   if (db.questions.length === 0) {
     return (
-      <div className="empty-block">
-        <div className="empty-block__emoji">🗂</div>
-        <div className="empty-block__title">题库还是空的</div>
-        <p className="empty-block__text">面完一场点「＋ 记面经」，一行一题。记完这里会自动按「不会的先复习」排序。</p>
-        <div className="empty-block__actions">
-          <button type="button" className="btn btn--primary" onClick={onRecord}>
+      <div className={CLS.C}>
+        <div className={CLS.y}>🗂</div>
+        <div className={CLS.z}>题库还是空的</div>
+        <p className={CLS.A}>面完一场点「＋ 记面经」，一行一题。记完这里会自动按「不会的先复习」排序。</p>
+        <div className={CLS.ar}>
+          <button type="button" className={CLS.j} onClick={onRecord}>
             ＋ 记面经
           </button>
         </div>
@@ -203,8 +204,8 @@ export function QuestionBank({ api, onRecord }: QuestionBankProps) {
     <div className="qb">
       <div className="qb__toolbar">
         <label className="qb__filter">
-          <span className="field__label">公司</span>
-          <select className="select select--compact" value={company} onChange={(event) => setCompany(event.target.value)}>
+          <span className={CLS.a}>公司</span>
+          <select className={CLS.q} value={company} onChange={(event) => setCompany(event.target.value)}>
             <option value="all">全部</option>
             {companies.map((name) => (
               <option key={name} value={name}>
@@ -215,9 +216,9 @@ export function QuestionBank({ api, onRecord }: QuestionBankProps) {
         </label>
 
         <label className="qb__filter">
-          <span className="field__label">分类</span>
+          <span className={CLS.a}>分类</span>
           <select
-            className="select select--compact"
+            className={CLS.q}
             value={category}
             onChange={(event) => setCategory(event.target.value as 'all' | QuestionCategory)}
           >
@@ -231,9 +232,9 @@ export function QuestionBank({ api, onRecord }: QuestionBankProps) {
         </label>
 
         <label className="qb__filter">
-          <span className="field__label">掌握度</span>
+          <span className={CLS.a}>掌握度</span>
           <select
-            className="select select--compact"
+            className={CLS.q}
             value={String(mastery)}
             onChange={(event) => {
               const value = event.target.value;
@@ -253,9 +254,9 @@ export function QuestionBank({ api, onRecord }: QuestionBankProps) {
         </label>
 
         <label className="qb__filter qb__filter--search">
-          <span className="field__label">搜索</span>
+          <span className={CLS.a}>搜索</span>
           <input
-            className="input input--compact"
+            className={CLS.G}
             value={keyword}
             placeholder="题干 / 我的回答"
             onChange={(event) => setKeyword(event.target.value)}
@@ -265,7 +266,7 @@ export function QuestionBank({ api, onRecord }: QuestionBankProps) {
         <div className="qb__toolbar-actions">
           <button
             type="button"
-            className="btn btn--small btn--primary"
+            className={CLS.o}
             onClick={() => {
               // 考前一分钟：只看到期的，最多 10 张
               setReviewIds(sorted.filter((question) => isDue(question, today)).slice(0, 10).map((q) => q.id));
@@ -275,10 +276,10 @@ export function QuestionBank({ api, onRecord }: QuestionBankProps) {
           >
             考前一分钟（{Math.min(dueCount, 10)}）
           </button>
-          <button type="button" className="btn btn--small" onClick={() => { setReviewIds(null); setMode('review'); }}>
+          <button type="button" className={CLS.b} onClick={() => { setReviewIds(null); setMode('review'); }}>
             开始复习
           </button>
-          <button type="button" className="btn btn--small" onClick={onRecord}>
+          <button type="button" className={CLS.b} onClick={onRecord}>
             ＋ 记面经
           </button>
         </div>
@@ -289,10 +290,10 @@ export function QuestionBank({ api, onRecord }: QuestionBankProps) {
       </p>
 
       {groups.length === 0 ? (
-        <div className="empty-block">
-          <div className="empty-block__emoji">🔍</div>
-          <div className="empty-block__title">这个筛选下没有题</div>
-          <p className="empty-block__text">把「只看到期」关掉，或者换一家公司看看。</p>
+        <div className={CLS.C}>
+          <div className={CLS.y}>🔍</div>
+          <div className={CLS.z}>这个筛选下没有题</div>
+          <p className={CLS.A}>把「只看到期」关掉，或者换一家公司看看。</p>
         </div>
       ) : (
         <>
@@ -440,7 +441,7 @@ function QuestionEditor(props: {
   return (
     <li className="qb__editor">
       <label className="qb__editor-field">
-        <span className="field__label">题干</span>
+        <span className={CLS.a}>题干</span>
         <textarea
           className="textarea qb__editor-text"
           value={text}
@@ -464,7 +465,7 @@ function QuestionEditor(props: {
       />
 
       <label className="qb__editor-field">
-        <span className="field__label">我的回答（可空）</span>
+        <span className={CLS.a}>我的回答（可空）</span>
         <textarea
           className="textarea qb__editor-answer"
           value={answer}
@@ -478,12 +479,12 @@ function QuestionEditor(props: {
       </label>
 
       <div className="qb__editor-actions">
-        <button type="button" className="btn btn--small btn--primary" onClick={save} disabled={!text.trim()}>
+        <button type="button" className={CLS.o} onClick={save} disabled={!text.trim()}>
           保存
         </button>
         <button
           type="button"
-          className="btn btn--small"
+          className={CLS.b}
           onClick={() => {
             if (dirty && !warned) {
               setWarned(true);
@@ -494,8 +495,8 @@ function QuestionEditor(props: {
         >
           取消
         </button>
-        {tooLong ? <span className="muted">题干超过 {QUESTION_TEXT_LIMIT} 字，保存后会截断</span> : null}
-        {warned && dirty ? <span className="muted">有未保存的修改 —— 再点一次「取消」就丢掉</span> : null}
+        {tooLong ? <span className={CLS.d}>题干超过 {QUESTION_TEXT_LIMIT} 字，保存后会截断</span> : null}
+        {warned && dirty ? <span className={CLS.d}>有未保存的修改 —— 再点一次「取消」就丢掉</span> : null}
       </div>
     </li>
   );

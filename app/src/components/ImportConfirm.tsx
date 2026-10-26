@@ -13,6 +13,7 @@
  */
 
 import type { ConflictRow, MergeCounts } from '../lib/merge';
+import { CLS } from '../lib/classTokens';
 
 export interface ImportConfirmProps {
   counts: MergeCounts;
@@ -30,43 +31,43 @@ export function ImportConfirm(props: ImportConfirmProps) {
   const overwriteCount = overwrite.size;
 
   return (
-    <div className="drawer-overlay" onClick={onCancel}>
+    <div className={CLS.H} onClick={onCancel}>
       <aside
         className="drawer drawer--sync"
         onClick={(event) => event.stopPropagation()}
         role="dialog"
         aria-label="导入冲突确认"
       >
-        <header className="drawer__head">
-          <div className="drawer__title-wrap">
-            <h2 className="drawer__title">导入前确认</h2>
+        <header className={CLS.K}>
+          <div className={CLS.ah}>
+            <h2 className={CLS.I}>导入前确认</h2>
             <p className="drawer__sub">
               备份里有 {counts.conflicts} 条和你现有的记录对不上（同公司 + 同岗位 + 同投递日期）。
               每一条都可以单独决定用哪边的值。
             </p>
           </div>
-          <button type="button" className="icon-btn" onClick={onCancel} title="取消（Esc）" aria-label="取消">
+          <button type="button" className={CLS.m} onClick={onCancel} title="取消（Esc）" aria-label="取消">
             ✕
           </button>
         </header>
 
-        <div className="drawer__body">
+        <div className={CLS.J}>
           <div className="import__summary">
-            <span className="import__stat">
+            <span className={CLS.al}>
               新增 <strong>{counts.added}</strong> 条投递
             </span>
             {counts.addedCompanies > 0 ? (
-              <span className="import__stat">
+              <span className={CLS.al}>
                 新增 <strong>{counts.addedCompanies}</strong> 家公司
               </span>
             ) : null}
             {counts.addedInterviews > 0 ? (
-              <span className="import__stat">
+              <span className={CLS.al}>
                 <strong>{counts.addedInterviews}</strong> 场面试
               </span>
             ) : null}
             {counts.addedNotes > 0 ? (
-              <span className="import__stat">
+              <span className={CLS.al}>
                 <strong>{counts.addedNotes}</strong> 条沟通记录
               </span>
             ) : null}
@@ -82,13 +83,13 @@ export function ImportConfirm(props: ImportConfirmProps) {
           </div>
 
           <div className="import__bulk">
-            <span className="muted">
+            <span className={CLS.d}>
               默认全部<b>保留本地</b>；勾上才用备份的值覆盖。已勾 {overwriteCount} / {conflicts.length}
             </span>
             <span className="import__bulk-btns">
               <button
                 type="button"
-                className="btn btn--small"
+                className={CLS.b}
                 onClick={() => onToggleAll(true)}
                 disabled={overwriteCount === conflicts.length}
               >
@@ -96,7 +97,7 @@ export function ImportConfirm(props: ImportConfirmProps) {
               </button>
               <button
                 type="button"
-                className="btn btn--small"
+                className={CLS.b}
                 onClick={() => onToggleAll(false)}
                 disabled={overwriteCount === 0}
               >
@@ -156,13 +157,13 @@ export function ImportConfirm(props: ImportConfirmProps) {
 
         <footer className="sync__foot">
           <div className="sync__foot-left">
-            <span className="muted">导入不会删掉任何现有记录</span>
+            <span className={CLS.d}>导入不会删掉任何现有记录</span>
           </div>
           <div className="sync__foot-right">
-            <button type="button" className="btn btn--small" onClick={onCancel}>
+            <button type="button" className={CLS.b} onClick={onCancel}>
               取消
             </button>
-            <button type="button" className="btn btn--small btn--primary" onClick={onConfirm}>
+            <button type="button" className={CLS.o} onClick={onConfirm}>
               {overwriteCount > 0 ? `确认导入（${overwriteCount} 条用备份）` : '确认导入（全部保留本地）'}
             </button>
           </div>

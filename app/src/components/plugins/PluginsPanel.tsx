@@ -9,6 +9,7 @@
 import { useRef, useState } from 'react';
 import { buildPluginSrcDoc } from '../../plugins/sandbox';
 import type { PluginPermission, PluginRegistration } from '../../plugins/types';
+import { CLS } from '../../lib/classTokens';
 
 export interface PluginsPanelProps {
   plugins: PluginRegistration[];
@@ -39,7 +40,7 @@ export function PluginsPanel(props: PluginsPanelProps): JSX.Element {
 
   return (
     <div data-testid="plugins-panel">
-      <p className="field__hint">
+      <p className={CLS.c}>
         插件是单个 html 文件，跑在无网络权限的沙箱 iframe 里；任何 AI 请求都要先过发送预览。
         加载后默认**不授予任何权限**，逐项授权后再启用。
       </p>
@@ -54,19 +55,19 @@ export function PluginsPanel(props: PluginsPanelProps): JSX.Element {
         }}
       />
       {loadError ? (
-        <p className="field__hint field__hint--danger" data-testid="plugin-load-error">
+        <p className={CLS.s} data-testid="plugin-load-error">
           {loadError}
         </p>
       ) : null}
 
       {plugins.length === 0 ? (
-        <p className="field__hint" data-testid="plugins-empty">
+        <p className={CLS.c} data-testid="plugins-empty">
           还没有安装插件。加载 app/plugins/notes-ai.plugin.html 体验示例。
         </p>
       ) : null}
 
       {plugins.map((plugin) => (
-        <div key={plugin.pluginId} className="field" data-testid={`plugin-${plugin.pluginId}`}>
+        <div key={plugin.pluginId} className={CLS.g} data-testid={`plugin-${plugin.pluginId}`}>
           <label>
             <input
               type="checkbox"
@@ -74,9 +75,9 @@ export function PluginsPanel(props: PluginsPanelProps): JSX.Element {
               data-testid={`plugin-enable-${plugin.pluginId}`}
               onChange={(event) => onEnable(plugin.pluginId, event.target.checked)}
             />
-            <strong>{plugin.name}</strong> <span className="field__hint">v{plugin.version} · {plugin.pluginId}</span>
+            <strong>{plugin.name}</strong> <span className={CLS.c}>v{plugin.version} · {plugin.pluginId}</span>
           </label>
-          <div className="drawer__actions">
+          <div className={CLS.p}>
             {plugin.permissions.map((permission) => (
               <label key={permission}>
                 <input
@@ -89,16 +90,16 @@ export function PluginsPanel(props: PluginsPanelProps): JSX.Element {
               </label>
             ))}
           </div>
-          <div className="drawer__actions">
-            <button type="button" className="btn btn--small btn--ghost" onClick={() => setLogPluginId(logPluginId === plugin.pluginId ? null : plugin.pluginId)}>
+          <div className={CLS.p}>
+            <button type="button" className={CLS.E} onClick={() => setLogPluginId(logPluginId === plugin.pluginId ? null : plugin.pluginId)}>
               {logPluginId === plugin.pluginId ? '收起日志' : '看请求日志'}
             </button>
-            <button type="button" className="btn btn--small btn--ghost" onClick={() => onUninstall(plugin.pluginId)}>
+            <button type="button" className={CLS.E} onClick={() => onUninstall(plugin.pluginId)}>
               卸载
             </button>
           </div>
           {logPluginId === plugin.pluginId ? (
-            <div className="field__hint" data-testid={`plugin-logs-${plugin.pluginId}`}>
+            <div className={CLS.c} data-testid={`plugin-logs-${plugin.pluginId}`}>
               {requestLogs.filter((log) => log.pluginId === plugin.pluginId).length === 0
                 ? '暂无请求日志。'
                 : requestLogs

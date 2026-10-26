@@ -13,6 +13,7 @@
 import { useState } from 'react';
 import type { MappingPreview } from '../lib/csvImport';
 import { STATUS_LABEL } from '../lib/rules';
+import { CLS } from '../lib/classTokens';
 
 export interface CsvImportDialogProps {
   fileName: string;
@@ -33,7 +34,7 @@ export function CsvImportDialog(props: CsvImportDialogProps) {
   const rows = preview.rows.slice(0, PREVIEW_ROWS);
 
   return (
-    <div className="overlay" onClick={props.onCancel}>
+    <div className={CLS.U} onClick={props.onCancel}>
       <div
         className="modal modal--csv"
         role="dialog"
@@ -41,21 +42,21 @@ export function CsvImportDialog(props: CsvImportDialogProps) {
         aria-label="确认字段映射"
         onClick={(event) => event.stopPropagation()}
       >
-        <header className="modal__head">
-          <h2 className="modal__title">确认字段映射</h2>
-          <button type="button" className="icon-btn" onClick={props.onCancel} aria-label="关闭">
+        <header className={CLS.ac}>
+          <h2 className={CLS.Y}>确认字段映射</h2>
+          <button type="button" className={CLS.m} onClick={props.onCancel} aria-label="关闭">
             ×
           </button>
         </header>
 
-        <div className="modal__body">
-          <p className="field__hint">
+        <div className={CLS.aa}>
+          <p className={CLS.c}>
             <code>{props.fileName}</code> 里识别到 <strong>{preview.rows.length}</strong> 条投递、
             <strong>{mapped.length}</strong> 列有对应字段。确认后会**合并**进现有的 {props.existingCount}{' '}
             条投递里（同公司 + 同岗位 + 同投递日算重复，不会重复插入）。
           </p>
 
-          <h3 className="drawer__section-title">列 → 字段</h3>
+          <h3 className={CLS.i}>列 → 字段</h3>
           <div className="mapping-chips">
             {mapped.map((column) => (
               <span key={`${column.header}-${column.field}`} className="mapping-chip">
@@ -74,12 +75,12 @@ export function CsvImportDialog(props: CsvImportDialogProps) {
           </div>
 
           {preview.unmapped.length > 0 ? (
-            <p className="field__hint">
+            <p className={CLS.c}>
               灰色的列没有被导入：表头认不出来。想带上它们，把表头改成「备注」「城市」这类常见写法再导一次。
             </p>
           ) : null}
 
-          <h3 className="drawer__section-title">前 {rows.length} 行预览</h3>
+          <h3 className={CLS.i}>前 {rows.length} 行预览</h3>
           <div className="preview-table-wrap">
             <table className="table preview-table">
               <thead>
@@ -95,10 +96,10 @@ export function CsvImportDialog(props: CsvImportDialogProps) {
                 {rows.map((row, index) => (
                   <tr key={index}>
                     <td>{row.company}</td>
-                    <td>{row.jobTitle || <span className="muted">（空）</span>}</td>
+                    <td>{row.jobTitle || <span className={CLS.d}>（空）</span>}</td>
                     <td>{STATUS_LABEL[row.status]}</td>
                     <td className="mono">{row.appliedAt}</td>
-                    <td className="preview-table__note">{row.notes || <span className="muted">—</span>}</td>
+                    <td className="preview-table__note">{row.notes || <span className={CLS.d}>—</span>}</td>
                   </tr>
                 ))}
               </tbody>
@@ -106,11 +107,11 @@ export function CsvImportDialog(props: CsvImportDialogProps) {
           </div>
 
           {preview.rowIssues.length > 0 ? (
-            <div className="notice notice--warn">
+            <div className={CLS.N}>
               <strong>
                 有 {preview.rowIssues.length} 条需要注意{preview.skipped > 0 ? `，其中 ${preview.skipped} 行已跳过` : ''}
               </strong>
-              <button type="button" className="link-btn" onClick={() => setShowIssues((value) => !value)}>
+              <button type="button" className={CLS.k} onClick={() => setShowIssues((value) => !value)}>
                 {showIssues ? '收起' : '展开看看'}
               </button>
               {showIssues ? (
@@ -122,7 +123,7 @@ export function CsvImportDialog(props: CsvImportDialogProps) {
                   ))}
                 </ul>
               ) : (
-                <p className="field__hint">
+                <p className={CLS.c}>
                   展开后能看到每一行具体哪里不对。被跳过的行不会写进库，被替换的值会按默认值写入。
                 </p>
               )}
@@ -130,13 +131,13 @@ export function CsvImportDialog(props: CsvImportDialogProps) {
           ) : null}
         </div>
 
-        <footer className="modal__foot">
-          <button type="button" className="btn btn--ghost" onClick={props.onCancel}>
+        <footer className={CLS.ab}>
+          <button type="button" className={CLS.Q} onClick={props.onCancel}>
             取消
           </button>
           <button
             type="button"
-            className="btn btn--primary"
+            className={CLS.j}
             onClick={props.onConfirm}
             disabled={preview.rows.length === 0}
           >

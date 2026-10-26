@@ -26,6 +26,7 @@ import {
 import { clampText } from '../../lib/budget';
 import { AiScenarioPanel } from '../ai/AiScenarioPanel';
 import { BulkPastePanel } from './BulkPastePanel';
+import { CLS } from '../../lib/classTokens';
 
 const ANSWER_LIMIT = 5000;
 const NOTE_LIMIT = 3000;
@@ -50,16 +51,16 @@ export function ExperienceEditor({ api, experienceId, onClose }: ExperienceEdito
 
   if (!experience) {
     return (
-      <div className="drawer-overlay" onClick={onClose}>
+      <div className={CLS.H} onClick={onClose}>
         <aside className="drawer" onClick={(event) => event.stopPropagation()}>
-          <header className="drawer__head">
-            <h2 className="drawer__title">面经不见了</h2>
-            <button type="button" className="icon-btn" onClick={onClose} title="关闭" aria-label="关闭">
+          <header className={CLS.K}>
+            <h2 className={CLS.I}>面经不见了</h2>
+            <button type="button" className={CLS.m} onClick={onClose} title="关闭" aria-label="关闭">
               ✕
             </button>
           </header>
-          <div className="drawer__body">
-            <p className="muted">这条面经可能已经被删掉了。</p>
+          <div className={CLS.J}>
+            <p className={CLS.d}>这条面经可能已经被删掉了。</p>
           </div>
         </aside>
       </div>
@@ -67,11 +68,11 @@ export function ExperienceEditor({ api, experienceId, onClose }: ExperienceEdito
   }
 
   return (
-    <div className="drawer-overlay" onClick={onClose}>
+    <div className={CLS.H} onClick={onClose}>
       <aside className="drawer drawer--exp" onClick={(event) => event.stopPropagation()}>
-        <header className="drawer__head">
-          <div className="drawer__title-wrap">
-            <h2 className="drawer__title">
+        <header className={CLS.K}>
+          <div className={CLS.ah}>
+            <h2 className={CLS.I}>
               {experience.companyName}
               {experience.jobTitle ? ` · ${experience.jobTitle}` : ''}
             </h2>
@@ -82,18 +83,18 @@ export function ExperienceEditor({ api, experienceId, onClose }: ExperienceEdito
               {experience.source === 'community' ? <span className="chip">社区导入</span> : null}
             </div>
           </div>
-          <button type="button" className="icon-btn" onClick={onClose} title="关闭（Esc）" aria-label="关闭">
+          <button type="button" className={CLS.m} onClick={onClose} title="关闭（Esc）" aria-label="关闭">
             ✕
           </button>
         </header>
 
-        <div className="drawer__body">
-          <section className="drawer__section">
-            <div className="drawer__section-head">
-              <h3 className="drawer__section-title">这场面试</h3>
+        <div className={CLS.J}>
+          <section className={CLS.n}>
+            <div className={CLS.w}>
+              <h3 className={CLS.i}>这场面试</h3>
               <button
                 type="button"
-                className="link-btn"
+                className={CLS.k}
                 onClick={() => {
                   api.exportExperienceMarkdown([experience], { desensitize: true });
                 }}
@@ -102,11 +103,11 @@ export function ExperienceEditor({ api, experienceId, onClose }: ExperienceEdito
               </button>
             </div>
 
-            <div className="drawer__grid">
-              <label className="field field--narrow">
-                <span className="field__label">公司</span>
+            <div className={CLS.X}>
+              <label className={CLS.e}>
+                <span className={CLS.a}>公司</span>
                 <input
-                  className="input"
+                  className={CLS.f}
                   defaultValue={experience.companyName}
                   onBlur={(event) => {
                     const value = event.target.value.trim();
@@ -114,18 +115,18 @@ export function ExperienceEditor({ api, experienceId, onClose }: ExperienceEdito
                   }}
                 />
               </label>
-              <label className="field field--narrow">
-                <span className="field__label">岗位</span>
+              <label className={CLS.e}>
+                <span className={CLS.a}>岗位</span>
                 <input
-                  className="input"
+                  className={CLS.f}
                   defaultValue={experience.jobTitle ?? ''}
                   onBlur={(event) => api.updateExperience(experience.id, { jobTitle: event.target.value.trim() || undefined })}
                 />
               </label>
-              <label className="field field--tiny">
-                <span className="field__label">轮次</span>
+              <label className={CLS.au}>
+                <span className={CLS.a}>轮次</span>
                 <input
-                  className="input"
+                  className={CLS.f}
                   type="number"
                   min={1}
                   defaultValue={experience.round ?? ''}
@@ -136,10 +137,10 @@ export function ExperienceEditor({ api, experienceId, onClose }: ExperienceEdito
                   }
                 />
               </label>
-              <label className="field field--narrow">
-                <span className="field__label">面试日期</span>
+              <label className={CLS.e}>
+                <span className={CLS.a}>面试日期</span>
                 <input
-                  className="input"
+                  className={CLS.f}
                   type="date"
                   defaultValue={experience.interviewDate}
                   onBlur={(event) => {
@@ -148,10 +149,10 @@ export function ExperienceEditor({ api, experienceId, onClose }: ExperienceEdito
                   }}
                 />
               </label>
-              <label className="field field--narrow">
-                <span className="field__label">结果</span>
+              <label className={CLS.e}>
+                <span className={CLS.a}>结果</span>
                 <select
-                  className="select"
+                  className={CLS.D}
                   value={experience.result}
                   onChange={(event) =>
                     api.updateExperience(experience.id, { result: event.target.value as ExperienceResult })
@@ -166,8 +167,8 @@ export function ExperienceEditor({ api, experienceId, onClose }: ExperienceEdito
               </label>
             </div>
 
-            <label className="field">
-              <span className="field__label">整场感受（≤{NOTE_LIMIT} 字）</span>
+            <label className={CLS.g}>
+              <span className={CLS.a}>整场感受（≤{NOTE_LIMIT} 字）</span>
               <textarea
                 className="textarea exp__overall"
                 defaultValue={experience.overallNote ?? ''}
@@ -181,20 +182,20 @@ export function ExperienceEditor({ api, experienceId, onClose }: ExperienceEdito
             </label>
           </section>
 
-          <section className="drawer__section">
-            <div className="drawer__section-head">
-              <h3 className="drawer__section-title">题目（{questions.length}）</h3>
-              <span className="muted">失焦即保存</span>
+          <section className={CLS.n}>
+            <div className={CLS.w}>
+              <h3 className={CLS.i}>题目（{questions.length}）</h3>
+              <span className={CLS.d}>失焦即保存</span>
             </div>
 
             {/*
               D14 入口。AI 未配置时置灰 + 就地说明原因（R-AI-5）——
               不用「点了才告诉你没配」，更不弹错误框。
             */}
-            <div className="drawer__actions">
+            <div className={CLS.p}>
               <button
                 type="button"
-                className="btn btn--small"
+                className={CLS.b}
                 data-testid="ai-d14-entry"
                 disabled={!api.ai.ready}
                 onClick={() => setAiOpen(true)}
@@ -203,7 +204,7 @@ export function ExperienceEditor({ api, experienceId, onClose }: ExperienceEdito
               </button>
               <button
                 type="button"
-                className="btn btn--small"
+                className={CLS.b}
                 data-testid="bulk-paste-entry"
                 disabled={!api.ai.ready}
                 title={api.ai.ready ? '粘一整段记录，AI 拆成题补进这场面经' : api.ai.readyReason ?? 'AI 未配置'}
@@ -211,13 +212,13 @@ export function ExperienceEditor({ api, experienceId, onClose }: ExperienceEdito
               >
                 📋 继续粘贴整段
               </button>
-              <span className="field__hint">
+              <span className={CLS.c}>
                 {api.ai.ready ? '粘贴一段零散记录，AI 拆成题，逐题勾选才写入' : api.ai.readyReason}
               </span>
             </div>
 
             {questions.length === 0 ? (
-              <p className="muted">这场还没记题。关掉这个窗口，点「＋ 记面经」一行一题补上。</p>
+              <p className={CLS.d}>这场还没记题。关掉这个窗口，点「＋ 记面经」一行一题补上。</p>
             ) : (
               <ul className="exp__question-list">
                 {questions.map((question, index) => (
@@ -227,14 +228,14 @@ export function ExperienceEditor({ api, experienceId, onClose }: ExperienceEdito
             )}
           </section>
 
-          <section className="drawer__section drawer__section--danger">
-            <h3 className="drawer__section-title">删除这场面经</h3>
+          <section className={CLS.aS}>
+            <h3 className={CLS.i}>删除这场面经</h3>
             {confirmDelete ? (
-              <div className="drawer__actions">
-                <span className="muted">会连带删掉这场记的 {questions.length} 道题。</span>
+              <div className={CLS.p}>
+                <span className={CLS.d}>会连带删掉这场记的 {questions.length} 道题。</span>
                 <button
                   type="button"
-                  className="btn btn--small btn--danger"
+                  className={CLS.V}
                   onClick={() => {
                     api.deleteExperience(experience.id);
                     api.toast('面经已删除');
@@ -243,12 +244,12 @@ export function ExperienceEditor({ api, experienceId, onClose }: ExperienceEdito
                 >
                   确认删除
                 </button>
-                <button type="button" className="btn btn--small" onClick={() => setConfirmDelete(false)}>
+                <button type="button" className={CLS.b} onClick={() => setConfirmDelete(false)}>
                   取消
                 </button>
               </div>
             ) : (
-              <button type="button" className="btn btn--small" onClick={() => setConfirmDelete(true)}>
+              <button type="button" className={CLS.b} onClick={() => setConfirmDelete(true)}>
                 删除这场
               </button>
             )}
@@ -261,15 +262,15 @@ export function ExperienceEditor({ api, experienceId, onClose }: ExperienceEdito
       ) : null}
 
       {bulkOpen ? (
-        <div className="drawer-overlay" onClick={() => setBulkOpen(false)}>
+        <div className={CLS.H} onClick={() => setBulkOpen(false)}>
           <aside className="drawer drawer--exp" onClick={(event) => event.stopPropagation()}>
-            <header className="drawer__head">
-              <h2 className="drawer__title">整段补录 —— {experience.companyName}</h2>
-              <button type="button" className="icon-btn" onClick={() => setBulkOpen(false)} aria-label="关闭">
+            <header className={CLS.K}>
+              <h2 className={CLS.I}>整段补录 —— {experience.companyName}</h2>
+              <button type="button" className={CLS.m} onClick={() => setBulkOpen(false)} aria-label="关闭">
                 ✕
               </button>
             </header>
-            <div className="drawer__body">
+            <div className={CLS.J}>
               <BulkPastePanel
                 api={api}
                 existingExperienceId={experience.id}
@@ -302,10 +303,10 @@ function QuestionEditor({ question, index, api }: { question: Question; index: n
       {open ? (
         <div className="exp__question-body">
           <div className="exp__question-row">
-            <label className="field field--narrow">
-              <span className="field__label">分类</span>
+            <label className={CLS.e}>
+              <span className={CLS.a}>分类</span>
               <select
-                className="select select--compact"
+                className={CLS.q}
                 value={question.category ?? ''}
                 onChange={(event) =>
                   api.updateQuestion(question.id, {
@@ -321,10 +322,10 @@ function QuestionEditor({ question, index, api }: { question: Question; index: n
                 ))}
               </select>
             </label>
-            <label className="field field--tiny">
-              <span className="field__label">难度</span>
+            <label className={CLS.au}>
+              <span className={CLS.a}>难度</span>
               <select
-                className="select select--compact"
+                className={CLS.q}
                 value={question.difficulty}
                 onChange={(event) =>
                   api.updateQuestion(question.id, { difficulty: Number(event.target.value) as 1 | 2 | 3 })
@@ -335,10 +336,10 @@ function QuestionEditor({ question, index, api }: { question: Question; index: n
                 <option value={3}>3</option>
               </select>
             </label>
-            <label className="field field--narrow">
-              <span className="field__label">掌握度</span>
+            <label className={CLS.e}>
+              <span className={CLS.a}>掌握度</span>
               <select
-                className="select select--compact"
+                className={CLS.q}
                 value={question.mastery}
                 onChange={(event) =>
                   api.updateQuestion(question.id, { mastery: Number(event.target.value) as Mastery })
@@ -349,10 +350,10 @@ function QuestionEditor({ question, index, api }: { question: Question; index: n
                 <option value={2}>{MASTERY_LABEL[2]}</option>
               </select>
             </label>
-            <label className="field field--narrow">
-              <span className="field__label">挂的原因</span>
+            <label className={CLS.e}>
+              <span className={CLS.a}>挂的原因</span>
               <select
-                className="select select--compact"
+                className={CLS.q}
                 value={question.rootCause ?? ''}
                 onChange={(event) =>
                   api.updateQuestion(question.id, {
@@ -370,10 +371,10 @@ function QuestionEditor({ question, index, api }: { question: Question; index: n
             </label>
           </div>
 
-          <label className="field">
-            <span className="field__label">我当时怎么答的（≤{ANSWER_LIMIT} 字）</span>
+          <label className={CLS.g}>
+            <span className={CLS.a}>我当时怎么答的（≤{ANSWER_LIMIT} 字）</span>
             <textarea
-              className="textarea"
+              className={CLS.T}
               defaultValue={question.myAnswer ?? ''}
               placeholder="写出你当时的真实回答 —— 这段是以后复习最值钱的东西"
               onBlur={(event) => {
@@ -384,10 +385,10 @@ function QuestionEditor({ question, index, api }: { question: Question; index: n
             />
           </label>
 
-          <label className="field">
-            <span className="field__label">下次怎么改（一句话）</span>
+          <label className={CLS.g}>
+            <span className={CLS.a}>下次怎么改（一句话）</span>
             <input
-              className="input"
+              className={CLS.f}
               defaultValue={question.nextTime ?? ''}
               placeholder="例：先说结论，再补 Promise.all 的失败策略"
               onBlur={(event) => api.updateQuestion(question.id, { nextTime: event.target.value.trim() || undefined })}
@@ -395,7 +396,7 @@ function QuestionEditor({ question, index, api }: { question: Question; index: n
           </label>
 
           <div className="exp__question-actions">
-            <button type="button" className="link-btn link-btn--danger" onClick={() => api.deleteQuestion(question.id)}>
+            <button type="button" className={CLS.aq} onClick={() => api.deleteQuestion(question.id)}>
               删掉这题
             </button>
           </div>

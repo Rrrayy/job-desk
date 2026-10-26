@@ -22,6 +22,7 @@ import { todayISO } from '../../lib/date';
 import { deriveInitialNextReviewAt } from '../../lib/interview';
 import { MasteryCategoryPicks } from './MasteryCategoryPicks';
 import { BulkPastePanel } from './BulkPastePanel';
+import { CLS } from '../../lib/classTokens';
 
 /** 快记列表里的一行：题干 + 两个还没落库的选择 */
 interface QuickLine {
@@ -143,34 +144,34 @@ export function QuickNote({ api, onClose }: { api: AppApi; onClose: () => void }
               📋 粘贴整段
             </button>
           </div>
-          <button type="button" className="icon-btn" onClick={flushAndClose} title="关闭（Esc）" aria-label="关闭">
+          <button type="button" className={CLS.m} onClick={flushAndClose} title="关闭（Esc）" aria-label="关闭">
             ✕
           </button>
         </header>
 
         <div className="quick-note__meta">
-          <label className="field field--narrow">
-            <span className="field__label">公司</span>
+          <label className={CLS.e}>
+            <span className={CLS.a}>公司</span>
             <input
-              className="input"
+              className={CLS.f}
               value={companyName}
               placeholder="字节跳动"
               onChange={(event) => setCompanyName(event.target.value)}
             />
           </label>
-          <label className="field field--narrow">
-            <span className="field__label">岗位</span>
+          <label className={CLS.e}>
+            <span className={CLS.a}>岗位</span>
             <input
-              className="input"
+              className={CLS.f}
               value={jobTitle}
               placeholder="抖音前端（可空）"
               onChange={(event) => setJobTitle(event.target.value)}
             />
           </label>
-          <label className="field field--tiny">
-            <span className="field__label">轮次</span>
+          <label className={CLS.au}>
+            <span className={CLS.a}>轮次</span>
             <input
-              className="input"
+              className={CLS.f}
               type="number"
               min={1}
               value={round}
@@ -178,10 +179,10 @@ export function QuickNote({ api, onClose }: { api: AppApi; onClose: () => void }
               onChange={(event) => setRound(event.target.value)}
             />
           </label>
-          <label className="field field--narrow">
-            <span className="field__label">面试日期</span>
+          <label className={CLS.e}>
+            <span className={CLS.a}>面试日期</span>
             <input
-              className="input"
+              className={CLS.f}
               type="date"
               value={interviewDate}
               onChange={(event) => setInterviewDate(event.target.value)}
@@ -250,20 +251,20 @@ export function QuickNote({ api, onClose }: { api: AppApi; onClose: () => void }
             }}
           />
 
-          {error ? <div className="notice notice--danger">{error}</div> : null}
+          {error ? <div className={CLS.M}>{error}</div> : null}
         </div>
         )}
 
         {mode === 'line' ? (
           <footer className="quick-note__foot">
-            <span className="muted">
+            <span className={CLS.d}>
               记完会有 {nextReview} 的复习提醒（+1 / +3 / +7 天里最近的一个）
             </span>
             <div className="quick-note__actions">
-              <button type="button" className="btn btn--small" onClick={commitDraft} disabled={!draft.trim()}>
+              <button type="button" className={CLS.b} onClick={commitDraft} disabled={!draft.trim()}>
                 ＋ 再加一题
               </button>
-              <button type="button" className="btn btn--small btn--primary" onClick={flushAndClose}>
+              <button type="button" className={CLS.o} onClick={flushAndClose}>
                 记完了（{total} 题）
               </button>
             </div>

@@ -14,6 +14,7 @@
 
 import { useRef, useState } from 'react';
 import { compressPhoto, PHOTO_MAX_BYTES, PHOTO_MAX_WIDTH, PHOTO_UNSUPPORTED } from '../../resume/photo';
+import { CLS } from '../../lib/classTokens';
 
 export interface PhotoFieldProps {
   label: string;
@@ -54,7 +55,7 @@ export function PhotoField(props: PhotoFieldProps) {
 
   return (
     <div className="photo">
-      <span className="field__label">{label}</span>
+      <span className={CLS.a}>{label}</span>
       <div className="photo__row">
         {value ? <img className="photo__preview" src={value} alt={label} /> : null}
         <input
@@ -70,7 +71,7 @@ export function PhotoField(props: PhotoFieldProps) {
         />
         <button
           type="button"
-          className="btn btn--tiny"
+          className={CLS.h}
           aria-label={`${label}：选择图片`}
           disabled={busy}
           onClick={pick}
@@ -80,7 +81,7 @@ export function PhotoField(props: PhotoFieldProps) {
         {value ? (
           <button
             type="button"
-            className="btn btn--tiny btn--danger-ghost"
+            className={CLS.x}
             aria-label={`${label}：移除照片`}
             onClick={() => {
               setError(null);
@@ -91,11 +92,11 @@ export function PhotoField(props: PhotoFieldProps) {
           </button>
         ) : null}
       </div>
-      {hint ? <span className="field__hint">{hint}</span> : null}
-      <span className="field__hint">
+      {hint ? <span className={CLS.c}>{hint}</span> : null}
+      <span className={CLS.c}>
         自动压到宽 ≤{PHOTO_MAX_WIDTH}px、≤{Math.round(PHOTO_MAX_BYTES / 1024)} KB（只存在你自己的浏览器里）
       </span>
-      {error ? <span className="field__hint field__hint--danger">{error}</span> : null}
+      {error ? <span className={CLS.s}>{error}</span> : null}
     </div>
   );
 }

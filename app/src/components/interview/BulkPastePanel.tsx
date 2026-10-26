@@ -21,6 +21,7 @@ import { scenarioPreviewFields } from '../../ai/scenarios';
 import { BULK_LIMITS, UNMATCHED_NOTE_PREFIX, type QuestionCategory } from '../../types';
 import { CATEGORY_LABEL } from '../../lib/interview';
 import { SendPreviewDialog } from '../ai/SendPreviewDialog';
+import { CLS } from '../../lib/classTokens';
 
 const BULK_PLUGIN_ID = 'builtin:d14-bulk';
 
@@ -145,7 +146,7 @@ export function BulkPastePanel({
   /** AI 头部建议 chip：只在用户没填时出现（head 只建议，不覆盖 —— 窄校验第 8 条） */
   const headChip = (label: string, value: string, patch: { companyName?: string; jobTitle?: string; round?: string }) =>
     !blocked && value ? (
-      <button type="button" className="link-btn" onClick={() => onHeadChange?.(patch)}>
+      <button type="button" className={CLS.k} onClick={() => onHeadChange?.(patch)}>
         AI 建议：{label}「{value}」（点一下填入）
       </button>
     ) : null;
@@ -157,17 +158,17 @@ export function BulkPastePanel({
           把整段面试记录粘进来，AI 拆成一道道题；没识别成题目的原文不会丢。
           {blocked ? ` ${blocked} —— 配好之前只能手动一行一题。` : ''}
         </span>
-        <button type="button" className="icon-btn" onClick={onClose} aria-label="返回一行一题">
+        <button type="button" className={CLS.m} onClick={onClose} aria-label="返回一行一题">
           ✕
         </button>
       </div>
 
-      <label className="field">
-        <span className="field__label">
+      <label className={CLS.g}>
+        <span className={CLS.a}>
           面经整段原文（≤{BULK_LIMITS.noteChars} 字，现在 {text.length}）
         </span>
         <textarea
-          className="textarea"
+          className={CLS.T}
           rows={8}
           value={text}
           placeholder={'例：\n一面 40 分钟。先问了项目里的缓存设计，然后手写 Promise.all，追问了失败策略。最后反问环节聊了团队分工…'}
@@ -191,7 +192,7 @@ export function BulkPastePanel({
             ? headChip('岗位', headSuggestion.jobTitle, { jobTitle: headSuggestion.jobTitle })
             : null}
           {headSuggestion?.round && !head?.round ? (
-            <button type="button" className="link-btn" onClick={() => onHeadChange?.({ round: String(headSuggestion.round) })}>
+            <button type="button" className={CLS.k} onClick={() => onHeadChange?.({ round: String(headSuggestion.round) })}>
               AI 建议：第 {headSuggestion.round} 轮（点一下填入）
             </button>
           ) : null}
@@ -199,20 +200,20 @@ export function BulkPastePanel({
       )}
 
       {running ? (
-        <p className="field__hint" data-testid="bulk-running">
+        <p className={CLS.c} data-testid="bulk-running">
           模型正在拆分…（最多等 60 秒）
         </p>
       ) : null}
 
       {error ? (
-        <p className="field__hint field__hint--danger" data-testid="bulk-error">
+        <p className={CLS.s} data-testid="bulk-error">
           {error}
         </p>
       ) : null}
 
       {suggestions.length > 0 ? (
         <div className="bulk__result">
-          <span className="field__label" data-testid="bulk-selection-count" id="bulk-selection-count">
+          <span className={CLS.a} data-testid="bulk-selection-count" id="bulk-selection-count">
             已选 {checkedCount}/{suggestions.length} 题 —— 编号按列表顺序生成，不听模型自报
           </span>
           <ul className="bulk__list">
@@ -250,7 +251,7 @@ export function BulkPastePanel({
 
           {unmatched.length > 0 ? (
             <div className="bulk__unmatched" role="group" aria-label="未识别为题目的原文">
-              <span className="field__label">未识别为题目的原文（默认留进「整场感受」，取消勾选 = 丢掉）</span>
+              <span className={CLS.a}>未识别为题目的原文（默认留进「整场感受」，取消勾选 = 丢掉）</span>
               <ul>
                 {unmatched.map((segment, index) => (
                   <li key={index} className="bulk__unmatched-item">
@@ -276,18 +277,18 @@ export function BulkPastePanel({
           ) : null}
 
           {truncated > 0 ? (
-            <p className="field__hint" data-testid="bulk-truncated">
+            <p className={CLS.c} data-testid="bulk-truncated">
               另有 {truncated} 条（超 50 的题目 / 超 20 段的原文）已省略 —— 题目多请分段粘贴
             </p>
           ) : null}
 
           <div className="bulk__actions">
-            <span className="muted" aria-hidden="true">
+            <span className={CLS.d} aria-hidden="true">
               采用后 {UNMATCHED_NOTE_PREFIX.replace('// ', '')} 的段落会附在整场感受末尾
             </span>
             <button
               type="button"
-              className="btn btn--primary"
+              className={CLS.j}
               data-testid="bulk-adopt"
               disabled={checkedCount === 0}
               aria-describedby="bulk-selection-count"

@@ -13,6 +13,7 @@
 
 import type { Mastery, QuestionCategory } from '../../types';
 import { CATEGORY_LABEL, CATEGORY_NONE_LABEL, CATEGORY_OPTIONS, MASTERY_LABEL } from '../../lib/interview';
+import { CLS } from '../../lib/classTokens';
 
 const MASTERY_OPTIONS: Mastery[] = [0, 1, 2];
 
@@ -80,12 +81,12 @@ export function MasteryCategoryPicks(props: MasteryCategoryPicksProps) {
 
   return (
     <div className="picks picks--form">
-      <label className="field">
-        <span className="field__label">掌握度</span>
+      <label className={CLS.g}>
+        <span className={CLS.a}>掌握度</span>
         {masterySelect}
       </label>
-      <label className="field">
-        <span className="field__label">分类</span>
+      <label className={CLS.g}>
+        <span className={CLS.a}>分类</span>
         {categorySelect}
       </label>
     </div>

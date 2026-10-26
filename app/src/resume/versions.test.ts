@@ -11,7 +11,7 @@
 import { describe, expect, it } from 'vitest';
 import type { DB, ResumeContent } from '../types';
 import { emptyDB } from '../lib/defaults';
-import { applyResumeSlice, activeVersionsOf, createResume, duplicateResume, nextVersionLabel, purgeResume, purgeVersion, referencingApplications, renameResume, renameVersion, restoreResume, restoreVersion, saveVersion, setPrimaryVersion, snapshotResumes, softDeleteResume, softDeleteVersion, switchTemplate, adoptVersionAsDraft, VERSION_LIMIT, VERSION_WARN_AT, versionLabelFor, versionQuotaHint, versionQuotaUsed, versionsOf } from './versions';
+import { applyResumeSlice, activeVersionsOf, createResume, duplicateResume, nextVersionLabel, labelOfVersion, primaryPointerNotice, purgeResume, purgeVersion, referencingApplications, renameResume, renameVersion, restoreResume, restoreVersion, saveVersion, setPrimaryVersion, snapshotResumes, softDeleteResume, softDeleteVersion, switchTemplate, adoptVersionAsDraft, VERSION_LIMIT, VERSION_WARN_AT, versionLabelFor, versionQuotaHint, versionQuotaUsed, versionsOf } from './versions';
 import { ensureSections, setField } from './schema';
 import { TEMPLATE_ORDER, sectionsOf } from './templates';
 import { uid } from '../lib/util';
@@ -329,6 +329,71 @@ describe('简历软删 / 恢复 / 真删', () => {
     expect(purgeResume(db, resume.id)).toBe(true);
     expect(db.resumes).toHaveLength(0);
     expect(db.resumeVersions).toHaveLength(0);
+  });
+});
+
+describe('主版本指针的告知（v0.9.1 / T1-b：这笔欠账之前完全静默）', () => {
+  it('labelOfVersion：活着给名字，软删补「（已删除）」，找不到 / 没设过各有回退', () => {
+    const db = freshDB();
+    const resume = createResume(db, { name: 'A', templateId: 'tech-single', at: AT });
+    seedVersions(db, resume.id, 2);
+    const [first, second] = versionsOf(db, resume.id);
+
+    expect(labelOfVersion(db, first.id)).toBe(first.label);
+    softDeleteVersion(db, first.id, AT);
+    expect(labelOfVersion(db, first.id)).toBe(`${first.label}（已删除）`);
+    expect(labelOfVersion(db, 'not-a-real-id')).toBe('（已删除）');
+    expect(labelOfVersion(db, null)).toBe('');
+    expect(labelOfVersion(db, second.id)).toBe(second.label);
+  });
+
+  it('primaryPointerNotice：指针没变就返回 null（不打扰）', () => {
+    expect(primaryPointerNotice('v1', 'v1', 'v1', 'v1')).toBeNull();
+    expect(primaryPointerNotice(null, null, '', '')).toBeNull();
+  });
+
+  it('★ 首次设主版本走另一条文案（没有「从 A 改为 B」可说）', () => {
+    const notice = primaryPointerNotice(null, 'v5', '', 'v5');
+    expect(notice).toBe('已设「v5」为主版本（新建投递默认绑这一版）');
+  });
+
+  it('★ 被顶掉时两个名字都要念出来（v0.9 落地偏差记录第 2 条的兑现）', () => {
+    const notice = primaryPointerNotice('v2', 'v5', 'v2', 'v5');
+    expect(notice).toBe('主版本已从「v2」改为「v5」');
+    // 被顶掉的那一版可能已经悬空（A-12），名字里带「（已删除）」也照念
+    expect(primaryPointerNotice('v2', 'v5', 'v2（已删除）', 'v5')).toBe(
+      '主版本已从「v2（已删除）」改为「v5」',
+    );
+  });
+
+  it('★ 删掉作为主版本的 v2 → 明说「已取消」并说明后果（不再默认绑定）', () => {
+    expect(primaryPointerNotice('v2', null, 'v2', '')).toBe(
+      '主版本已取消（v2 已删除），新建投递不再默认绑定',
+    );
+    // 永久删除用另一套动词：用户需要分清「还在回收站」和「已经没了」
+    expect(primaryPointerNotice('v2', null, 'v2', '', '已永久删除')).toBe(
+      '主版本已取消（v2 已永久删除），新建投递不再默认绑定',
+    );
+  });
+
+  it('★ 真删简历时，指向它名下版本的主版本指针一并摘掉（不留悬空指针）', () => {
+    const db = freshDB();
+    const a = createResume(db, { name: 'A', templateId: 'tech-single', at: AT });
+    const b = createResume(db, { name: 'B', templateId: 'tech-single', at: AT });
+    seedVersions(db, a.id, 2);
+    seedVersions(db, b.id, 1);
+    const aVersion = versionsOf(db, a.id)[0].id;
+    const bVersion = versionsOf(db, b.id)[0].id;
+
+    setPrimaryVersion(db, aVersion);
+    expect(purgeResume(db, a.id)).toBe(true);
+    expect(db.settings.defaultResumeVersionId).toBeUndefined();
+
+    // 不误伤：指针指向别的简历的版本时，删 A 不能清掉 B 的指针
+    setPrimaryVersion(db, bVersion);
+    const c = createResume(db, { name: 'C', templateId: 'tech-single', at: AT });
+    expect(purgeResume(db, c.id)).toBe(true);
+    expect(db.settings.defaultResumeVersionId).toBe(bVersion);
   });
 });
 

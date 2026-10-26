@@ -21,6 +21,7 @@ import {
 import { fmtDateTime, relativeCountdown } from '../lib/date';
 import { pendingReviewInterviews } from '../lib/interview';
 import { companyLabel, cx } from '../lib/util';
+import { CLS } from '../lib/classTokens';
 
 export function TodayView({ api }: { api: AppApi }) {
   const { db, now } = api;
@@ -68,16 +69,16 @@ export function TodayView({ api }: { api: AppApi }) {
   if (db.applications.length === 0) {
     return (
       <div className="page">
-        <div className="empty-block">
-          <div className="empty-block__emoji">📮</div>
-          <h2 className="empty-block__title">还没有记录。</h2>
-          <p className="empty-block__text">
+        <div className={CLS.C}>
+          <div className={CLS.y}>📮</div>
+          <h2 className={CLS.z}>还没有记录。</h2>
+          <p className={CLS.A}>
             BOSS 上聊过的第一个人，值得被记住。
             <br />
             两个字段就能记一家：公司名 + 岗位名。
           </p>
-          <div className="empty-block__actions">
-            <button type="button" className="btn btn--primary btn--lg" onClick={() => api.openNew()}>
+          <div className={CLS.ar}>
+            <button type="button" className={CLS.W} onClick={() => api.openNew()}>
               ＋ 记下第一家
             </button>
             <button type="button" className="btn btn--lg" onClick={api.loadSampleData}>
@@ -94,19 +95,19 @@ export function TodayView({ api }: { api: AppApi }) {
       <div className="today-grid">
         {/* 今天要做的 N 件事 */}
         <section className="card card--actions">
-          <header className="card__head">
-            <h2 className="card__title">
+          <header className={CLS.t}>
+            <h2 className={CLS.l}>
               {actions.length === 0 ? '今天要做的 0 件事' : `今天要做的 ${actions.length} 件事`}
             </h2>
-            <span className="card__hint">
+            <span className={CLS.u}>
               {mutedCount > 0 ? `${mutedCount} 家已静音 · ` : ''}红 &gt; 蓝 &gt; 黄，按紧急度排
             </span>
           </header>
           {actions.length === 0 ? (
             <div className="quiet">
-              <p className="quiet__title">待办清空了。</p>
-              <p className="quiet__text">手上没有要催的、没有要面的 —— 这时候最适合再投一家。</p>
-              <button type="button" className="btn btn--small" onClick={() => api.openNew()}>
+              <p className={CLS.Z}>待办清空了。</p>
+              <p className={CLS.an}>手上没有要催的、没有要面的 —— 这时候最适合再投一家。</p>
+              <button type="button" className={CLS.b} onClick={() => api.openNew()}>
                 ＋ 记一家
               </button>
             </div>
@@ -128,7 +129,7 @@ export function TodayView({ api }: { api: AppApi }) {
                   </div>
                   <button
                     type="button"
-                    className="btn btn--tiny"
+                    className={CLS.h}
                     onClick={() => api.openDetail(item.appId)}
                   >
                     {item.doneHint}
@@ -138,23 +139,23 @@ export function TodayView({ api }: { api: AppApi }) {
             </ul>
           )}
           {plan.overflow.length > 0 ? (
-            <p className="card__foot">
+            <p className={CLS.R}>
               <button
                 type="button"
-                className="link-btn"
+                className={CLS.k}
                 onClick={() => setShowOverflow((prev) => !prev)}
               >
                 {showOverflow ? '收起' : `还有 ${plan.overflow.length} 件，展开看`}
               </button>
-              {showOverflow ? null : <span className="card__hint">{'\u3000'}今天的预算就 {plan.budget} 件</span>}
+              {showOverflow ? null : <span className={CLS.u}>{'\u3000'}今天的预算就 {plan.budget} 件</span>}
             </p>
           ) : null}
         </section>
 
         {/* 本周投递进度 */}
         <section className="card card--ring">
-          <header className="card__head">
-            <h2 className="card__title">本周投递</h2>
+          <header className={CLS.t}>
+            <h2 className={CLS.l}>本周投递</h2>
           </header>
           <div className="ring">
             <svg viewBox="0 0 100 100" className="ring__svg" aria-hidden="true">
@@ -185,16 +186,16 @@ export function TodayView({ api }: { api: AppApi }) {
                   : '目标达成，剩下的是跟进。'
                 : `离目标还差 ${goal - weekly} 家`}
           </p>
-          <button type="button" className="btn btn--small" onClick={() => api.openNew()}>
+          <button type="button" className={CLS.b} onClick={() => api.openNew()}>
             ＋ 记一家
           </button>
         </section>
 
         {/* 漏斗概览 */}
         <section className="card card--funnel">
-          <header className="card__head">
-            <h2 className="card__title">漏斗概览</h2>
-            <button type="button" className="link-btn" onClick={() => api.setView('insights')}>
+          <header className={CLS.t}>
+            <h2 className={CLS.l}>漏斗概览</h2>
+            <button type="button" className={CLS.k} onClick={() => api.setView('insights')}>
               看复盘 →
             </button>
           </header>
@@ -212,16 +213,16 @@ export function TodayView({ api }: { api: AppApi }) {
               );
             })}
           </div>
-          {topCount === 0 ? <p className="card__foot">再投 1 家就能看到转化率了。</p> : null}
+          {topCount === 0 ? <p className={CLS.R}>再投 1 家就能看到转化率了。</p> : null}
         </section>
       </div>
 
       {/* 待复盘面试：面完了、结果也记了、但还没记面经 —— 这是唯一会「过期作废」的事，所以单独一张卡 */}
       {pendingReviews.length > 0 ? (
         <section className="card card--revisit">
-          <header className="card__head">
-            <h2 className="card__title">{pendingReviews.length} 场面试待复盘</h2>
-            <span className="card__hint">趁记忆还热，一天后细节就掉一半</span>
+          <header className={CLS.t}>
+            <h2 className={CLS.l}>{pendingReviews.length} 场面试待复盘</h2>
+            <span className={CLS.u}>趁记忆还热，一天后细节就掉一半</span>
           </header>
           <ul className="revisit-list">
             {pendingReviews.slice(0, 3).map((item) => (
@@ -254,7 +255,7 @@ export function TodayView({ api }: { api: AppApi }) {
                   </button>
                   <button
                     type="button"
-                    className="link-btn"
+                    className={CLS.k}
                     onClick={() => api.openDetail(item.applicationId)}
                   >
                     看投递 →
@@ -264,12 +265,12 @@ export function TodayView({ api }: { api: AppApi }) {
             ))}
           </ul>
           {pendingReviews.length > 3 ? (
-            <p className="card__foot">还有 {pendingReviews.length - 3} 场，去「复盘 → 面经」里一起补。</p>
+            <p className={CLS.R}>还有 {pendingReviews.length - 3} 场，去「复盘 → 面经」里一起补。</p>
           ) : null}
-          <p className="card__foot">
+          <p className={CLS.R}>
             <button
               type="button"
-              className="link-btn"
+              className={CLS.k}
               onClick={() => {
                 api.setInsightsTab('interview');
                 api.setView('insights');
@@ -282,15 +283,15 @@ export function TodayView({ api }: { api: AppApi }) {
       ) : null}
 
       {/* 最近动态 */}
-      <section className="card">
-        <header className="card__head">
-          <h2 className="card__title">最近动态</h2>
-          <span className="card__hint">跨公司最近 {recent.length} 条</span>
+      <section className={CLS.v}>
+        <header className={CLS.t}>
+          <h2 className={CLS.l}>最近动态</h2>
+          <span className={CLS.u}>跨公司最近 {recent.length} 条</span>
         </header>
         {recent.length === 0 ? (
           <div className="quiet">
-            <p className="quiet__title">还没有任何动态。</p>
-            <p className="quiet__text">每记一条沟通，沉默计时就会清零 —— 这就是它唯一的用处。</p>
+            <p className={CLS.Z}>还没有任何动态。</p>
+            <p className={CLS.an}>每记一条沟通，沉默计时就会清零 —— 这就是它唯一的用处。</p>
           </div>
         ) : (
           <ol className="timeline timeline--recent">
@@ -324,8 +325,8 @@ export function TodayView({ api }: { api: AppApi }) {
 
       {todos.todayInterview.length > 0 ? (
         <section className="card card--today-interview">
-          <header className="card__head">
-            <h2 className="card__title">今天的面试</h2>
+          <header className={CLS.t}>
+            <h2 className={CLS.l}>今天的面试</h2>
           </header>
           <ul className="mini-list">
             {todos.todayInterview.map((item) => {
@@ -338,7 +339,7 @@ export function TodayView({ api }: { api: AppApi }) {
                     {item.interview.round} 轮）
                   </span>
                   {phase ? <span className="mini-list__phase">{phase}</span> : null}
-                  <button type="button" className="btn btn--tiny" onClick={() => api.openDetail(item.app.id)}>
+                  <button type="button" className={CLS.h} onClick={() => api.openDetail(item.app.id)}>
                     打开
                   </button>
                 </li>
