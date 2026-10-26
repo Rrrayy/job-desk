@@ -91,7 +91,7 @@ import {
   type ResumeSlice,
   type SaveVersionResult,
 } from './resume/versions';
-import { bindResumeVersion as bindResumeVersionDraft } from './resume/bind';
+import { bindResumeVersion as bindResumeVersionDraft, revertBind, snapshotBind, type BindUndo } from './resume/bind';
 import { cloneDB, companyFullName, companyLabel, downloadBlob, downloadText, pad2, safeHref, textBytes, uid } from './lib/util';
 import {
   PORTABLE_FILES,
@@ -231,7 +231,13 @@ type Undo =
    * 只回滚三块（resumes / resumeVersions / defaultResumeVersionId）——
    * 删一个版本不该把「刚记的一场面试」一起撤掉。
    */
-  | { kind: 'resume'; resume: ResumeSlice };
+  | { kind: 'resume'; resume: ResumeSlice }
+  /**
+   * v0.9.1 / R-RES-9：绑定 / 改绑 / 归类旧数据。
+   * 只回退一条投递的**四个绑定字段**（versionId / version / bindLog / updatedAt）——
+   * 撤销一次绑定不该把「绑定之后用户又改了状态」一起退回去。
+   */
+  | { kind: 'bind'; bind: BindUndo };
 
 /** 撤销栈里的一格：撤销动作 + 给用户看的名字 +（可选）重做动作 */
 interface UndoEntry {
@@ -406,6 +412,7 @@ export default function App() {
         else if (undo.kind === 'question') revertQuestionEdit(draft, undo.question);
         else if (undo.kind === 'batch') revertQuestionBatch(draft, undo.batch);
         else if (undo.kind === 'resume') applyResumeSlice(draft, undo.resume);
+        else if (undo.kind === 'bind') revertBind(draft, undo.bind);
         else revertSync(draft, undo.sync);
       });
     },
@@ -659,16 +666,34 @@ export default function App() {
    * v0.9 / T06：绑定 / 改绑 / 解绑。逻辑全在 `resume/bind.ts` 纯函数层 ——
    * 这里只负责把 draft 递进去。F9（不碰 lastActivityAt / notes / 时间线）由那一层保证，
    * 测试在 `resume/bind.test.ts` 里显式回归。
+   *
+   * v0.9.1 补：**一次绑定 = 一个撤销点**。v0.9 落地时这一条漏了（改了简历版本按 ⌘Z
+   * 撤不回来），而「旧数据归类」正是走这条通道 —— 架构 §1.2.6 要求「⌘Z 一次回退一条
+   * 归类」，不补这里那条验收就无从谈起。快照只含四个绑定字段，不复制整条投递。
    */
   const bindResumeVersion = useCallback(
     (appId: string, versionId: string | null): boolean => {
+      const target = dbRef.current.applications.find((app) => app.id === appId);
+      const before = target ? snapshotBind(target) : null;
+      const at = new Date().toISOString();
       let ok = false;
       mutate((draft) => {
-        ok = bindResumeVersionDraft(draft, appId, versionId, new Date().toISOString());
+        ok = bindResumeVersionDraft(draft, appId, versionId, at);
       });
+      if (ok && before) {
+        pushUndo({
+          label: '改绑简历版本',
+          undo: { kind: 'bind', bind: before },
+          redo: () => {
+            mutate((draft) => {
+              bindResumeVersionDraft(draft, appId, versionId, at);
+            });
+          },
+        });
+      }
       return ok;
     },
-    [mutate],
+    [mutate, pushUndo],
   );
 
   const changeStatus = useCallback(

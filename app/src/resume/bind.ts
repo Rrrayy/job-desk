@@ -128,3 +128,54 @@ export function bindResumeVersion(draft: DB, appId: string, versionId: string | 
   app.updatedAt = at;
   return true;
 }
+
+/* ------------------------------ 撤销（v0.9.1 / R-RES-9） ------------------------------ */
+
+/**
+ * 一次绑定的字段级快照 —— **只含 `bindResumeVersion` 会碰的四个字段**。
+ *
+ * 为什么不做整条投递的快照：整条投递里有 notes / 时间线 / 状态，那些跟绑定无关；
+ * 复制整条会在撤销时把「绑定之后用户又改了状态」一起退回去 —— 撤销一件事
+ * 顺手退回三件事，是这个项目最不想要的撤销语义。
+ */
+export interface BindUndo {
+  appId: string;
+  prevVersionId: string | undefined;
+  prevVersion: string | undefined;
+  prevBindLog: ResumeBindLogEntry[] | undefined;
+  prevUpdatedAt: string;
+}
+
+/**
+ * 取一条投递的绑定前快照（**必须在 `mutate` 之前调**）。
+ *
+ * @param app mutating 之前的那条投递（库里传进来的是旧对象，不会被 mutate 改到）
+ * @returns 撤销时贴回去的那几格
+ */
+export function snapshotBind(app: Application): BindUndo {
+  return {
+    appId: app.id,
+    prevVersionId: app.resumeVersionId,
+    prevVersion: app.resumeVersion,
+    prevBindLog: app.resumeBindLog,
+    prevUpdatedAt: app.updatedAt,
+  };
+}
+
+/**
+ * 把一条投递的绑定四字段贴回快照值。
+ *
+ * 深拷贝 `prevBindLog`：撤销栈里存的东西一旦和库里的对象共享引用，
+ * 后一次改绑（`appendLog` 返回新数组，但若实现变了就会原地改）会把历史一起改掉。
+ *
+ * @param draft 正在改的库
+ * @param undo `snapshotBind` 的返回值
+ */
+export function revertBind(draft: DB, undo: BindUndo): void {
+  const app = draft.applications.find((item) => item.id === undo.appId);
+  if (!app) return;
+  app.resumeVersionId = undo.prevVersionId;
+  app.resumeVersion = undo.prevVersion;
+  app.resumeBindLog = undo.prevBindLog ? undo.prevBindLog.map((entry) => ({ ...entry })) : undefined;
+  app.updatedAt = undo.prevUpdatedAt;
+}

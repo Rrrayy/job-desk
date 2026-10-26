@@ -39,8 +39,9 @@
  *      （证明表里的类名不是凭空造的）；dist 存在时一并校验
  *   3. 无重复：没有重复 key、没有重复 value（重复 value = 统计口径错了）
  *   4. 条目数 ≤ 100（B-02 硬上限，防止后人顺手加满把收益归零）
- *   5. 选表一致性：用「现有表 + 残留字面量」重算频次与排名，结果必须与现有表
- *      **逐条一致（含 token 分配顺序）** —— 这条让「表被人手动改了一条」也能被发现
+ *   5. 选表一致性：用「现有表 + 残留字面量」重算频次与**入选集合**，结果必须与现有表一致
+ *      （只比集合、不比 token 分给谁 —— 后者是优化，写进门禁会让每加一个按钮都要求
+ *      重生成 50 个文件的 token 名）
  *
  * ★ 本文件是生成 + 改写工具，不是生成物；`src/lib/classTokens.ts` 是生成物。
  */
@@ -783,25 +784,35 @@ export function runCheck() {
     fail(`round-trip：${missing.length} 个类名原子在 CSS 里找不到 —— ${missing.slice(0, 8).join('、')}`);
   }
 
-  // 断言 5：选表一致性（用重算频次推出的表必须与现有表逐条一致）
+  // 断言 5：选表一致性（重算频次推出的**入选集合**必须与现有表一致）
+  //
+  // 只比集合、**不比 token 分配到哪个串值**：短号给最热的串是「优化」，不是「正确性」。
+  // 若把顺序也写进门禁，那么以后每新写一个 `CLS.j` 按钮都会让频次排名微调、
+  // 于是 `--check` 要求重生成 50 个文件的 token 名 —— 收益是几十字节，代价是每次
+  // 功能开发都要滚一遍全仓 diff。集合比对已经能抓住真正要防的两件事：
+  // ① 有人手改了表里的某个值（集合变了）；② 有人新写了高频类名却没重新生成（集合该变没变）。
   const expected = planTable(counts);
-  let drift = 0;
-  if (expected.length !== table.length) {
-    drift += Math.abs(expected.length - table.length);
-    lines.push(`  ✗ 选表漂移：应有 ${expected.length} 条，实际 ${table.length} 条`);
-  }
-  for (let i = 0; i < Math.min(expected.length, table.length); i += 1) {
-    const a = expected[i];
-    const b = table[i];
-    if (a.token !== b.token || a.value !== b.value) {
-      drift += 1;
-      if (drift <= 5) {
-        lines.push(`  ✗ 选表漂移 @${i}：应为 ${a.token}:"${a.value}"，实际 ${b.token}:"${b.value}"`);
-      }
+  const expectedValues = new Set(expected.map((e) => e.value));
+  const actualValues = new Set(table.map((e) => e.value));
+  const missingFromTable = expected.filter((e) => !actualValues.has(e.value));
+  const extraInTable = table.filter((e) => !expectedValues.has(e.value));
+  const expectedTokens = new Set(tokenNames(table.length));
+  const actualTokens = new Set(table.map((e) => e.token));
+  const tokenShapeOk =
+    expectedTokens.size === actualTokens.size && [...expectedTokens].every((t) => actualTokens.has(t));
+
+  if (missingFromTable.length === 0 && extraInTable.length === 0 && tokenShapeOk) {
+    pass('选表一致性：入选的 100 个串值与重算结果完全一致，token 名构成合法（1 字符 52 + 2 字符 48）');
+  } else {
+    if (missingFromTable.length > 0) {
+      lines.push(`  ✗ 该进表却没进：${missingFromTable.slice(0, 5).map((e) => `"${e.value}"×${e.count}`).join('、')}`);
     }
+    if (extraInTable.length > 0) {
+      lines.push(`  ✗ 在表里但不该在：${extraInTable.slice(0, 5).map((e) => `"${e.value}"`).join('、')}`);
+    }
+    if (!tokenShapeOk) lines.push('  ✗ token 名不是合法的 1/2 字符分配（有人手改过 key）');
+    fail('选表一致性：现有表与重算结果不一致（有人手改过表，或 --write 后没重新生成）');
   }
-  if (drift === 0) pass('选表一致性：重算频次推出的表与现有表逐条一致');
-  else fail('选表一致性：现有表与重算结果不一致（有人手改过表，或 --write 后没重新生成）');
 
   lines.unshift(
     `类名 token 化：${table.length}/${MAX_ENTRIES} 条，覆盖 ${occurrences} 处出现`,

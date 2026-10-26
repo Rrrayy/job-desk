@@ -12,8 +12,8 @@ import { describe, expect, it } from 'vitest';
 import type { Application, DB } from '../types';
 import { emptyDB } from '../lib/defaults';
 import { createResume, saveVersion, softDeleteVersion } from './versions';
-import { bindResumeVersion, candidateVersions, resolveBoundVersion } from './bind';
-import { UNBOUND_LEGACY_LABEL, UNLABELED_RESUME_LABEL } from '../lib/rules';
+import { bindResumeVersion, candidateVersions, resolveBoundVersion, revertBind, snapshotBind } from './bind';
+import { UNBOUND_LEGACY_LABEL, UNLABELED_RESUME_LABEL, lastActivityAtOf, silenceDaysOf } from '../lib/rules';
 import { isDeleted } from '../lib/trash';
 
 const AT = '2026-03-01T10:00:00.000Z';
@@ -169,6 +169,43 @@ describe('bindResumeVersion：写入、留痕、上限、拒绝', () => {
     expect(app.resumeBindLog).toHaveLength(2);
   });
 
+  /**
+   * ★★ B-06 值断言（v0.9.1 新纪律，比上面那条写集断言强一个量级）。
+   *
+   * 为什么必须再写一条：上面那条证明的是「`bindResumeVersion` 只写了四个字段」——
+   * 那是**写集**断言。F9（改绑不污染沉默天数）真正成立靠的是
+   * `lastActivityAtOf` 的**读集**碰巧不含 `updatedAt`。将来任何人给它加一句
+   * `updatedAt`（看起来极其自然的「最后活跃时间」实现），上面那条仍然绿，F9 却已经破了。
+   * 所以这里断言的是**函数返回值**，不是写了什么。
+   */
+  it('★★ B-06 值断言：改绑 / 归类前后 lastActivityAtOf 返回值逐字节相同，沉默天数相同', () => {
+    const db = freshDB();
+    const { versionIds } = seedResume(db, '前端 - 主投', 2);
+    // 一条 40 天前的投递（沉默期），带一条更早的沟通记录
+    const app = makeApp({
+      id: 'app-legacy',
+      statusChangedAt: '2026-01-10T01:00:00.000Z',
+      lastActivityAt: '2026-01-10T01:00:00.000Z',
+      updatedAt: '2026-01-10T01:00:00.000Z',
+      resumeVersion: 'v1-手输的文本', // 旧数据：只有文本，没有 id
+    });
+    db.applications = [app];
+    const now = new Date('2026-02-20T01:00:00.000Z');
+
+    const actBefore = lastActivityAtOf(app, db.notes);
+    const silenceBefore = silenceDaysOf(app, db.notes, now);
+
+    // 路径 ①：旧数据归类（走的就是 bindResumeVersion）
+    expect(bindResumeVersion(db, app.id, versionIds[0], AT2)).toBe(true);
+    expect(lastActivityAtOf(app, db.notes)).toBe(actBefore);
+    expect(silenceDaysOf(app, db.notes, now)).toBe(silenceBefore);
+
+    // 路径 ②：普通改绑
+    expect(bindResumeVersion(db, app.id, versionIds[1], '2026-03-06T10:00:00.000Z')).toBe(true);
+    expect(lastActivityAtOf(app, db.notes)).toBe(actBefore);
+    expect(silenceDaysOf(app, db.notes, now)).toBe(silenceBefore);
+  });
+
   it('改绑三件套：旧条目保留、新条目追加 —— 上一条就是旧值，串起来能看出「从哪改到哪」', () => {
     const db = freshDB();
     const { versionIds } = seedResume(db, '前端 - 主投', 2);
@@ -272,5 +309,71 @@ describe('绑定与统计的接缝（id 优先，不与 rules.test 的聚合用�
     ];
     const alive = db.applications.filter((item) => !isDeleted(item) && item.resumeVersionId === versionIds[0]);
     expect(alive).toHaveLength(1);
+  });
+});
+
+/**
+ * 撤销（v0.9.1 / R-RES-9）。旧数据归类走的就是绑定通道，所以「⌘Z 一次回退一条归类」
+ * 能不能成立，取决于这一对函数能不能把四个字段**完整**贴回去。
+ */
+describe('snapshotBind / revertBind：撤销一格绑定', () => {
+  it('★ 归类后撤销：id / 快照文本 / 留痕长度 / updatedAt 全部复原（含手输文本）', () => {
+    const db = freshDB();
+    const { versionIds } = seedResume(db);
+    const app = makeApp({ resumeVersion: 'v1-手输的文本' });
+    db.applications = [app];
+
+    const before = snapshotBind(app);
+    expect(bindResumeVersion(db, app.id, versionIds[0], AT2)).toBe(true);
+    expect(app.resumeVersion).toBe('v1');
+
+    revertBind(db, before);
+    expect(app.resumeVersionId).toBeUndefined();
+    expect(app.resumeVersion).toBe('v1-手输的文本');
+    expect(app.resumeBindLog).toBeUndefined();
+    expect(app.updatedAt).toBe('2026-02-20T01:00:00.000Z');
+  });
+
+  it('★ 改绑后撤销：回到上一版，留痕条数复原（不是清空）', () => {
+    const db = freshDB();
+    const { versionIds } = seedResume(db, '前端 - 主投', 2);
+    const app = makeApp();
+    db.applications = [app];
+
+    bindResumeVersion(db, app.id, versionIds[0], AT2);
+    const before = snapshotBind(app);
+    bindResumeVersion(db, app.id, versionIds[1], '2026-03-06T10:00:00.000Z');
+    expect(app.resumeBindLog).toHaveLength(2);
+
+    revertBind(db, before);
+    expect(app.resumeVersionId).toBe(versionIds[0]);
+    expect(app.resumeBindLog).toHaveLength(1);
+    expect(app.resumeBindLog?.[0].label).toBe('v1');
+  });
+
+  it('★ 撤销只动四个绑定字段：状态 / 沉默基准 / notes 一概不碰', () => {
+    const db = freshDB();
+    const { versionIds } = seedResume(db);
+    const app = makeApp();
+    db.applications = [app];
+    const before = snapshotBind(app);
+
+    bindResumeVersion(db, app.id, versionIds[0], AT2);
+    // 绑定之后用户又改了一次状态（真实场景：归完类顺手更新进展）
+    app.status = 'interviewing';
+    app.statusChangedAt = '2026-03-07T10:00:00.000Z';
+    app.lastActivityAt = '2026-03-07T10:00:00.000Z';
+
+    revertBind(db, before);
+    expect(app.status).toBe('interviewing');
+    expect(app.statusChangedAt).toBe('2026-03-07T10:00:00.000Z');
+    expect(app.lastActivityAt).toBe('2026-03-07T10:00:00.000Z');
+  });
+
+  it('目标投递已经不存在 → 不抛错（可能刚被别处清掉）', () => {
+    const db = freshDB();
+    const app = makeApp();
+    const before = snapshotBind(app);
+    expect(() => revertBind(db, before)).not.toThrow();
   });
 });

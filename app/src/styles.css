@@ -6071,3 +6071,45 @@ button.chip:hover {
     -webkit-print-color-adjust: exact;
   }
 }
+
+/* ============================================================ v0.9.1 · R-RES-9 旧数据归类 */
+
+/* 简历页列表态顶部的横幅：说清「有多少 / 现在算在哪 / 归了有什么用」，不推销 */
+.legacy-banner {
+  margin: 0;
+  align-items: flex-start;
+}
+
+.legacy-banner > div {
+  flex: 1;
+  line-height: 1.7;
+}
+
+/* 归类面板：一屏一条，四个出口都在脚上，没有隐藏动作 */
+.legacy-bind {
+  max-width: 620px;
+}
+
+.legacy-bind__progress {
+  margin-left: auto;
+  margin-right: 8px;
+  font-size: 12px;
+  color: var(--ink-3);
+  font-variant-numeric: tabular-nums;
+}
+
+.legacy-bind__card {
+  margin: 12px 0;
+  padding: 12px 14px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  background: var(--bg);
+}
+
+.legacy-bind__text {
+  margin-top: 8px;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  font-size: 13px;
+  color: var(--ink);
+  overflow-wrap: anywhere;
+}

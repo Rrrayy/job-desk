@@ -192,7 +192,7 @@ describe('tokenize-classes · 表分配规则', () => {
 });
 
 describe('tokenize-classes · 仓库现状（门禁口径）', () => {
-  it('★ `--check` 的五条断言全过（漏网 / round-trip / 无重复 / ≤100 / 选表一致）', () => {
+  it('★ `--check` 的五条断言全过（漏网 / round-trip / 无重复 / ≤100 / 选表集合一致）', () => {
     const { ok, lines } = runCheck();
     if (!ok) console.error(lines.join('\n'));
     expect(ok).toBe(true);

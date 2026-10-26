@@ -21,6 +21,8 @@ import { fmtDateTime } from '../../lib/date';
 import { RESUME_SAMPLE_MIN, buildResumeStats } from '../../lib/rules';
 import { cx } from '../../lib/util';
 import { CLS } from '../../lib/classTokens';
+import { legacyCountOf } from '../../resume/legacy';
+import { LegacyBindPanel } from './LegacyBindPanel';
 
 /** 一份简历的投递统计（从版本级聚合归回简历级；旧文本桶不归属任何简历） */
 interface ResumeStats {
@@ -35,6 +37,8 @@ export function ResumeList({ api }: { api: AppApi }) {
   const [renamingId, setRenamingId] = useState<string | null>(null);
   const [renameText, setRenameText] = useState('');
   const [trashOpen, setTrashOpen] = useState(false);
+  /** 旧数据归类面板（v0.9.1 / R-RES-9） */
+  const [legacyOpen, setLegacyOpen] = useState(false);
 
   const list = api.resume.list;
   const trashed = api.resume.trashed;
@@ -71,6 +75,15 @@ export function ResumeList({ api }: { api: AppApi }) {
 
   const rows = list.slice().sort((a, b) => Date.parse(b.updatedAt) - Date.parse(a.updatedAt));
 
+  /**
+   * 旧数据（v0.9 之前只有手输文本的投递）的条数。>0 时在列表顶部给一条横幅。
+   *
+   * 横幅只说三件事，不推销：有多少条、现在算在哪、归了有什么用。
+   * 归类完成后这个数字自然是 0（归类 = 写 `resumeVersionId`），横幅自己消失，
+   * 不需要任何「已提示过」的标记字段。
+   */
+  const legacyCount = legacyCountOf(api.db);
+
   return (
     <div className="resume-home">
       <header className="resume-home__head">
@@ -84,6 +97,21 @@ export function ResumeList({ api }: { api: AppApi }) {
           ＋ 新建简历
         </button>
       </header>
+
+      {legacyCount > 0 ? (
+        <div className={cx(CLS.as, 'legacy-banner')}>
+          <div>
+            <strong>{legacyCount} 条投递是 v0.9 之前记的</strong>，只有手输的简历文本、没绑版本 ——
+            现在统一算在「未绑定（旧数据）」里，统计算不到任何一份简历头上。
+            当时投的确实是库里某个版本的话，逐条归个类就准了；不是的话它们会一直待在那儿，不影响别的功能。
+          </div>
+          <button type="button" className={CLS.j} onClick={() => setLegacyOpen(true)}>
+            逐条归类（{legacyCount} 条）
+          </button>
+        </div>
+      ) : null}
+
+      {legacyOpen ? <LegacyBindPanel api={api} onClose={() => setLegacyOpen(false)} /> : null}
 
       {creating ? (
         <div className="resume-home__new">

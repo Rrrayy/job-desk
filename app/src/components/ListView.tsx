@@ -23,6 +23,7 @@ import { isDeleted } from '../lib/trash';
 import { useVirtualList } from '../lib/virtual';
 import { DEFAULT_LIST_FILTERS, loadListFilters, saveListFilters, type ListFilterState } from '../lib/storage';
 import { CLS } from '../lib/classTokens';
+import { LegacyBindPanel } from './resume/LegacyBindPanel';
 
 /**
  * 列表行高（px）。固定值 —— 虚拟滚动靠它算区间，改 CSS 必须同步改这里。
@@ -75,6 +76,8 @@ export function ListView({ api }: { api: AppApi }) {
   /** 城市多选：从现有数据里动态去重，'' 代表「未填城市」 */
   const [cityFilter, setCityFilter] = useState<string[]>(() => seed.cities);
   const [cityOpen, setCityOpen] = useState(false);
+  /** 旧数据归类面板（v0.9.1 / R-RES-9 的次入口） */
+  const [legacyOpen, setLegacyOpen] = useState(false);
   const [keyword, setKeyword] = useState<string>(() => seed.keyword);
   const [sort, setSort] = useState<{ key: SortKey; dir: 'asc' | 'desc' }>(() =>
     Object.prototype.hasOwnProperty.call(SORT_LABEL, seed.sortKey)
@@ -259,7 +262,19 @@ export function ListView({ api }: { api: AppApi }) {
         <span className={CLS.ad}>
           共 {db.applications.length} 条，当前筛选出 {rows.length} 条
         </span>
+        {/*
+          旧数据归类的**次入口**（v0.9.1 / R-RES-9）：只有用户主动筛到
+          「未绑定（旧数据）」时才出现 —— 这是一个「你正在看一堆没归属的记录」的
+          时刻才该给的出口，平时不占视野。挂的是与简历页横幅同一个面板。
+        */}
+        {effectiveVersionFilter === 'legacy' ? (
+          <button type="button" className={CLS.b} onClick={() => setLegacyOpen(true)}>
+            逐条归类
+          </button>
+        ) : null}
       </div>
+
+      {legacyOpen ? <LegacyBindPanel api={api} onClose={() => setLegacyOpen(false)} /> : null}
 
       <div className="filters">
         <div className="filters__group">

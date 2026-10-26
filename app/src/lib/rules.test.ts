@@ -805,6 +805,55 @@ describe('v0.9 · aggregateByVersion：按版本 id 聚合', () => {
     expect(rows[0].total).toBe(2);
   });
 
+  /**
+   * ★ v0.9.1 / R-RES-9：归类之后统计要真的「变准」，不是只变个标签。
+   *
+   * 这一对断言守的是「legacy 是死桶」这个问题的修复效果：
+   * 归类前这批投计算不进任何一份简历，归类后要落到那个版本头上。
+   * 如果哪天有人把 `app.resumeVersionId` 的判断挪了位，这里会红。
+   */
+  it('★ 归类后：这批投递从「未绑定（旧数据）」桶挪到对应版本头上（统计变准）', () => {
+    const db = resumeDB(
+      [
+        makeApp({ id: 'a1', resumeVersion: '前端-项目版' }),
+        makeApp({ id: 'a2', resumeVersion: '前端-项目版' }),
+      ],
+      [makeVersion('v3', 'v3')],
+    );
+    // 归类前：一个 legacy 桶，版本 v3 一条都没有
+    const before = new Map(aggregateByVersion(db).map((row) => [row.versionId, row.total]));
+    expect(before.get(null)).toBe(2);
+    expect(before.get('v3')).toBeUndefined();
+
+    // 归类 = 写 resumeVersionId（走 bindResumeVersion，纯函数层已单独测过）
+    for (const app of db.applications) {
+      app.resumeVersionId = 'v3';
+      app.resumeVersion = 'v3';
+    }
+    const after = new Map(aggregateByVersion(db).map((row) => [row.versionId, row.total]));
+    expect(after.get(null)).toBeUndefined();
+    expect(after.get('v3')).toBe(2);
+    expect(aggregateByVersion(db)[0].label).toBe('v3');
+  });
+
+  it('★ 只归一部分：剩下的仍留在 legacy 桶里（逐条确认，不是一次全归）', () => {
+    const db = resumeDB(
+      [
+        makeApp({ id: 'a1', resumeVersion: '前端-项目版' }),
+        makeApp({ id: 'a2', resumeVersion: '前端-项目版' }),
+        makeApp({ id: 'a3', resumeVersion: '前端-算法版' }),
+      ],
+      [makeVersion('v3', 'v3')],
+    );
+    db.applications[0].resumeVersionId = 'v3';
+
+    const rows = aggregateByVersion(db);
+    const byKey = new Map(rows.map((row) => [row.versionId, row]));
+    expect(byKey.get('v3')?.total).toBe(1);
+    expect(byKey.get(null)?.total).toBe(2);
+    expect(byKey.get(null)?.label).toBe(UNBOUND_LEGACY_LABEL);
+  });
+
   it('三种桶可以共存，并按投递数降序排（同数按名排）', () => {
     const db = resumeDB(
       [
