@@ -156,7 +156,9 @@ describe('BoardView v0.8（jsdom）', () => {
       buttonByText('已约面')?.click();
     });
     const kindSelect = container.querySelector<HTMLSelectElement>('.drop-panel select');
-    expect(kindSelect).toBeDefined();
+    // `expect(x).toBeDefined()` 在 querySelector 返回 null 时**也 PASS**（永真）——
+    // 这条守的是「已笔试落列 → kind 下拉存在」的核心链路，必须比 null。
+    expect(kindSelect).not.toBeNull();
     await act(async () => {
       setNativeValue(kindSelect!, 'hr');
     });

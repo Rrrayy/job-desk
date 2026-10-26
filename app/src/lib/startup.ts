@@ -60,7 +60,9 @@ export function startupNotice(
         : sweep.removedResumes > 0
           ? `${sweep.removedResumes} 份简历`
           : `${sweep.removedVersions} 个版本`;
-    return `回收站里有 ${what} 已满 30 天，已自动永久删除（删除后不再出现在设置 → 回收站里）`;
+    // ★ 这里**不能**在 `${what}` 与「已满」之间留空格：`what` 结尾是「个版本」，
+    //   留空格会渲染成「5 个版本 已满 30 天」（QA v0.9.1 抓到的文案 bug）。
+    return `回收站里有 ${what}已满 30 天，已自动永久删除（删除后不再出现在设置 → 回收站里）`;
   }
   if (appReminder.expiring > 0) {
     return `回收站有 ${appReminder.expiring} 条投递归将在 ${appReminder.soonestDaysLeft ?? 1} 天内永久删除，可在设置里恢复`;

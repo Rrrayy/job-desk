@@ -120,12 +120,15 @@
  *     T3  回收站分区 ＋ 报告历史 ＋ 配额告知                        实测 +5.72（预算 +6.0）
  *     T4  看板窗口 40 ＋ 简历到期告知 ＋ 启动告知纯函数             实测 +1.59（预算 +3.5）
  *     T5  打印 hint 层 UA 分支 ＋ 发布脚本 ＋ 文档                  见下
- *   落点 707.6 KB（T4 收尾）→ **越过 v0.9.0 的 WARN 705 共 2.6 KB**，离 FAIL 730 还有 22.4 KB。
+ *   最终落点 **708.5 KB**（725,474 B，T5 收尾）→ 越过 v0.9.0 的 WARN 705 共 3.5 KB，距 FAIL 730 还有 21.5 KB。
  *
  *   为什么越了 WARN 却没被砍：T1 已经用「运行时类名映射」把当前架构下的体积杠杆基本用尽
  *   （Top100 串值 −9.58 KB，剩下 636 个长尾串值全做只能再省 3 KB，而每条映射自身也要占字节）。
  *   T2 超预算的部分是**改绑撤销点**——那是 v0.9 宣称做了、实际没做的功能（文档与代码不符），
- *   属于还债不属于扩张。主理人 Q1 裁决：按实测数抬 WARN，FAIL 不动，本文件**不由工程师改阈值**。
+ *   属于还债不属于扩张。主理人 Q1 裁决：**WARN 705 → 715，FAIL 730 不动**（2026-10-26 主理人亲自落地）。
+ *   抬幅 +10（v0.9 那次是 +15），性质不同：v0.9 抬线是为容纳一个新能力域，本次只为让
+ *   「把已有能力做完整」的工作不被红线卡住；FAIL 不动以保持「再做一个小功能才需要回头优化」的手感。
+ *   抬线后余量 6.5 KB，够本版返工 —— 不许再拿这 6.5 KB 塞新功能。
  *
  *   ★ 类名 token 化给后续所有版本留下一条硬约束（架构 B-17 / B-02）：
  *     ① 新写的 className 若串值已在 `src/lib/classTokens.ts` 的 `CLS` 表里，必须写 `CLS.x`，
@@ -141,7 +144,7 @@ import { existsSync, statSync } from 'node:fs';
 import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
-const WARN_BYTES = 705 * 1024;
+const WARN_BYTES = 715 * 1024;
 const FAIL_BYTES = 730 * 1024;
 
 /**
@@ -149,7 +152,7 @@ const FAIL_BYTES = 730 * 1024;
  * 它的作用不是判失败，而是让体积增长**可见** —— 静悄悄长胖是最难回头的技术债。
  * v0.9.0：703 KB（简历模块 + 5 AI 场景发布落点 719,686 B = 702.8 KB，取整 703）。
  */
-const BASELINE_BYTES = 703 * 1024;
+const BASELINE_BYTES = 708 * 1024;
 
 const here = dirname(fileURLToPath(import.meta.url));
 const appRoot = resolve(here, '..');

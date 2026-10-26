@@ -42,17 +42,19 @@ describe('startupNotice · 四条分支（互斥，只弹一条）', () => {
 
   it('★ ② 简历/版本被真删：简历与版本分开计数（否则用户以为只丢了一份东西）', () => {
     const notice = startupNotice({ ...noSweep, removedResumes: 1, removedVersions: 5 }, noReminder, noReminder);
-    expect(notice).toContain('1 份简历和 5 个版本');
-    expect(notice).toContain('已自动永久删除');
-    // 说清它已经不在设置里了，免得用户去回收站找一个不存在的东西
-    expect(notice).toContain('不再出现在设置 → 回收站里');
+    // ★ 精确全文（不是 toContain）：v0.9.1 QA 抓到过「5 个版本 已满」多一个空格的文案 bug，
+    //   而当时这条断言写的是 toContain 子串，正好把它放过了。
+    expect(notice).toBe(
+      '回收站里有 1 份简历和 5 个版本已满 30 天，已自动永久删除（删除后不再出现在设置 → 回收站里）',
+    );
   });
 
   it('② 只删了版本（简历还在）→ 文案里不出现「0 份简历」', () => {
     const notice = startupNotice({ ...noSweep, removedResumes: 0, removedVersions: 2 }, noReminder, noReminder);
-    expect(notice).toContain('2 个版本');
+    expect(notice).toBe(
+      '回收站里有 2 个版本已满 30 天，已自动永久删除（删除后不再出现在设置 → 回收站里）',
+    );
     expect(notice).not.toContain('0 份简历');
-    expect(notice).not.toContain('和');
   });
 
   it('③ 投递将到期：给出剩余天数与「去设置恢复」的指引', () => {
@@ -62,9 +64,8 @@ describe('startupNotice · 四条分支（互斥，只弹一条）', () => {
 
   it('★ ④ 简历将到期：说清「连它下面的版本一起」（v0.9 里这条根本没有）', () => {
     const notice = startupNotice(noSweep, noReminder, reminder(1, 3));
-    expect(notice).toContain('1 份简历将在 3 天内永久删除');
-    expect(notice).toContain('连它下面的版本一起');
-    expect(notice).toContain('可在设置里恢复');
+    // 同样用精确全文：这条分支用户会真的看到，多一个空格就是多发一次版
+    expect(notice).toBe('回收站有 1 份简历将在 3 天内永久删除（连它下面的版本一起），可在设置里恢复');
   });
 
   it('优先级：真删 > 将到期；投递真删 > 简历真删', () => {
