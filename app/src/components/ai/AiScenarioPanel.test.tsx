@@ -19,7 +19,8 @@ import type { AppApi } from '../../lib/api';
 import type { AiResumeModule, AiRunInput, AiRunOutcome } from '../../ai/types';
 import { createSuggestions } from '../../ai/suggestions';
 import { emptyDB } from '../../lib/defaults';
-import type { DB } from '../../types';
+import type { AIReport, DB } from '../../types';
+import { AI_REPORT_LIMIT } from '../../types';
 
 const NOW = '2026-10-21T10:00:00.000Z';
 const RAW = '字节跳动 前端开发实习生 25k 北京 已投递';
@@ -29,9 +30,13 @@ interface Harness {
   db: DB;
   accepts: string[][];
   runs: AiRunInput[];
+  /** v0.9.1 / R-AI-10：点「先删最早一份」删掉了哪些报告 */
+  deleted: string[];
 }
 
-function makeApi(options: { ready?: boolean; reason?: string; run?: (input: AiRunInput) => Promise<AiRunOutcome> } = {}): Harness {
+function makeApi(
+  options: { ready?: boolean; reason?: string; run?: (input: AiRunInput) => Promise<AiRunOutcome>; reports?: AIReport[] } = {},
+): Harness {
   const db = emptyDB();
   db.settings.ai = { baseURL: 'http://127.0.0.1:11434/v1', model: 'qwen2.5:7b', isLocal: true };
   /*
@@ -62,8 +67,12 @@ function makeApi(options: { ready?: boolean; reason?: string; run?: (input: AiRu
   ];
   const accepts: string[][] = [];
   const runs: AiRunInput[] = [];
+  const deleted: string[] = [];
+  // 报告配额告知要读这份（缺省空数组：绝大多数用例不需要报告）
+  db.aiReports = options.reports ?? [];
   const api = {
     db,
+    deleteReport: (reportId: string) => deleted.push(reportId),
     ai: {
       ready: options.ready ?? true,
       readyReason: options.reason ?? null,
@@ -76,7 +85,7 @@ function makeApi(options: { ready?: boolean; reason?: string; run?: (input: AiRu
       },
     },
   } as unknown as AppApi;
-  return { api, db, accepts, runs };
+  return { api, db, accepts, runs, deleted };
 }
 
 describe('AiScenarioPanel', () => {
@@ -397,5 +406,104 @@ describe('AiScenarioPanel · modulePicker（T07）', () => {
 
     expect(reported).toEqual(['rep_9']);
     expect(closed).toBe(1);
+  });
+});
+
+/* ---------------------- v0.9.1 / R-AI-10：报告配额告知 ---------------------- */
+
+describe('AiScenarioPanel · 报告配额告知（v0.9.1）', () => {
+  let container: HTMLDivElement;
+  let root: Root;
+
+  beforeEach(() => {
+    container = document.createElement('div');
+    document.body.appendChild(container);
+  });
+
+  afterEach(() => {
+    act(() => root.unmount());
+    container.remove();
+  });
+
+  function byTestId(id: string): HTMLElement | null {
+    return container.querySelector(`[data-testid="${id}"]`);
+  }
+
+  const reportOf = (id: string, minute: number, targetId = 'res-1'): AIReport => ({
+    id,
+    pluginId: 'builtin:d19-diag',
+    targetType: 'resume_diagnosis',
+    targetId,
+    content: '#',
+    createdAt: new Date(Date.UTC(2026, 2, 1, 0, minute)).toISOString(),
+  });
+
+  async function render(
+    api: AppApi,
+    scenario: 'd19-polish' | 'd19-diag',
+  ): Promise<void> {
+    root = createRoot(container);
+    await act(async () => {
+      root.render(
+        <AiScenarioPanel
+          api={api}
+          scenario={scenario}
+          targetId="res-1"
+          modules={MODS}
+          onClose={() => {}}
+        />,
+      );
+    });
+  }
+
+  const button = (text: string): HTMLButtonElement | null =>
+    Array.from(container.querySelectorAll('button')).find((item) => item.textContent?.includes(text)) ?? null;
+
+  it('这个目标还没有报告 → 不出现配额提示（正常路径不打扰）', async () => {
+    const { api } = makeApi({ reports: [] });
+    await render(api, 'd19-diag');
+    expect(byTestId('ai-quota-hint')).toBeNull();
+  });
+
+  it('★ 已有 3 份 → 发送前就说清「会顶掉最早那一份」，并给「先删最早一份」入口', async () => {
+    const { api, deleted } = makeApi({
+      reports: [reportOf('rep-1', 1), reportOf('rep-2', 2), reportOf('rep-3', 3)],
+    });
+    await render(api, 'd19-diag');
+
+    const hint = byTestId('ai-quota-hint');
+    expect(hint).not.toBeNull();
+    expect(hint?.textContent).toContain('已有 3 份报告');
+    expect(hint?.textContent).toContain('被顶掉');
+
+    const evict = button('先删最早一份');
+    expect(evict).not.toBeNull();
+    await act(async () => evict?.click());
+    // 删的是最早那份（rep-1），不是最新那份
+    expect(deleted).toEqual(['rep-1']);
+  });
+
+  it('别的目标的报告不占用本目标的 3 份（配额按 target 算，不是全库算）', async () => {
+    const { api } = makeApi({
+      reports: [reportOf('a-1', 1, 'res-other'), reportOf('a-2', 2, 'res-other'), reportOf('a-3', 3, 'res-other')],
+    });
+    await render(api, 'd19-diag');
+    expect(byTestId('ai-quota-hint')).toBeNull();
+  });
+
+  it('非报告场景（润色）不显示配额提示 —— 它不落报告表，不占这个配额', async () => {
+    const { api } = makeApi({ reports: [reportOf('rep-1', 1), reportOf('rep-2', 2), reportOf('rep-3', 3)] });
+    await render(api, 'd19-polish');
+    expect(byTestId('ai-quota-hint')).toBeNull();
+  });
+
+  it(`★ 全库已满（${AI_REPORT_LIMIT} 份）→ 明说不能生成，且「预览」按钮置灰（不能先发再说）`, async () => {
+    const reports: AIReport[] = [];
+    for (let i = 0; i < AI_REPORT_LIMIT; i += 1) reports.push(reportOf(`fill-${i}`, i, `other-${i}`));
+    const { api } = makeApi({ reports });
+    await render(api, 'd19-diag');
+
+    expect(byTestId('ai-quota-hint')?.textContent).toContain('全库报告已满');
+    expect((byTestId('ai-generate') as HTMLButtonElement).disabled).toBe(true);
   });
 });

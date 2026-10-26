@@ -21,10 +21,13 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import type { AppApi } from '../../lib/api';
 import type { AiResumeModule, AiScenarioKey, PreviewField } from '../../ai/types';
 import { scenarioPluginId, scenarioPreviewFields } from '../../ai/scenarios';
+import { REPORT_SCENARIO_TYPES } from '../../ai/types';
 import { buildApplicationContext, modulesText } from '../../ai/context';
 import { clampText } from '../../lib/budget';
 import { SendPreviewDialog } from './SendPreviewDialog';
 import { SuggestionList } from './SuggestionList';
+import { REPORTS_PER_TARGET, reportQuotaOf, reportsOfTarget } from '../../ai/reports';
+import { fmtDateTime } from '../../lib/date';
 import { CLS } from '../../lib/classTokens';
 
 /** D14 粘贴上限：面经正文上限 3000 字，整段贴进来也要放得下 */
@@ -176,6 +179,31 @@ export function AiScenarioPanel({ api, scenario, targetId, onClose, modules, onR
   useEffect(() => () => abortRef.current?.abort(), []);
 
   const blocked = api.ai.ready ? null : api.ai.readyReason ?? 'AI 服务未配置';
+
+  /**
+   * 报告类场景的配额告知（v0.9.1 / R-AI-10，架构 B-10）。
+   *
+   * 报告有两道上限：同一目标只留 3 份、全库 200 份。v0.9 里这两道闸都是**静默**的 ——
+   * 用户连点第四次诊断，最早那份就没了，界面上什么都没发生。这里改成发送**之前**
+   * 就说清楚「会顶掉哪一份」，并给出「先删最早一份」的显式入口（Q3：告知 + 用户显式删，
+   * 而不是替他删得更多）。
+   *
+   * 只对报告场景生效：建议类场景不落报告表，不占这个配额。
+   */
+  const isReportScene = scenario === 'd19-diag' || scenario === 'd20-analysis';
+  const reportRows = api.db.aiReports ?? [];
+  const quota = reportQuotaOf(reportRows);
+  const targetReports = isReportScene
+    ? reportsOfTarget(
+        reportRows,
+        REPORT_SCENARIO_TYPES[scenario as 'd19-diag' | 'd20-analysis'],
+        targetId,
+      )
+    : [];
+  /** 这一份生成后会被顶掉的那份（null = 不会顶掉任何东西） */
+  const evicted = targetReports.length >= REPORTS_PER_TARGET ? targetReports[targetReports.length - 1] : null;
+  const quotaFull = isReportScene && quota.full;
+
   const ai = api.db.settings.ai;
   const emptyInput = input !== undefined && text.trim().length === 0;
   const modulePick = modulePickOf(scenario);
@@ -351,6 +379,23 @@ export function AiScenarioPanel({ api, scenario, targetId, onClose, modules, onR
           ) : null}
         </div>
 
+        {isReportScene && (quota.full || evicted) ? (
+          <div className="report-quota-hint" data-testid="ai-quota-hint">
+            <span className={CLS.c}>
+              {quota.full
+                ? `全库报告已满（${quota.used}/${quota.limit} 份）—— 这里暂时不能生成，先在报告历史里删几份旧的。`
+                : `这个目标已有 ${targetReports.length} 份报告，新生成的这份会让最早的一份（${fmtDateTime(
+                    evicted?.createdAt ?? '',
+                  )}）被顶掉。`}
+            </span>
+            {evicted ? (
+              <button type="button" className={CLS.h} onClick={() => api.deleteReport(evicted.id)}>
+                先删最早一份
+              </button>
+            ) : null}
+          </div>
+        ) : null}
+
         <footer className={CLS.ab}>
           <span className={CLS.c}>下一步的预览里勾了什么，就只发什么</span>
           <button type="button" className={CLS.Q} onClick={onClose}>
@@ -370,7 +415,7 @@ export function AiScenarioPanel({ api, scenario, targetId, onClose, modules, onR
               type="button"
               className={CLS.j}
               data-testid="ai-generate"
-              disabled={blocked !== null || emptyInput || moduleHint !== null}
+              disabled={blocked !== null || emptyInput || moduleHint !== null || quotaFull}
               onClick={openPreview}
             >
               预览要发送的内容

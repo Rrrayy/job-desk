@@ -6113,3 +6113,66 @@ button.chip:hover {
   color: var(--ink);
   overflow-wrap: anywhere;
 }
+
+/* ============================================================ v0.9.1 · R-RES-10 / R-AI-10 回收站分区 + 报告历史 */
+
+/* 设置 → 回收站里的「简历」子区：与上面的投递回收站共用 .trash-list / .trash-row，只补标题间距 */
+.resume-trash {
+  margin-top: 4px;
+}
+
+.resume-trash__title {
+  margin: 0 0 6px;
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--ink-2);
+}
+
+/* 报告历史：纸栏只有 380–460 px，所以是「切换」不是并排 —— 一行装下所有控件 */
+.report-history__bar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+  margin: 12px 0 6px;
+  font-size: 12px;
+}
+
+.report-history__title {
+  margin-right: auto;
+  font-size: 13px;
+  color: var(--ink-2);
+}
+
+.report-history__count {
+  min-width: 34px;
+  text-align: center;
+  font-variant-numeric: tabular-nums;
+  color: var(--ink-3);
+}
+
+.report-history__full {
+  padding: 1px 6px;
+  border-radius: 999px;
+  background: var(--amber-soft);
+  color: #8a5a14;
+  font-size: 11px;
+}
+
+.report-history__quota--full {
+  color: #8a5a14;
+}
+
+/* 配额告知条：发送**之前**就把「会顶掉哪一份」说出来（铁律 6：不许静默） */
+.report-quota-hint {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  margin: 8px 0 0;
+  padding: 8px 10px;
+  border: 1px solid #f6e2bd;
+  border-radius: var(--radius);
+  background: var(--amber-soft);
+  color: #8a5a14;
+}

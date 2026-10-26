@@ -64,7 +64,7 @@ import {
   statusChangeText,
   type StatusUndo,
 } from './lib/rules';
-import { isDeleted, sweepTrash, trashReminder, trashedApps, trashedResumes, visibleDB } from './lib/trash';
+import { extendResumeRetention, isDeleted, sweepTrash, trashReminder, trashedApps, trashedResumes, visibleDB } from './lib/trash';
 import {
   activeVersionsOf,
   applyResumeSlice,
@@ -128,7 +128,7 @@ import { chatCompletions, GatewayError } from './ai/gateway';
 import { buildRequestLogEntry, capRequestLog, fieldsFingerprint } from './ai/requestLog';
 import { createSuggestions } from './ai/suggestions';
 import { buildScenarioMessages, parseScenarioOutput, scenarioPluginId, toNewSuggestions } from './ai/scenarios';
-import { capReports, createReport, parseReport } from './ai/reports';
+import { capReportsWithDrop, createReport, parseReport } from './ai/reports';
 import {
   applyBulkAdoption,
   bulkItemsToSuggestions,
@@ -1098,6 +1098,21 @@ export default function App() {
     [runPrimaryOp],
   );
 
+  /**
+   * v0.9.1 / R-RES-10：回收站里「再留 7 天」。
+   *
+   * 走 `runResumeOp` 而不是裸 `mutate`：这是一次真实的数据改写，用户可能点错，
+   * 必须能用 ⌘Z 退回去。（投递侧的 `extendTrash` 是 v0.8 的写法，没有撤销点；
+   * 简历侧补上，不改投递侧 —— 改它就动了 v0.8 已验收的行为。）
+   */
+  const resumeExtendTrash = useCallback(
+    (id: string): void => {
+      const changed = runResumeOp('简历再留 7 天', (draft) => extendResumeRetention(draft, id));
+      showToast(changed ? '这份简历再留 7 天' : '这份简历已经不在回收站里了');
+    },
+    [runResumeOp, showToast],
+  );
+
   const resumeSaveVersion = useCallback(
     (resumeId: string, label: string): SaveVersionResult =>
       runResumeOp(
@@ -1595,6 +1610,25 @@ export default function App() {
   }, [mutate, showToast]);
 
   /**
+   * v0.9.1 / R-AI-10：删一份诊断报告。
+   *
+   * **不入撤销栈**（架构 Q4）：报告是 AI 的只读产出、可再生的缓存，不是用户一笔一笔
+   * 敲出来的资产；把缓存删除塞进撤销栈会让「⌘Z」在不同的东西之间跳（铁律：撤销只回退
+   * 用户写的资产）。代价是删除必须**说清不可撤销** + 二次确认，那两件在
+   * `ReportHistory` 里做 —— 铁律 6 禁的是静默，不是删除本身。
+   */
+  const deleteReport = useCallback(
+    (reportId: string): void => {
+      const existed = dbRef.current.aiReports.some((report) => report.id === reportId);
+      mutate((draft) => {
+        draft.aiReports = draft.aiReports.filter((report) => report.id !== reportId);
+      });
+      showToast(existed ? '已删除这份报告（不可撤销，重新诊断可以再生成一份）' : '这份报告已经不在了');
+    },
+    [mutate, showToast],
+  );
+
+  /**
    * RequestLog 记账：只在真实发送/拒绝时写，且永不落原文（字段白名单在 buildRequestLogEntry）。
    * 内置场景与插件共用这一个写入口 —— 日志只有一处实现，才不会两套口径。
    */
@@ -1662,11 +1696,22 @@ export default function App() {
             model: ai.model,
             createdAt: new Date().toISOString(),
           });
+          /** 本次写入顶掉了多少份旧报告（0 = 没超上限） */
+          let dropped = 0;
           mutate((draft) => {
             draft.aiReports.push(report);
-            draft.aiReports = capReports(draft.aiReports);
+            // v0.9.1 / B-10：上限闸仍在这里，但**不再静默** —— 拿到 droppedIds 就把
+            // 「顶掉了哪一份」说清楚。报告是缓存（可从新诊断再生），所以丢旧的不入
+            // 撤销栈；但用户必须知道「刚才那份被顶掉了」，否则就是铁律 6 说的静默。
+            const capped = capReportsWithDrop(draft.aiReports);
+            draft.aiReports = capped.kept;
+            dropped = capped.droppedIds.length;
           });
-          showToast('报告已生成 —— 本地合成，仅供参考');
+          showToast(
+            dropped > 0
+              ? `报告已生成 —— 同一目标只留最近 3 份，最早那份已被顶掉（本地合成，仅供参考）`
+              : '报告已生成 —— 本地合成，仅供参考',
+          );
           return { ok: true, kind: 'report', reportId: report.id };
         }
         // R-AI-11：整段录入要带回 head/unmatched/truncated，ScenarioParse 装不下 —— 独立分支
@@ -2814,6 +2859,7 @@ export default function App() {
     addInterview,
     updateInterview,
     deleteInterview,
+    deleteReport,
     updateCompany,
     updateSettings,
     updateResumeContent,
@@ -2847,6 +2893,7 @@ export default function App() {
       restoreVersion: resumeRestoreVersion,
       purgeVersion: resumePurgeVersion,
       adoptAsDraft: resumeAdoptAsDraft,
+      extendTrash: resumeExtendTrash,
       referencesOf: (versionId: string) => referencingApplications(db, versionId).length,
       primaryVersionId: db.settings.defaultResumeVersionId ?? null,
     },

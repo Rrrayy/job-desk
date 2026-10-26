@@ -338,3 +338,30 @@ export function extendTrashRetention(db: DB, appId: string, days = TRASH_EXTEND_
     ),
   };
 }
+
+/**
+ * 「再留 7 天」的简历版（v0.9.1 / R-RES-10）。
+ *
+ * 为什么不和上面的 `extendTrashRetention` 合并成一个泛型函数：两者改的是**不同的表**
+ * （`applications` vs `resumes`），合并只会让签名长出「改哪张表」这个参数，
+ * 然后在调用点写字符串 —— 换来的是一个更难读、更容易传错的函数。
+ * `trash.ts` 头部第三条纪律也明写了「不把它重构成通用软删框架」。
+ *
+ * 语义与投递版逐字一致：推迟 `deletedAt` 即延长到期时间，恢复后不影响任何别的东西。
+ * 简历软删时其下版本一并不可见（`visibleResumeVersions` 靠父 `deletedAt` 推导），
+ * 所以这里只推简历这一行，版本不需要各自动。
+ *
+ * @param draft 当前库（**就地改写**，与 `resume/versions.ts` 的 `restoreResume` 等同风格 ——
+ *              `runResumeOp` 的 recipe 拿到的是可变草稿，返回 `boolean` 表示「有没有改」）
+ * @param resumeId 简历 id
+ * @param days 往后推几天（默认与投递一致）
+ * @returns 是否真的改了这一行（目标不存在 / 不在回收站时返回 false，调用方据此提示）
+ */
+export function extendResumeRetention(draft: DB, resumeId: string, days = TRASH_EXTEND_DAYS): boolean {
+  const target = draft.resumes.find((resume) => resume.id === resumeId);
+  if (!target) return false;
+  const base = deletedAtMs(target);
+  if (base === null) return false;
+  target.deletedAt = new Date(base + days * DAY_MS).toISOString();
+  return true;
+}

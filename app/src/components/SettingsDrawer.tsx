@@ -14,6 +14,7 @@ import { CommunityImport } from './interview/CommunityImport';
 import { FileLinkPanel } from './FileLinkPanel';
 import { PluginsPanel } from './plugins/PluginsPanel';
 import { AiSettingsPanel } from './ai/AiSettingsPanel';
+import { ResumeTrashSection } from './settings/ResumeTrashSection';
 import { CLS } from '../lib/classTokens';
 
 const PLATFORMS: PlatformId[] = ['boss', 'shixiseng', 'nowcoder', 'liepin', 'custom'];
@@ -312,7 +313,7 @@ export function SettingsDrawer({ api, onClose, importError, onDismissError, tras
                           {days === null ? '已到期' : `还剩 ${days} 天`}
                         </span>
                       </div>
-                      <div className="trash-row__actions btn-row btn-row--tight">
+                      <div className={CLS.aV}>
                         <button type="button" className={CLS.ap} onClick={() => api.restoreApplication(app.id)}>
                           恢复
                         </button>
@@ -346,6 +347,9 @@ export function SettingsDrawer({ api, onClose, importError, onDismissError, tras
                 })}
               </ul>
             ) : null}
+
+            {/* v0.9.1 / B-07：简历回收站合并到这一处（Q7 裁决）—— 不再单开页面 */}
+            <ResumeTrashSection api={api} />
 
             <div className="data-card">
               <div>

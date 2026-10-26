@@ -93,6 +93,8 @@ function fakeApi(options: FakeOptions = {}): { api: AppApi; calls: string[] } {
       restoreVersion: noop('restoreVersion'),
       purgeVersion: noop('purgeVersion'),
       adoptAsDraft: noop('adoptAsDraft'),
+      // v0.9.1 / R-RES-10：设置页「再留 7 天」调的入口（本套件不点它，但成员必须在）
+      extendTrash: noop('extendTrash'),
       referencesOf: () => 0,
       primaryVersionId: null,
     },

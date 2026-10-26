@@ -11,7 +11,7 @@
  */
 
 import { describe, expect, it } from 'vitest';
-import { capReports, createReport, parseReport, scoreOf } from './reports';
+import { capReports, capReportsWithDrop, createReport, parseReport, reportsOfTarget, reportQuotaOf, scoreOf } from './reports';
 import type { AIReport, AIReportDimension } from '../types';
 import { AI_REPORT_LIMIT } from '../types';
 
@@ -150,5 +150,102 @@ describe('reports · createReport / capReports', () => {
       { id: 'b', pluginId: 'p', targetType: 'application_analysis', targetId: 'app-1', content: '#', createdAt: NOW },
     ];
     expect(capReports(rows).map((row) => row.id)).toEqual(['a', 'b']);
+  });
+});
+
+describe('reports · capReportsWithDrop（v0.9.1 / B-10 告知侧）', () => {
+  const reportOf = (id: string, targetId: string, minute: number): AIReport => ({
+    id,
+    pluginId: 'builtin:d19-diag',
+    targetType: 'resume_diagnosis',
+    targetId,
+    content: '#',
+    createdAt: new Date(Date.UTC(2026, 9, 1, 0, minute)).toISOString(),
+  });
+
+  it('★ 第 4 份进来时 droppedIds 精确指出被顶掉的是**最早那一份**', () => {
+    const rows = [
+      reportOf('rep-0', 'res-1', 0),
+      reportOf('rep-1', 'res-1', 1),
+      reportOf('rep-2', 'res-1', 2),
+      reportOf('rep-3', 'res-1', 3),
+    ];
+    const result = capReportsWithDrop(rows);
+    expect(result.droppedIds).toEqual(['rep-0']);
+    expect(result.kept.map((row) => row.id)).toEqual(['rep-1', 'rep-2', 'rep-3']);
+    // 与旧签名完全一致：kept 就是 capReports 的返回
+    expect(result.kept).toEqual(capReports(rows));
+  });
+
+  it('没超闸时 droppedIds 为空（不能「总是丢一份」也能通过）', () => {
+    const rows = [reportOf('rep-0', 'res-1', 0), reportOf('rep-1', 'res-2', 1)];
+    const result = capReportsWithDrop(rows);
+    expect(result.droppedIds).toEqual([]);
+    expect(result.kept).toHaveLength(2);
+  });
+
+  it('只丢**同一个 target** 的最旧一份，别的 target 一份都不能少', () => {
+    const rows = [
+      reportOf('a-0', 'res-1', 0),
+      reportOf('b-0', 'res-2', 1),
+      reportOf('a-1', 'res-1', 2),
+      reportOf('a-2', 'res-1', 3),
+      reportOf('a-3', 'res-1', 4),
+    ];
+    const result = capReportsWithDrop(rows);
+    expect(result.droppedIds).toEqual(['a-0']);
+    expect(result.kept.some((row) => row.id === 'b-0')).toBe(true);
+  });
+
+  it('全库总闸：droppedIds 数量与摘掉的份数一致（200 份上限）', () => {
+    const rows: AIReport[] = [];
+    for (let target = 0; target < 70; target += 1) {
+      for (let seq = 0; seq < 3; seq += 1) rows.push(reportOf(`r-${target}-${seq}`, `res-${target}`, target * 3 + seq));
+    }
+    const result = capReportsWithDrop(rows);
+    expect(result.kept).toHaveLength(AI_REPORT_LIMIT);
+    expect(result.droppedIds).toHaveLength(rows.length - AI_REPORT_LIMIT);
+    // 保留集 + 丢弃集 = 输入集，一份不多一份不少（重建库时不能凭空多出报告）
+    expect(result.kept.length + result.droppedIds.length).toBe(rows.length);
+  });
+});
+
+describe('reports · reportsOfTarget / reportQuotaOf', () => {
+  const row = (id: string, targetId: string, minute: number, targetType: AIReport['targetType'] = 'resume_diagnosis'): AIReport => ({
+    id,
+    pluginId: 'p',
+    targetType,
+    targetId,
+    content: '#',
+    createdAt: new Date(Date.UTC(2026, 9, 1, 0, minute)).toISOString(),
+  });
+
+  it('reportsOfTarget：只取这个目标、最新在前、最多 3 份', () => {
+    const rows = [
+      row('r1', 'res-1', 1),
+      row('r2', 'res-1', 2),
+      row('r3', 'res-1', 3),
+      row('other', 'res-2', 4),
+      row('app', 'res-1', 5, 'application_analysis'),
+    ];
+    const list = reportsOfTarget(rows, 'resume_diagnosis', 'res-1');
+    expect(list.map((report) => report.id)).toEqual(['r3', 'r2', 'r1']);
+  });
+
+  it('reportsOfTarget：同一 createdAt 时用原下标兜底，两次调用顺序一致', () => {
+    const rows = [row('x', 'res-1', 1), row('y', 'res-1', 1)];
+    expect(reportsOfTarget(rows, 'resume_diagnosis', 'res-1').map((r) => r.id)).toEqual(
+      reportsOfTarget(rows, 'resume_diagnosis', 'res-1').map((r) => r.id),
+    );
+  });
+
+  it('reportQuotaOf 三档：正常 / 将满（距上限 10 份）/ 已满', () => {
+    expect(reportQuotaOf([])).toEqual({ used: 0, limit: AI_REPORT_LIMIT, full: false, nearlyFull: false });
+    const nearly = Array.from({ length: AI_REPORT_LIMIT - 10 }, (_, i) => row(`n${i}`, `r${i}`, i));
+    expect(reportQuotaOf(nearly).nearlyFull).toBe(true);
+    expect(reportQuotaOf(nearly).full).toBe(false);
+    const full = Array.from({ length: AI_REPORT_LIMIT }, (_, i) => row(`f${i}`, `r${i}`, i));
+    expect(reportQuotaOf(full).full).toBe(true);
+    expect(reportQuotaOf(full).used).toBe(AI_REPORT_LIMIT);
   });
 });

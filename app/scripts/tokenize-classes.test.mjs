@@ -16,16 +16,20 @@ import {
   MAX_ENTRIES,
   cssAtoms,
   decodeLiteral,
+  diffGolden,
   findMatching,
   lex,
   netGain,
   planTable,
+  readGolden,
   readTable,
+  renderGolden,
   renderTable,
   rewriteFile,
   runCheck,
   scanOccurrences,
   splitArgs,
+  stablePlan,
   tokenNames,
   trimSpan,
 } from './tokenize-classes.mjs';
@@ -191,8 +195,94 @@ describe('tokenize-classes · 表分配规则', () => {
   });
 });
 
+describe('tokenize-classes · 增量重生成（stablePlan）', () => {
+  it('★ 已在表里的串值沿用原 token（排名变了也不搬家）', () => {
+    const existing = [
+      { token: 'a', value: 'btn btn--small' },
+      { token: 'b', value: 'field__label' },
+    ];
+    // 重算后 field__label 反超 btn btn--small —— 最优分配会换号，stablePlan 不换
+    const plan = planTable(
+      new Map([
+        ['field__label', 90],
+        ['btn btn--small', 10],
+      ]),
+    );
+    expect(plan[0].value).toBe('field__label');
+    const stable = stablePlan(plan, existing);
+    expect(stable.find((e) => e.value === 'field__label')?.token).toBe('b');
+    expect(stable.find((e) => e.value === 'btn btn--small')?.token).toBe('a');
+  });
+
+  it('新串值拿空位 token，不与沿用的 token 冲突', () => {
+    const existing = [{ token: 'a', value: 'btn btn--small' }];
+    const plan = planTable(
+      new Map([
+        ['btn btn--small', 5],
+        ['card__title', 4],
+      ]),
+    );
+    const stable = stablePlan(plan, existing);
+    const tokens = stable.map((e) => e.token);
+    expect(new Set(tokens).size).toBe(tokens.length);
+    expect(stable.find((e) => e.value === 'btn btn--small')?.token).toBe('a');
+    expect(stable.find((e) => e.value === 'card__title')?.token).toBe('b');
+    expect(stable.length).toBe(2);
+  });
+
+  it('表变短时，超出池子的旧 token 被重新分配而不是留下非法名', () => {
+    // 池子只有 a,b（2 条）；旧表 3 条时 c 是合法单字符，但这里只留 2 条
+    const existing = [
+      { token: 'a', value: 'x1' },
+      { token: 'b', value: 'x2' },
+      { token: 'c', value: 'x3' },
+    ];
+    const plan = planTable(
+      new Map([
+        ['x1', 3],
+        ['x3', 2],
+      ]),
+    );
+    const stable = stablePlan(plan, existing);
+    const pool = new Set(tokenNames(stable.length));
+    for (const e of stable) expect(pool.has(e.token)).toBe(true);
+    expect(stable.find((e) => e.value === 'x1')?.token).toBe('a');
+  });
+});
+
+describe('tokenize-classes · 黄金副本（断言 6）', () => {
+  it('★ diffGolden 抓得住「多一个空格」与「顺序颠倒」—— round-trip 放过、这条不放', () => {
+    const golden = { a: 'btn btn--small', b: 'field__label' };
+    expect(diffGolden([{ token: 'a', value: 'btn btn--small' }], { a: 'btn btn--small' })).toEqual([]);
+    expect(diffGolden([{ token: 'a', value: 'btn  btn--small' }], golden)[0]).toContain('值被改动');
+    expect(diffGolden([{ token: 'a', value: 'btn--small btn' }], golden)[0]).toContain('值被改动');
+    expect(diffGolden([{ token: 'c', value: 'x' }], golden).length).toBe(3); // 新增 1 + 消失 2
+  });
+
+  it('renderGolden 按 key 升序输出，同一张表每次写出同一份文件', () => {
+    const a = renderGolden([
+      { token: 'b', value: 'x' },
+      { token: 'a', value: 'y' },
+    ]);
+    const b = renderGolden([
+      { token: 'a', value: 'y' },
+      { token: 'b', value: 'x' },
+    ]);
+    expect(a).toBe(b);
+    expect(a.indexOf('"a"')).toBeLessThan(a.indexOf('"b"'));
+  });
+
+  it('★ 仓库现状：黄金副本存在且与表逐条全等（防止表被静默改坏）', () => {
+    const table = readTable() ?? [];
+    const golden = readGolden();
+    expect(golden).not.toBeNull();
+    expect(diffGolden(table, golden ?? {})).toEqual([]);
+    expect(Object.keys(golden ?? {}).length).toBe(table.length);
+  });
+});
+
 describe('tokenize-classes · 仓库现状（门禁口径）', () => {
-  it('★ `--check` 的五条断言全过（漏网 / round-trip / 无重复 / ≤100 / 选表集合一致）', () => {
+  it('★ `--check` 的六条断言全过（漏网 / round-trip / 无重复 / ≤100 / 选表集合一致 / 黄金副本等价）', () => {
     const { ok, lines } = runCheck();
     if (!ok) console.error(lines.join('\n'));
     expect(ok).toBe(true);

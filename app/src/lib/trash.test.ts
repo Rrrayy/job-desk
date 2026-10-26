@@ -12,6 +12,7 @@ import { buildSampleDB } from './sample';
 import {
   TRASH_RETENTION_DAYS,
   emptyTrash,
+  extendResumeRetention,
   extendTrashRetention,
   isDeleted,
   isTrashExpired,
@@ -227,7 +228,11 @@ describe('启动清理 sweepTrash', () => {
     const stale = markDeleted(db, target.id, new Date(NOW.getTime() - 40 * 86_400_000).toISOString());
     const result = sweepTrash(stale, NOW);
 
-    expect(result.removedInterviews).toBeGreaterThanOrEqual(0);
+    // 曾经写的是 toBeGreaterThanOrEqual(0) —— 恒真，等于没断言。
+    // 现在按夹具实际条数断言：先确认夹具前提（>0，否则本句又变恒真），再比相等。
+    const expectedInterviews = db.interviews.filter((item) => item.applicationId === target.id).length;
+    expect(expectedInterviews).toBeGreaterThan(0);
+    expect(result.removedInterviews).toBe(expectedInterviews);
     expect(result.db.experiences.every((e) => e.applicationId !== target.id)).toBe(true);
     expect(result.db.experiences).toHaveLength(db.experiences.length);
   });
@@ -380,5 +385,35 @@ describe('v0.9 · capAiReports（纯函数）', () => {
     const shuffled = [rows[3], rows[0], rows[4], rows[1], rows[2]];
     const kept = capAiReports(shuffled, 3);
     expect(kept.map((row) => row.id)).toEqual(['r3', 'r4', 'r2']);
+  });
+});
+
+describe('v0.9.1 · extendResumeRetention（简历「再留 7 天」）', () => {
+  it('★ 就地推后 deletedAt 7 天，剩余天数 +7（其余简历一格不动）', () => {
+    const db = dbWithResumes();
+    const before = db.resumes.find((item) => item.id === 'r2')!;
+    const beforeDays = trashDaysLeft(before, NOW)!;
+    const beforeOther = db.resumes.find((item) => item.id === 'r3')!.deletedAt;
+
+    const changed = extendResumeRetention(db, 'r2');
+
+    expect(changed).toBe(true);
+    expect(trashDaysLeft(db.resumes.find((item) => item.id === 'r2')!, NOW)).toBe(beforeDays + 7);
+    expect(db.resumes.find((item) => item.id === 'r3')!.deletedAt).toBe(beforeOther);
+  });
+
+  it('目标不存在 / 没删过的简历 → 返回 false 且不写 deletedAt', () => {
+    const db = dbWithResumes();
+    expect(extendResumeRetention(db, 'nope')).toBe(false);
+    expect(extendResumeRetention(db, 'r1')).toBe(false);
+    // 夹具里 r1 的 deletedAt 根本没这个键（undefined），统一折成 null 再断言
+    expect(db.resumes.find((item) => item.id === 'r1')!.deletedAt ?? null).toBeNull();
+  });
+
+  it('只动简历这一行，不动它下面的版本（版本不可见靠父 deletedAt 推导）', () => {
+    const db = dbWithResumes();
+    const versionsBefore = db.resumeVersions.map((item) => ({ id: item.id, deletedAt: item.deletedAt }));
+    extendResumeRetention(db, 'r2');
+    expect(db.resumeVersions.map((item) => ({ id: item.id, deletedAt: item.deletedAt }))).toEqual(versionsBefore);
   });
 });

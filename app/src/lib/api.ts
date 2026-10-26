@@ -235,6 +235,11 @@ export interface ResumeApi {
   referencesOf: (versionId: string) => number;
   /** 主版本（settings.defaultResumeVersionId）；没设过是 null */
   primaryVersionId: string | null;
+  /**
+   * v0.9.1 / R-RES-10：「再留 7 天」。推迟 `deletedAt` 即延长到期时间。
+   * 与投递侧的 `extendTrash` 并列而不合并 —— 两者改的是不同的表（架构 B-08 / §7-3）。
+   */
+  extendTrash: (resumeId: string) => void;
 }
 
 export interface AppApi {
@@ -262,6 +267,14 @@ export interface AppApi {
    * 返回 false = 目标不存在或没变化，调用方无需提示。
    */
   bindResumeVersion: (appId: string, versionId: string | null) => boolean;
+  /**
+   * v0.9.1 / R-AI-10：删一份诊断报告。
+   *
+   * **不入撤销栈**（架构 Q4）：报告是 AI 的只读产出、可再生缓存，不是用户写的资产。
+   * 但调用方必须二次确认并明确「不可撤销」—— 铁律 6 禁的是静默，不是删除。
+   * 这条通道存在的意义正是「把扔东西的动作从代码手里交回用户手里」（B-10）。
+   */
+  deleteReport: (reportId: string) => void;
   changeStatus: (id: string, status: Status, opts?: StatusChangeOpts) => void;
   deleteApplication: (id: string) => void;
   /** v0.5 回收站：从回收站恢复（面试与沟通记录原样回来） */

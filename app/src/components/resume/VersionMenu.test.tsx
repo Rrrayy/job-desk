@@ -80,6 +80,9 @@ function fakeApi(options: {
       restoreVersion: record('restoreVersion', undefined),
       purgeVersion: record('purgeVersion', undefined),
       adoptAsDraft: record('adoptAsDraft', undefined),
+      // v0.9.1 / R-RES-10：ResumeApi 新增成员（本套件不调，但 mock 必须补 —— 手写部分对象被
+      // `as unknown as AppApi` 断言，TS 拦不住；漏了就会在下游变成 `undefined > 0 === false`）
+      extendTrash: record('extendTrash', undefined),
     },
   } as unknown as AppApi;
 

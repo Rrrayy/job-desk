@@ -31,9 +31,10 @@
  *
  *   node scripts/tokenize-classes.mjs --check     # 只断言、不写文件（进 npm run verify）
  *   node scripts/tokenize-classes.mjs --write     # 生成 classTokens.ts + 改写源文件
+ *   node scripts/tokenize-classes.mjs --golden    # 有意改表后重新录制黄金副本（见断言 6）
  *   node scripts/tokenize-classes.mjs --stats     # 只打印统计（排查用，不写不判）
  *
- * `--check` 的五条断言（缺一条就等于没有护栏）：
+ * `--check` 的六条断言（缺一条就等于没有护栏）：
  *   1. 漏网：没有任何「值在表里」的纯字面量还留在源码里（应替换的全替换了）
  *   2. round-trip：表里每个串值的每个类名原子，都在 `src/styles.css` 里存在
  *      （证明表里的类名不是凭空造的）；dist 存在时一并校验
@@ -42,6 +43,20 @@
  *   5. 选表一致性：用「现有表 + 残留字面量」重算频次与**入选集合**，结果必须与现有表一致
  *      （只比集合、不比 token 分给谁 —— 后者是优化，写进门禁会让每加一个按钮都要求
  *      重生成 50 个文件的 token 名）
+ *   6. 黄金副本等价：表与 `classTokens.golden.json` **逐条全等**（QA 复核补的护栏）
+ *
+ * ## 断言 6 堵的是什么（这条别删）
+ *
+ * 断言 2 只看「串值里的每个类名原子在 CSS 里存在」，所以这两种**串值被改坏**
+ * 的情况它全都放行：
+ *
+ *   `'btn  btn--small'`（多一个空格）→ 两个原子都在，但 DOM 里多一个空 token
+ *   `'btn--small btn'`（顺序颠倒）   → 两个原子都在，但层叠优先级可能翻转
+ *
+ * 而断言 5 只比**入选集合**，表里某个 value 被手改后，重算频次也是拿改后的 value
+ * 去统计的（自指），同样抓不住。所以要有一份「改写当时逐字节记录的原始串值」
+ * 作基准：表只要有一格变了，就必须有人显式跑 `--golden` 重新录制，
+ * 从而在 diff 里留下「我确实动了这个串值」的痕迹。
  *
  * ★ 本文件是生成 + 改写工具，不是生成物；`src/lib/classTokens.ts` 是生成物。
  */
@@ -83,6 +98,8 @@ const ALNUM = ALPHA + '0123456789';
 const here = dirname(fileURLToPath(import.meta.url));
 const SRC_ROOT = resolve(here, '..', 'src');
 const TABLE_FILE = resolve(SRC_ROOT, 'lib', 'classTokens.ts');
+/** 黄金副本：`{token: 原串}`，只被 `--check` 与测试读，**不进产物** */
+const GOLDEN_FILE = resolve(SRC_ROOT, 'lib', 'classTokens.golden.json');
 const STYLES_FILE = resolve(SRC_ROOT, 'styles.css');
 const DIST_FILE = resolve(here, '..', 'dist', 'index.html');
 
@@ -478,6 +495,49 @@ export function planTable(counts) {
 }
 
 /**
+ * 把「按频次重排好的表」与「现有表」对齐，让**已在表里的串值沿用原 token**。
+ *
+ * 为什么要这一步：`planTable` 每次重算都会按最新频次重新分配短号，于是只要
+ * 新写一个按钮（频次微调），`--write` 就会把 50 个源文件里的 `CLS.j` 改成
+ * `CLS.aV` —— diff 几百行、收益几十字节、review 时真改动全被淹没。
+ *
+ * 沿用旧 token 让 `--write` 变成**增量**：新增串值拿空位 token，消失的串值
+ * 释放 token，其余一格不动。净收益与最优分配只差几十字节（短号仍优先给
+ * 高频串，只是「已在位的老串」不因排名小幅变动而搬家）。
+ *
+ * @param {Array<{token: string, value: string, count: number}>} plan 重算结果（已按频次排序）
+ * @param {Array<{token: string, value: string}>} existing 现有表
+ * @returns {Array<{token: string, value: string, count: number}>} 保持 plan 顺序、token 已对齐
+ */
+export function stablePlan(plan, existing) {
+  const prevToken = new Map(existing.map((e) => [e.value, e.token]));
+  const pool = tokenNames(plan.length);
+  const pooled = new Set(pool);
+  /** @type {Set<string>} */
+  const used = new Set();
+  /** @type {Array<{token: string, value: string, count: number}>} */
+  const out = plan.map((e) => ({ token: '', value: e.value, count: e.count }));
+
+  for (const e of out) {
+    const prev = prevToken.get(e.value);
+    if (!prev || !pooled.has(prev) || used.has(prev)) continue;
+    e.token = prev;
+    used.add(prev);
+  }
+
+  let cursor = 0;
+  for (const e of out) {
+    if (e.token) continue;
+    while (cursor < pool.length && used.has(pool[cursor])) cursor += 1;
+    if (cursor >= pool.length) break;
+    e.token = pool[cursor];
+    used.add(pool[cursor]);
+    cursor += 1;
+  }
+  return out.filter((e) => e.token !== '');
+}
+
+/**
  * 读出现有的 `src/lib/classTokens.ts`。
  *
  * @param {string} [file]
@@ -527,6 +587,101 @@ export const CLS = {
 ${rows}
 } as const;
 `;
+}
+
+// ---------------------------------------------------------------------------
+// 黄金副本：`{token: 原串}` 的等价基准
+// ---------------------------------------------------------------------------
+
+/**
+ * 读黄金副本。
+ *
+ * 用 JSON 而不是 `.ts`：它只给脚本和测试看，不需要类型、不需要被打进产物，
+ * 而 JSON 能被 `JSON.parse` 直接读成普通对象，比对失败时 diff 也最好读。
+ *
+ * @param {string} [file]
+ * @returns {Record<string, string> | null} 文件不存在或不是合法 JSON 时返回 null
+ */
+export function readGolden(file = GOLDEN_FILE) {
+  if (!existsSync(file)) return null;
+  try {
+    const parsed = JSON.parse(readFileSync(file, 'utf8'));
+    if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) return null;
+    /** @type {Record<string, string>} */
+    const out = {};
+    for (const [key, value] of Object.entries(parsed)) {
+      if (typeof value !== 'string') return null;
+      out[key] = value;
+    }
+    return out;
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * 渲染黄金副本（key 升序，保证同一张表每次写出同一个文件）。
+ *
+ * @param {Array<{token: string, value: string}>} entries
+ * @returns {string}
+ */
+export function renderGolden(entries) {
+  /** @type {Record<string, string>} */
+  const obj = {};
+  for (const e of [...entries].sort((a, b) => (a.token < b.token ? -1 : a.token > b.token ? 1 : 0))) {
+    obj[e.token] = e.value;
+  }
+  return `${JSON.stringify(obj, null, 2)}\n`;
+}
+
+/**
+ * 比对表与黄金副本，返回人类可读的差异列表（空数组 = 完全等价）。
+ *
+ * 三类差异分开报，因为处置方式不同：
+ * - **值被改动**：最危险，多半是手改表或改写器出了 bug（DOM 会变）
+ * - **新增 / 消失**：多半是频次漂移导致重新生成过表（有意为之就重录黄金）
+ *
+ * @param {Array<{token: string, value: string}>} table
+ * @param {Record<string, string>} golden
+ * @returns {string[]}
+ */
+export function diffGolden(table, golden) {
+  /** @type {string[]} */
+  const diffs = [];
+  const inTable = new Set();
+  for (const e of table) {
+    inTable.add(e.token);
+    const want = golden[e.token];
+    if (want === undefined) {
+      diffs.push(`新增条目 ${e.token}: "${e.value}"（黄金副本里没有这一格）`);
+      continue;
+    }
+    if (want !== e.value) {
+      diffs.push(`值被改动 ${e.token}: 黄金副本 "${want}" / 现在是 "${e.value}"`);
+    }
+  }
+  for (const [token, value] of Object.entries(golden)) {
+    if (!inTable.has(token)) diffs.push(`条目消失 ${token}: "${value}"`);
+  }
+  return diffs;
+}
+
+/**
+ * `--golden`：把当前表录制为黄金副本。
+ *
+ * 只有「确认这次改表是有意的」之后才该跑 —— 它把当前状态当成新的基准，
+ * 因此**不会**被 `--write` 自动调用（自动调用等于没有护栏）。
+ *
+ * @returns {void}
+ */
+export function runGolden() {
+  const table = readTable();
+  if (!table) {
+    console.error('✗ 找不到 src/lib/classTokens.ts —— 先跑 --write');
+    return;
+  }
+  writeFileSync(GOLDEN_FILE, renderGolden(table), 'utf8');
+  console.log(`✓ 录制黄金副本 src/lib/classTokens.golden.json（${table.length} 条）`);
 }
 
 // ---------------------------------------------------------------------------
@@ -814,6 +969,19 @@ export function runCheck() {
     fail('选表一致性：现有表与重算结果不一致（有人手改过表，或 --write 后没重新生成）');
   }
 
+  // 断言 6：黄金副本等价（逐条全等，堵住「串值被改坏但原子都还在」）
+  const golden = readGolden();
+  if (!golden) {
+    fail('找不到 src/lib/classTokens.golden.json —— 跑一次 node scripts/tokenize-classes.mjs --golden');
+  } else {
+    const diffs = diffGolden(table, golden);
+    if (diffs.length === 0) pass(`黄金副本等价：表内 ${table.length} 条与原串逐字节相同（多空格 / 顺序颠倒都会红）`);
+    else {
+      for (const d of diffs.slice(0, 5)) lines.push(`  ✗ ${d}`);
+      fail(`黄金副本不等于现有表（${diffs.length} 处差异）—— 若确认是有意改表，跑 --golden 重录`);
+    }
+  }
+
   lines.unshift(
     `类名 token 化：${table.length}/${MAX_ENTRIES} 条，覆盖 ${occurrences} 处出现`,
   );
@@ -935,7 +1103,7 @@ export function runWrite() {
   const files = collectSources();
   const existing = readTable() ?? [];
   const { counts } = collectCounts(existing, files);
-  const plan = planTable(counts);
+  const plan = stablePlan(planTable(counts), existing);
   /** @type {Map<string, string>} */
   const tokenByValue = new Map(plan.map((e) => [e.value, e.token]));
 
@@ -955,6 +1123,15 @@ export function runWrite() {
     changedSites += changed;
   }
   console.log(`✓ 改写 ${changedFiles} 个源文件，共 ${changedSites} 处`);
+
+  // 黄金副本**不**自动重录（自动重录 = 断言 6 失效）。只在它还不存在时补一份，
+  // 让「新克隆仓库 + 首次 --write」能跑通；已存在则提醒人工确认。
+  if (!readGolden()) {
+    writeFileSync(GOLDEN_FILE, renderGolden(plan), 'utf8');
+    console.log('✓ 黄金副本不存在，已按本次结果录制 src/lib/classTokens.golden.json');
+  } else {
+    console.log('  · 黄金副本未改动：若本次改表是有意的，请跑 --golden 重录，否则 --check 会红');
+  }
 }
 
 /**
@@ -992,6 +1169,10 @@ export function main(argv = process.argv.slice(2)) {
     runWrite();
     return 0;
   }
+  if (mode === '--golden') {
+    runGolden();
+    return 0;
+  }
   if (mode === '--stats') {
     runStats();
     return 0;
@@ -1001,7 +1182,7 @@ export function main(argv = process.argv.slice(2)) {
   }
   if (mode !== '--check') {
     console.error(`✗ 未知参数：${mode}`);
-    console.error('  用法：tokenize-classes.mjs [--check | --write | --stats | --audit [ref]]');
+    console.error('  用法：tokenize-classes.mjs [--check | --write | --golden | --stats | --audit [ref]]');
     return 2;
   }
 

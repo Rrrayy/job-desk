@@ -119,8 +119,36 @@ export function createReport(input: {
  * 否则「导出 → 导入」往返会因为一次重排而不再逐字节相等。
  * 全库 200 的算法与 `trash.ts` 的 `capAiReports` 同口径；就地实现是为了避免
  * trash ↔ reports 循环导入（trash 在启动 sweep 里调用本函数）。
+ *
+ * @param rows 全库报告
+ * @param limit 全库上限
+ * @returns 保序的保留集（`capReportsWithDrop().kept`）
  */
 export function capReports(rows: AIReport[], limit = AI_REPORT_LIMIT): AIReport[] {
+  return capReportsWithDrop(rows, limit).kept;
+}
+
+/** `capReports` 的完整结果：留下了谁、**扔了谁** */
+export interface ReportDrop {
+  /** 保留集（保序） */
+  kept: AIReport[];
+  /** 被丢弃的报告 id（v0.9.1 新增：告知侧要知道「丢的是哪一份」） */
+  droppedIds: string[];
+}
+
+/**
+ * 报告上限，同时报出**被丢弃的 id**。
+ *
+ * 为什么必须有这个版本（v0.9.1 / B-10）：旧签名只返回保留集，调用方想知道
+ * 「刚才那份报告有没有顶掉一份」，只能比前后长度 —— 长度相等时无法区分
+ * 「没超上限」与「超了但扔的是别人」，断言也只能写 `before.length - after.length === 1`，
+ * 不知道扔了哪份等于没测。有了 `droppedIds`，「告知用户丢了哪一份」才是可实现的。
+ *
+ * @param rows 全库报告
+ * @param limit 全库上限（默认 `AI_REPORT_LIMIT`）
+ * @returns 保留集 + 被丢弃的 id 列表
+ */
+export function capReportsWithDrop(rows: AIReport[], limit = AI_REPORT_LIMIT): ReportDrop {
   const indexed = rows.map((row, index) => ({ row, index, at: Date.parse(row.createdAt) || 0 }));
   const sorted = [...indexed].sort((a, b) => b.at - a.at || b.index - a.index);
   const perTarget = new Map<string, number>();
@@ -144,5 +172,60 @@ export function capReports(rows: AIReport[], limit = AI_REPORT_LIMIT): AIReport[
     );
     kept = kept.filter((row) => keepIds.has(row.id));
   }
-  return kept;
+  const keptIds = new Set(kept.map((row) => row.id));
+  const droppedIds = rows.filter((row) => !keptIds.has(row.id)).map((row) => row.id);
+  return { kept, droppedIds };
+}
+
+/* ------------------------------ 报告历史与配额（v0.9.1 / R-AI-10） ------------------------------ */
+
+/**
+ * 取某个 target 的报告，**最新的在前**。
+ *
+ * 排序键是 `createdAt` 字符串降序（ISO 8601 字典序 = 时间序，不必解析成毫秒）；
+ * 相同时刻用下标兜底，保证同一份数据每次都排出同一个顺序（否则「第 2/3 份」
+ * 会在两次渲染之间跳来跳去）。
+ *
+ * @param rows 全库报告
+ * @param targetType 'resume_diagnosis' | 'application_diagnosis'
+ * @param targetId Resume.id / Application.id
+ * @returns 最新的在前，最多 `REPORTS_PER_TARGET` 份
+ */
+export function reportsOfTarget(
+  rows: AIReport[],
+  targetType: AIReport['targetType'],
+  targetId: string,
+): AIReport[] {
+  return rows
+    .map((report, index) => ({ report, index }))
+    .filter(({ report }) => report.targetType === targetType && report.targetId === targetId)
+    .sort((a, b) => {
+      if (a.report.createdAt !== b.report.createdAt) return a.report.createdAt < b.report.createdAt ? 1 : -1;
+      return a.index - b.index;
+    })
+    .map(({ report }) => report)
+    .slice(0, REPORTS_PER_TARGET);
+}
+
+/** 报告配额的当前状态（UI 三种口径：正常 / 将满 / 已满） */
+export interface ReportQuota {
+  used: number;
+  limit: number;
+  /** 全库已满 —— 再生成会静默丢一份，所以入口要置灰 */
+  full: boolean;
+  /** ≥190 就开始提示（离上限 10 份时提醒，别等到撞墙） */
+  nearlyFull: boolean;
+}
+
+/**
+ * 全库报告配额。报告上限是一道「代码替用户扔东西」的闸，v0.9.1 把它从
+ * 「静默丢」改成「提前告知 + 用户显式删」（架构 B-10），这个函数就是告知侧的读数。
+ *
+ * @param rows 全库报告
+ * @param limit 全库上限（默认 `AI_REPORT_LIMIT = 200`）
+ * @returns 当前份数与三档状态
+ */
+export function reportQuotaOf(rows: AIReport[], limit = AI_REPORT_LIMIT): ReportQuota {
+  const used = rows.length;
+  return { used, limit, full: used >= limit, nearlyFull: used >= limit - 10 };
 }

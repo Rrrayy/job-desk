@@ -27,7 +27,7 @@ import { A4Preview } from './A4Preview';
 import { PrintButton } from './PrintButton';
 import { VersionMenu } from './VersionMenu';
 import { AiScenarioPanel } from '../ai/AiScenarioPanel';
-import { ReportCard } from './ReportCard';
+import { ReportHistory } from './ReportHistory';
 import { CLS } from '../../lib/classTokens';
 
 export function ResumeEditor({ api, resume }: { api: AppApi; resume: Resume }) {
@@ -55,13 +55,10 @@ export function ResumeEditor({ api, resume }: { api: AppApi; resume: Resume }) {
     draft,
   ]);
 
-  /** 最新一份诊断报告（重新生成会顶掉旧的，capReports 每 target 只留 3 份） */
-  const latestReport = useMemo(() => {
-    const list = (api.db.aiReports ?? [])
-      .filter((report) => report.targetType === 'resume_diagnosis' && report.targetId === resume.id)
-      .sort((a, b) => (a.createdAt < b.createdAt ? 1 : -1));
-    return list[0] ?? null;
-  }, [api.db.aiReports, resume.id]);
+  /**
+   * 最近一份诊断报告由 `ReportHistory` 自己取（它要的是**全部**同目标报告，
+   * 不是最新一份）—— 这里不再排序取 head，避免两处各有一份「哪份算最新」的口径。
+   */
 
   /**
    * 切模板：先 flush 再切。
@@ -118,7 +115,8 @@ export function ResumeEditor({ api, resume }: { api: AppApi; resume: Resume }) {
         </div>
         <div className="resume-editor__col resume-editor__col--paper">
           <A4Preview content={draft} templateId={resume.templateId} />
-          {latestReport ? <ReportCard report={latestReport} /> : null}
+          {/* v0.9.1 / B-09：多份报告用「切换」呈现（纸栏 380–460 px，三份并排要 1000 px） */}
+          <ReportHistory api={api} resumeId={resume.id} />
         </div>
       </div>
 
