@@ -5292,6 +5292,19 @@ button.chip:hover {
   line-height: 1.7;
 }
 
+/*
+ * v0.9.1 / B-13：浏览器专属提示行。
+ * 刻意做成「一段小字」而不是第二种弹层/第二套打印 CSS —— 一套版式服务三家浏览器。
+ */
+.print-hint__ua {
+  margin: 10px 0 0;
+  padding: 8px 10px;
+  border-left: 3px solid var(--line);
+  color: var(--ink-3);
+  font-size: 12px;
+  line-height: 1.7;
+}
+
 .print-hint__acts {
   display: flex;
   justify-content: flex-end;
@@ -6052,6 +6065,14 @@ button.chip:hover {
   .rs-item {
     break-inside: avoid;
     page-break-inside: avoid;
+    /*
+     * v0.9.1 / R-PRT-1：`break-inside: avoid` 在「一个段落比一页还高」时**必须**
+     * 断开（CSS 规定 avoid 只是尽量），此时 orphans/widows 决定「断在哪」：
+     * 少于 3 行不留在页尾、少于 3 行不单独跑到下一页 —— 否则会出现
+     * 「上一页最后孤零零一行字」。这是排版层唯一需要补的东西，不改任何尺寸。
+     */
+    orphans: 3;
+    widows: 3;
   }
 
   .rs-section__title {

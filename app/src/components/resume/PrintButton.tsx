@@ -14,7 +14,7 @@
  */
 
 import { useEffect, useRef, useState } from 'react';
-import { PRINT_HINT_LINES, printResume } from '../../resume/print';
+import { PRINT_HINT_LINES, printResume, printUaKind, printUaLine } from '../../resume/print';
 import { CLS } from '../../lib/classTokens';
 
 export interface PrintButtonProps {
@@ -25,6 +25,11 @@ export interface PrintButtonProps {
 
 export function PrintButton({ onBeforePrint, label = '打印 / 存为 PDF' }: PrintButtonProps) {
   const [hintOpen, setHintOpen] = useState(false);
+  /**
+   * 浏览器专属提示（v0.9.1 / B-13）：面板打开时才需要，所以按需算一次即可。
+   * 读 `navigator.userAgent` 是**唯一的 UA 分支**，且只影响这一行字，不影响任何版式。
+   */
+  const uaLine = hintOpen ? printUaLine(printUaKind(typeof navigator === 'undefined' ? '' : navigator.userAgent)) : '';
   const [error, setError] = useState<string | null>(null);
   const triggerRef = useRef<HTMLButtonElement | null>(null);
   const confirmRef = useRef<HTMLButtonElement | null>(null);
@@ -86,6 +91,11 @@ export function PrintButton({ onBeforePrint, label = '打印 / 存为 PDF' }: Pr
                 <li key={line}>{line}</li>
               ))}
             </ul>
+            {/*
+              v0.9.1 / B-13：浏览器专属的一句只说「菜单在哪、缩放怎么选」。
+              一套 CSS 服务三家，差别只在这行字（`other` 时整行不渲染）。
+            */}
+            {uaLine ? <p className="print-hint__ua">{uaLine}</p> : null}
             <div className="print-hint__acts">
               <button type="button" className="btn" onClick={closeHint}>
                 取消

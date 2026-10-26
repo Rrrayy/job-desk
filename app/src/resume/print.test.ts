@@ -21,6 +21,8 @@ import {
   paginate,
   paginateColumns,
   printResume,
+  printUaKind,
+  printUaLine,
 } from './print';
 
 describe('printResume：编排（L1）', () => {
@@ -245,5 +247,59 @@ describe('paginateColumns：分栏版式（每页并排 2 栏）', () => {
 
   it('栏数常量就是双栏模板的实际栏数（.a4--double 的 column-count）', () => {
     expect(PAGE_COLUMNS).toBe(2);
+  });
+});
+
+/* ---------------------- v0.9.1 / R-PRT-1：提示层的浏览器分支 ---------------------- */
+
+describe('printUaKind / printUaLine（提示层分支，不是第二套 CSS）', () => {
+  // 真实 UA 串（截断到能区分即可），顺序陷阱就藏在这里：Chrome 的 UA 含 "Safari"
+  const UA = {
+    chrome:
+      'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/141.0.0.0 Safari/537.36',
+    edge:
+      'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/141.0.0.0 Safari/537.36 Edg/141.0.0.0',
+    firefox: 'Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:145.0) Gecko/20100101 Firefox/145.0',
+    safari:
+      'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/18.1 Safari/605.1.15',
+  } as const;
+
+  it('★ Chrome / Edge → chromium（UA 里都含 "Safari"，判错顺序就会退化成 safari）', () => {
+    expect(printUaKind(UA.chrome)).toBe('chromium');
+    expect(printUaKind(UA.edge)).toBe('chromium');
+  });
+
+  it('★ Firefox → firefox（先于 Chromium 判断）', () => {
+    expect(printUaKind(UA.firefox)).toBe('firefox');
+  });
+
+  it('★ Safari → safari（不含 Chrome）', () => {
+    expect(printUaKind(UA.safari)).toBe('safari');
+  });
+
+  it('空 / undefined / 未知 UA → other，且 other 不产生任何提示行', () => {
+    expect(printUaKind('')).toBe('other');
+    expect(printUaKind(undefined)).toBe('other');
+    expect(printUaKind('curl/8.0.0')).toBe('other');
+    expect(printUaLine('other')).toBe('');
+  });
+
+  it('三家各有一句专属提示，都提到「另存为 / 存储为 PDF」（否则用户找不到入口）', () => {
+    expect(printUaLine('chromium')).toContain('另存为 PDF');
+    expect(printUaLine('firefox')).toContain('另存为 PDF');
+    expect(printUaLine('safari')).toContain('存储为 PDF');
+  });
+
+  it('★ Firefox 那句必须点明「缩放选 100%」—— 它的默认值会让分页错乱', () => {
+    expect(printUaLine('firefox')).toContain('100%');
+    expect(printUaLine('firefox')).toContain('适合页面宽度');
+  });
+
+  it('基础两句提示不变（三家共用同一套版式，UA 只加一句）', () => {
+    expect(PRINT_HINT_LINES).toHaveLength(2);
+    const base = new Set<string>(PRINT_HINT_LINES);
+    for (const kind of ['chromium', 'firefox', 'safari'] as const) {
+      expect(base.has(printUaLine(kind))).toBe(false);
+    }
   });
 });

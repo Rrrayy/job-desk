@@ -180,6 +180,21 @@ try {
     '分页保护进了产物（.rs-item / .rs-section break-inside:avoid）',
     /@media\s+print[\s\S]*break-inside:\s*avoid/.test(cssText) && /@media\s+print[\s\S]*break-after:\s*avoid/.test(cssText),
   );
+  // v0.9.1 / R-PRT-1：orphans / widows 只在「块比一页还高、必须断开」时才起作用，
+  // 而 jsdom 不求值媒体查询 —— 这两条只能在真产物 CSS 上断言。
+  check(
+    '孤行控制进了产物（print 段里 orphans/widows = 3）',
+    /@media\s+print[\s\S]*orphans:\s*3/.test(cssText) && /@media\s+print[\s\S]*widows:\s*3/.test(cssText),
+    (cssText.match(/orphans:\s*3/) ?? ['未匹配'])[0],
+  );
+  // ★ 反面断言：提示层按浏览器分支，但**只能有一套打印 CSS**。
+  // 出现 @-moz-document 或 `@supports (-moz-…)` 就说明有人为 Firefox 抄了第二套版式。
+  check(
+    '打印只有一套 CSS（没有 @-moz-document / -moz-only 的特例块）',
+    !/@-moz-document/.test(cssText) && (cssText.match(/@media\s+print\s*\{/g) ?? []).length === 1,
+    `@media print 段 ${(cssText.match(/@media\s+print\s*\{/g) ?? []).length} 个`,
+  );
+
   check(
     '3 种 layout 变体进了产物（single / double / timeline）',
     ['.a4--double', '.a4--timeline'].every((sel) => cssText.includes(sel)),

@@ -92,6 +92,24 @@ v0.9 立项时预算落点 ≈678 KB（WARN 690 / FAIL 715）。开发过程中�
 >    整条链路通畅，**逐题手录路径同样能落库**。
 > 3. v0.9.1 为此补了一条回归断言（`QuickNote.test.tsx` 的「★ v0.9.1 勘误回归」），
 >    万一将来有人真的把这条路径改回去，测试会红。
+>
+> ### v0.9.1 更正（§4 第 1 条「打印的浏览器差异」也是半错）
+>
+> 原文写「Firefox/Safari 的分页与 `print-color-adjust` 表现与 Chrome/Edge 不一致，
+> **未做适配**」——「未做适配」这个结论不对，当时**已经适配了一半**：
+>
+> 1. `styles.css` 的 `@media print` 段里，`page-break-inside: avoid` /
+>    `page-break-after: avoid` 与 `break-inside` / `break-after` **是双写的**，
+>    而 `page-break-*` 正是 Firefox 与老 WebKit 认的那一套；
+>    `print-color-adjust` 与 `-webkit-print-color-adjust` 同样双写。
+> 2. 真正缺的只有两件：**孤行控制**（`orphans` / `widows` —— `break-inside: avoid`
+>    在「块比一页还高」时按规范必须断开，没有这两个属性就会出现页尾孤行）、
+>    以及**提示层没有按浏览器分支**（三家打印对话框的菜单位置与缩放出厂值不同）。
+> 3. 这两件在 v0.9.1 补上了：提示层加一行按 UA 变的话（`print-hint__ua`），
+>    `@media print` 里给 `.rs-item` / `.rs-section` 补 `orphans: 3; widows: 3`。
+>    **打印 CSS 仍然只有一套** —— 三家引擎在 A4 / 14mm / `break-inside` 上行为一致，
+>    各写一套版式等于以后每次调分页都要验三遍；`check:print` 里有一条反面断言盯着
+>    「不许出现 `@-moz-document`」。
 
 ## 5. 升级与回滚
 

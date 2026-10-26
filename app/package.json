@@ -1,7 +1,7 @@
 {
   "name": "job-desk",
   "private": false,
-  "version": "0.9.0",
+  "version": "0.9.1",
   "type": "module",
   "description": "求职工作台 · 把投递当管线管，数据只留在你自己的浏览器里",
   "license": "MIT",
@@ -38,7 +38,8 @@
     "validate:community": "node scripts/validate-community.mjs",
     "verify": "npm run typecheck && npm test && npm run lint && npm run check:no-network && npm run build && npm run check:bundle && npm run check:classes && npm run check:versions && npm run validate:community",
     "release:pack": "node scripts/pack-release.mjs",
-    "release:prep": "npm run verify && npm run release:pack",
+    "release:prep": "npm run verify && npm run check:print && npm run check:resume && npm run release:pack",
+    "release:github": "node scripts/release-publish.mjs",
     "check:versions": "node scripts/check-versions.mjs",
     "lint": "eslint src scripts eslint.config.mjs",
     "lint:fix": "eslint src scripts eslint.config.mjs --fix",

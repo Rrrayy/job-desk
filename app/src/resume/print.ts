@@ -26,6 +26,63 @@ export const PRINT_HINT_LINES = [
   '缩放选『默认』或『100%』，页边距交给纸张设置 —— 改这些会让分页错乱',
 ] as const;
 
+/**
+ * 打印对话框的浏览器差异（v0.9.1 / R-PRT-1，架构 B-13）。
+ *
+ * ## 为什么是「提示层分支」而不是「第二套 CSS」
+ *
+ * 三家浏览器的打印对话框差别在**措辞与菜单位置**，不在渲染：
+ * - Chromium（Chrome / Edge）：目标打印机列表里选「另存为 PDF」；
+ * - Firefox：目标选「另存为 PDF」，缩放要选「100%」（默认的「适合页面宽度」会缩小内容 → 分页错乱）；
+ * - Safari：左下角「PDF ▾ → 存储为 PDF」，缩放默认就是 100%（不用改）。
+ *
+ * 这些都只是**给用户看的字**。为它们写 `@-moz-document` / `@supports (-webkit-…)`
+ * 的第二套打印 CSS，等于把「一套版式」拆成三套，之后每次调 A4 分页都要验三遍 ——
+ * 而渲染引擎在打印这件事上的行为是一致的（A4 / 14mm / break-inside 都支持）。
+ * 所以：**一套 CSS，一行按 UA 变的话**。
+ *
+ * ## 为什么要传 ua 而不是在函数里读 navigator
+ *
+ * 纯函数才能测：三条分支 × 四个 UA 串都能在单测里钉死，不用起三个浏览器。
+ */
+export type PrintUaKind = 'chromium' | 'firefox' | 'safari' | 'other';
+
+/**
+ * 从 UA 串判断打印对话框属于哪一家。
+ *
+ * 顺序不能换：Chrome 的 UA 里也含 `Safari/`，Safari 的 UA 里不含 `Chrome`。
+ * 所以先判 Firefox，再判 Chromium 家族（Chrome / Chromium / Edge），最后才是 Safari。
+ *
+ * @param ua `navigator.userAgent`（空串 / undefined 时按 other 处理）
+ * @returns 浏览器大类
+ */
+export function printUaKind(ua: string | null | undefined): PrintUaKind {
+  const text = ua ?? '';
+  if (/Firefox\//i.test(text)) return 'firefox';
+  if (/(Chrome|Chromium|Edg|OPR)\//i.test(text)) return 'chromium';
+  if (/Safari\//i.test(text)) return 'safari';
+  return 'other';
+}
+
+/**
+ * 该浏览器专属的一句提示（`other` 返回空串 = 不渲染，不多说无用的话）。
+ *
+ * @param kind `printUaKind` 的结果
+ * @returns 一句中文提示
+ */
+export function printUaLine(kind: PrintUaKind): string {
+  if (kind === 'chromium') {
+    return 'Chrome / Edge：目标打印机选『另存为 PDF』，缩放保持『默认』即可。';
+  }
+  if (kind === 'firefox') {
+    return 'Firefox：目标选『另存为 PDF』，缩放务必选『100%』—— 默认的『适合页面宽度』会缩小内容、让分页错乱。';
+  }
+  if (kind === 'safari') {
+    return 'Safari：点左下角『PDF ▾ → 存储为 PDF』，缩放默认就是 100%，不用改。';
+  }
+  return '';
+}
+
 /** `window.print` 不存在时的兜底文案（一行内联，不弹窗：R-AI-5 同款口径） */
 export const PRINT_UNSUPPORTED = '当前浏览器不支持打印';
 
