@@ -165,6 +165,9 @@ export function buildPlan(input) {
   for (const asset of assets) {
     steps.push({
       method: 'POST',
+      // ★ 资产上传必须走 uploads.github.com —— api.github.com 的同名路径只接受 GET，
+      //   POST 一律 404。v0.9.1 首发实测抓到的 bug：演练模式当时只核对 path 不核对 host。
+      host: 'uploads.github.com',
       path: `/repos/${repo}/releases/:id/assets?name=${encodeURIComponent(asset.name)}`,
       note: `上传 ${asset.name}（${asset.size} B）`,
     });
@@ -193,7 +196,7 @@ export function httpsSend(options) {
   return new Promise((resolvePromise, rejectPromise) => {
     const req = request(
       {
-        hostname: 'api.github.com',
+        hostname: options.host ?? 'api.github.com',
         path: options.path,
         method: options.method,
         headers: {
@@ -287,7 +290,7 @@ export async function main(argv, io = {}) {
   }
 
   print(plan.messages);
-  for (const step of plan.steps) print([`  ${step.method} ${step.path}`, `    ${step.note}`]);
+  for (const step of plan.steps) print([`  ${step.method} https://${step.host ?? 'api.github.com'}${step.path}`, `    ${step.note}`]);
   if (plan.mode === 'dry-run') return 0;
 
   // ---- 真发：一条一条来，失败即停（不做「部分成功」的花活） ----
@@ -324,6 +327,7 @@ export async function main(argv, io = {}) {
   for (const asset of assets) {
     const upload = await sender({
       method: 'POST',
+      host: 'uploads.github.com',
       path: `/repos/${parsed.repo}/releases/${releaseId}/assets?name=${encodeURIComponent(asset.name)}`,
       token: findToken(env) ?? '',
       body: readFileSync(asset.path),

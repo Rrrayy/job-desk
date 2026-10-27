@@ -167,7 +167,12 @@ describe('release-publish · main（注入 io，不联网）', () => {
     const code = await main([], options);
     expect(code).toBe(0);
     expect(options.sender).not.toHaveBeenCalled();
-    expect(lines.join('\n')).toContain('POST /repos/Rrrayy/job-desk/releases');
+    // ★ v0.9.1 起 host 是请求计划的一部分：资产上传必须显示为 uploads.github.com
+    //   （api.github.com 的同名路径只接受 GET，演练必须能暴露 host 错误）
+    expect(lines.join('\n')).toContain('POST https://api.github.com/repos/Rrrayy/job-desk/releases');
+    expect(lines.join('\n')).toContain(
+      'POST https://uploads.github.com/repos/Rrrayy/job-desk/releases/:id/assets?name=SHA256SUMS',
+    );
   });
 
   it('★ 未知参数 → 退出码 2（与「缺 token 的 1」区分开）', async () => {
