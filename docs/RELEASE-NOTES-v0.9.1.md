@@ -140,10 +140,30 @@ v0.9.1 的类名 token 化在 round-trip 审计时发现：源码里有 8 处按
 但 `App.tsx` 本体仍是 3,000+ 行、全仓没有任何测试 import 它。
 这属于既有技术债，本版没有解决，只保证**不再往里堆不可测分支**。
 
-### 4.3 设置抽屉没有挂载层测试
+### 4.3 设置抽屉只有「薄」挂载测试
 
-`ResumeTrashSection` 自身有 8 条测试，但「它到底有没有出现在设置页」目前靠人工。
-`SettingsDrawer` 从 v0.5 起就没有测试文件。
+`ResumeTrashSection` 自身有 8 条测试，但它此前是**直接渲染**的 —— 组件对了、
+没挂进设置页，用户照样看不到，而测试全绿。本版补了 `SettingsDrawer.test.tsx`（2 条），
+从父级往下渲染一次，断言 `.resume-trash__title` 真的出现了（并做了变异验证：
+把 `<ResumeTrashSection />` 摘掉，测试立刻红）。
+
+但**只到「薄」这一层**：`SettingsDrawer` 是 5 个子组件的聚合容器，
+内部的交互（导入 / 导出 / 清空 / 插件 / AI / 文件联动）仍然没有测试。
+这是本版剩下的最大一块测试债，记为 v0.9.2 候选。
+
+### 4.4 `api.ts:179,180` 的两条 eslint warning（已知，未修）
+
+```
+179:30  warning  `import()` type annotations are forbidden  @typescript-eslint/consistent-type-imports
+180:31  warning  `import()` type annotations are forbidden  @typescript-eslint/consistent-type-imports
+```
+
+`BulkAdoptInput` / `BulkAdoptResult` 用了内联 `import('../ai/experienceBulk').X` 写法。
+这两条是 **warning 不是 error**（`npm run lint` 退出码 0，`verify` 全绿），
+改成顶层 `import type` 即可消除；本版不动它们，是因为本轮所有改动都必须服务于
+「体积 / 静默 / 文档」三条主线，纯风格清理会让 diff 混入无关噪音。
+本版确认过 `ai/experienceBulk.ts` 并不反向 import `lib/api`，**不存在类型环**，
+所以将来改起来是安全的。
 
 ---
 
@@ -160,6 +180,11 @@ v0.9.1 的类名 token 化在 round-trip 审计时发现：源码里有 8 处按
 3. **`ARCH-v091.md`**：`BoardView.test.tsx` 的实际体量是 **217 行 / 6 条**（不是「216 行 8 条」）；
    `capReports` 是**生成第 4 份的当下立刻丢**（同一帧里 `push` + `capReports`），
    不是「下次启动才消失」。实现按正确事实做，文档两行已改。
+4. **`ARCH-v091.md`** 里 T2 的组件名通篇是 `LegacyClassifyDialog`，实际落地叫
+   **`LegacyBindPanel`**（10 处，含类图 / 时序图 / 涉及文件表 / 文件清单）。
+   改名理由是「它不是一个弹窗，而是横幅下面的一块内联面板」——
+   叫 Dialog 会让人去找 `role="dialog"` 的浮层。文档已全文替换。
+   注：该文档在 `job-desk-planning/`（版本库之外），因此这次替换**不产生 commit**。
 
 ---
 
@@ -176,9 +201,15 @@ v0.9.1 的类名 token 化在 round-trip 审计时发现：源码里有 8 处按
 ```bash
 cd app
 npm ci
-npm run verify        # tsc + 1053 项测试 + lint + 零网络 + 构建 + 体积 + 类名表 + 版本 + 社区格式
-npm run check:print   # 93 条：8 套模板的打印渲染（真浏览器）
-npm run check:resume  # 简历链路 CDP 端到端（含悬空绑定、改绑留痕、打印后回列表）
-npm run bench         # 看板窗口自证 + 首屏/切换耗时（硬门禁：渲染卡片数 ≤ 列数×40）
+npm run verify        # tsc + 1115 项测试（74 个文件）+ lint + 零网络 + 构建 + 体积 + 类名表 + 版本 + 社区格式
+npm run check:print   # 95 条：8 套模板的打印渲染（真浏览器）
+npm run check:resume  # 61 条：简历链路 CDP 端到端（含悬空绑定、改绑留痕、打印后回列表）
+npm run check:classes # 6 条：类名 token 表（含黄金副本等价）
+npm run bench         # 看板窗口自证 + 首屏/切换耗时（硬门禁：逐列核对「已渲染 === min(总数, 40)」）
 node scripts/tokenize-classes.mjs --audit v0.9.0   # 类名逆变换证明（需要本地 git 历史）
 ```
+
+> 测试数的账要连着看：`948 → 1115`（+167）里有 **8 条不是新写的** ——
+> `scripts/check-no-network.test.mjs` 从 v0.8 就存在，但 `vitest` 的 `include` 不含 `scripts/`，
+> 它从未被执行过一次。本版修好 `include` 才真正开始跑。
+> 真正的**新增**测试是 **159 条**。

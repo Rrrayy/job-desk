@@ -16,7 +16,11 @@
  *
  * 「看板降到 X ms」这句话没法自证 —— 把卡片全删了也很快。真正证明窗口生效的是
  * 「1000 条数据下，看板 DOM 里的 `.app-card` 不超过 列数 × 窗口(40)」。
- * 这条现在是**硬门禁**：超了就退出码 1，免得性能报告变成好看的空话。
+ * 但这句上界**在小样本上不灵敏**（QA v0.9.1 指出：200 条那组只渲染 167 张，
+ * 窗口彻底失效也小于 320，照样过门禁），所以真正的判据是**逐列核对规则本身**：
+ * 某列「已渲染 === min(总数, 40)」，其中总数 = 已渲染 + 按钮上的「还有 N 家」。
+ * 四条判据（上界 / 逐列规则 / 全局对账 / 大样本必截断）任一不成立就退出码 1，
+ * 免得性能报告变成好看的空话。
  *
  * 用法：node scripts/bench-perf.mjs
  * 前置：npm run build（需要 dist/index.html）
@@ -217,7 +221,20 @@ for (const size of SIZES) {
       // 切到看板之后再数卡片（顺序错了数到的就是列表的 0 张）
       const cards = document.querySelectorAll('.app-card').length;
       const more = document.querySelectorAll('.board__more').length;
-      return { today: await clickView('今日'), board, cards, more };
+      // ★ 逐列量「已渲染 / 未渲染」：只看全局总数是**不敏感**的 ——
+      //   200 条那组本来就只有 167 张卡（< 320 上限），窗口彻底失效也照样过。
+      //   逐列拿到 cards + hidden 就能算出该列真实总数，再对 min(total, 40) 逐条核对，
+      //   这才是「窗口规则」本身，而不是「数字没超上限」这种偶然成立的上界。
+      //   折叠列（面试段折叠 / 「已结束」未展开）不渲染 body，不参与核对。
+      const columns = [...document.querySelectorAll('.board__col')]
+        .filter((col) => col.querySelector('.board__col-body'))
+        .map((col) => {
+          const rendered = col.querySelectorAll('.app-card').length;
+          const moreEl = col.querySelector('.board__more');
+          const hidden = moreEl ? Number((moreEl.textContent || '').match(/(\\d+)/)?.[1] || 0) : 0;
+          return { rendered, hidden, total: rendered + hidden };
+        });
+      return { today: await clickView('今日'), board, cards, more, columns };
     })()`);
 
     results.push({
@@ -231,6 +248,8 @@ for (const size of SIZES) {
       renderedCards: viewSwitch.cards ?? null,
       /** 有多少列出现了「还有 N 家」（窗口真的截断过） */
       windowedColumns: viewSwitch.more ?? null,
+      /** 逐列明细：`rendered` 渲染了几张、`hidden` 按钮上写着还有几家 */
+      columns: viewSwitch.columns ?? [],
     });
     console.log('ok');
   } catch (error) {
@@ -275,17 +294,81 @@ for (const row of results) {
 
 /* ------------------------------------------------- 硬门禁：窗口真的生效了吗 */
 //
-// 只看耗时是没法证伪的（少了卡片当然快）。所以这里断言一件可以被验证的事实：
-// **看板 DOM 里的卡片数 ≤ 列数 × 40**。1000 条数据时如果窗口没生效，这里会是 1000。
-const overflow = results.filter((row) => !row.error && (row.renderedCards ?? 0) > MAX_BOARD_CARDS);
-if (overflow.length > 0) {
+// 只看耗时是没法证伪的（少了卡片当然快）。这里断言四类**可验证的事实**：
+//
+//   ① 上界：全局渲染卡片数 ≤ 列数 × 40（窗口彻底失效时会变成条数，立刻红）；
+//   ② **规则本身（逐列）**：某列真实总数 = 已渲染 + 按钮上的「还有 N 家」，
+//      则「已渲染」必须恰好等于 `min(总数, 40)`。这是窗口的**定义式**，
+//      而不是它的一个副产品 —— QA 指出的正是「只写上界不灵敏」：
+//      200 条那组总共才 167 张卡，就算窗口完全失效（167 张全渲染）也小于 320 的上界，
+//      ① 照样过。② 则要求「60 张的列不能渲染 60 张」，与样本大小无关；
+//   ③ 一致性：全局卡片数 === 逐列已渲染之和（防止卡片挂到列外、或漏数整列）；
+//   ④ 灵敏度护栏：数据量 ≥ 500 时**必须**至少有一列被截断。
+//      没有它，②③ 在「所有列都没满 40 张」时也会自动成立（此时窗口根本没被考验到），
+//      于是门禁会悄悄退化成一句空话。
+const overCap = results.filter((row) => !row.error && (row.renderedCards ?? 0) > MAX_BOARD_CARDS);
+
+/** ② 逐列核对 `rendered === min(total, 40)` */
+const badColumns = [];
+/** ③ 全局数与逐列和的对账 */
+const sumMismatch = [];
+for (const row of results) {
+  if (row.error) continue;
+  const columns = row.columns ?? [];
+  for (const [index, col] of columns.entries()) {
+    const expected = Math.min(col.total, BOARD_WINDOW);
+    if (col.rendered !== expected) badColumns.push({ size: row.size, index, ...col, expected });
+  }
+  const sum = columns.reduce((acc, col) => acc + col.rendered, 0);
+  if ((row.renderedCards ?? 0) !== sum) {
+    sumMismatch.push({ size: row.size, renderedCards: row.renderedCards ?? 0, sum });
+  }
+}
+/** ④ 大样本必须真的截断过 */
+const notTruncated = results.filter(
+  (row) => !row.error && row.size >= 500 && (row.windowedColumns ?? 0) === 0,
+);
+
+if (overCap.length > 0) {
   console.error('');
-  console.error(`✗ 看板窗口没生效：${overflow.length} 组数据的渲染卡片数超过 ${MAX_BOARD_CARDS}`);
-  for (const row of overflow) console.error(`    ${row.size} 条 → 渲染 ${row.renderedCards} 张卡`);
+  console.error(`✗ 看板窗口没生效：${overCap.length} 组数据的渲染卡片数超过 ${MAX_BOARD_CARDS}`);
+  for (const row of overCap) console.error(`    ${row.size} 条 → 渲染 ${row.renderedCards} 张卡`);
   process.exitCode = 1;
-} else {
+}
+if (badColumns.length > 0) {
+  console.error('');
+  console.error('✗ 某列的渲染数 ≠ min(该列总数, 窗口 40) —— 窗口规则没有真正生效');
+  for (const col of badColumns) {
+    console.error(
+      `    ${col.size} 条 · 第 ${col.index + 1} 列 → 总数 ${col.total}（渲染 ${col.rendered} + 还有 ${col.hidden}），` +
+        `应渲染 ${col.expected} 张，实际 ${col.rendered} 张`,
+    );
+  }
+  process.exitCode = 1;
+}
+if (sumMismatch.length > 0) {
+  console.error('');
+  console.error('✗ 全局卡片数与「逐列已经渲染之和」对不上（有卡片挂到了列外，或漏数了整列）');
+  for (const row of sumMismatch) {
+    console.error(`    ${row.size} 条 → 全局 ${row.renderedCards} 张，逐列相加 ${row.sum} 张`);
+  }
+  process.exitCode = 1;
+}
+if (notTruncated.length > 0) {
+  console.error('');
+  console.error('✗ 数据量 ≥ 500 时没有任何一列被截断 —— 窗口形同虚设（门禁失去灵敏度）');
+  for (const row of notTruncated) console.error(`    ${row.size} 条 → 截断列 0`);
+  process.exitCode = 1;
+}
+if (process.exitCode !== 1) {
   const checked = results.filter((row) => !row.error).length;
-  console.log(`✓ 看板窗口自证：${checked} 组数据的渲染卡片数均 ≤ ${MAX_BOARD_CARDS}（列数 ${BOARD_COLUMNS} × 窗口 ${BOARD_WINDOW}）`);
+  const truncated = results.filter((row) => !row.error && (row.windowedColumns ?? 0) > 0).length;
+  const columnCount = results.reduce((acc, row) => acc + (row.columns?.length ?? 0), 0);
+  console.log(
+    `✓ 看板窗口自证：${checked} 组数据、${columnCount} 个非折叠列逐个核对「已渲染 === min(总数, ${BOARD_WINDOW})」全部成立；` +
+      `全局渲染数均 ≤ ${MAX_BOARD_CARDS}（列数 ${BOARD_COLUMNS} × 窗口 ${BOARD_WINDOW}）；` +
+      `${truncated} 组确有列被截断；≥500 条的组都至少截断 1 列`,
+  );
 }
 console.log('');
 console.log(`明细已写入 ${join(OUT_DIR, 'perf.json')}`);
