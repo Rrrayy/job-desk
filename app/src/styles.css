@@ -19,7 +19,7 @@
   --ink: #1b1f2a;
   --ink-2: #454b5c;
   --ink-3: #6b7285;
-  --ink-4: #9aa0b4;
+  --ink-4: #8a91a6;
   --line: #e8eaf0;
   --line-soft: #f1f3f8;
   --bg: #f7f8fb;
@@ -329,6 +329,30 @@ ol {
   background: var(--red-soft);
   color: var(--red);
   border-color: #efb3b5;
+}
+
+/* v0.9.2：补上 v0.9.1 已知问题 §4.1 —— 8 处「取消/跳过」类按钮此前没有专属样式，
+   视觉等同裸 .btn。幽灵按钮：无底无框，hover 才出现浅紫底，与主按钮形成层级。 */
+.btn--ghost {
+  border-color: transparent;
+  background: transparent;
+  color: var(--indigo);
+  font-weight: 500;
+}
+
+.btn--ghost:hover {
+  background: var(--indigo-soft);
+  border-color: transparent;
+  color: var(--indigo-dark);
+}
+
+/* 按压反馈：轻微下沉 1px，让「点到了」有物理手感（disabled 不参与）。 */
+.btn:not(:disabled):active {
+  transform: translateY(1px);
+}
+
+.icon-btn:not(:disabled):active {
+  transform: translateY(1px);
 }
 
 .icon-btn {
@@ -6219,4 +6243,46 @@ button.chip:hover {
 .board__more:hover {
   border-color: var(--ink-3);
   color: var(--ink-2);
+}
+
+/* ============================================================ v0.9.2 · UX 打磨 */
+
+/* 细滚动条：看板横向滚动、抽屉/列表纵向滚动此前是系统默认粗条，
+   与整体轻量观感割裂。Firefox 走 scrollbar-width，其余走 ::-webkit-scrollbar。 */
+* {
+  scrollbar-width: thin;
+  scrollbar-color: #c9cdda transparent;
+}
+
+*::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+
+*::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+*::-webkit-scrollbar-thumb {
+  background: #c9cdda;
+  border-radius: 999px;
+  border: 2px solid transparent;
+  background-clip: padding-box;
+}
+
+*::-webkit-scrollbar-thumb:hover {
+  background: #aeb4c6;
+}
+
+/* 动效敏感用户（prefers-reduced-motion）：过渡与动画即时完成，
+   内容呈现不变、功能不变，只是不再移动。 */
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
 }

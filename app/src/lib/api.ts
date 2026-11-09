@@ -28,6 +28,7 @@ import type {
 import type { MergePlan, PlannedRow } from './sync/types';
 import type { FileLinkCapability } from './fileLink/handle';
 import type { PluginPermission, PluginRegistration } from '../plugins/types';
+import type { BulkAdoptInput, BulkAdoptResult } from '../ai/experienceBulk';
 import type { AiRunInput, AiRunOutcome } from '../ai/types';
 import type { SaveVersionResult } from '../resume/versions';
 
@@ -175,9 +176,13 @@ export type QuickNoteResult =
 /**
  * R-AI-11 一次「全部采用」的入参与结果（实现与撤销配方在 ai/experienceBulk.ts）。
  * 与 addQuickNote 同构：一次调用 = 一次 mutate = 一个撤销点（⌘Z 整批回退）。
+ *
+ * v0.9.2：原先写成内联 `import('../ai/experienceBulk').X`，被
+ * `@typescript-eslint/consistent-type-imports` 记为两条 warning。
+ * 改为顶层 `import type` 后类型在编译期擦除，**零运行时依赖**，
+ * 不会与 experienceBulk 形成环（它只反向依赖 types / lib/util）。
  */
-export type BulkAdoptInput = import('../ai/experienceBulk').BulkAdoptInput;
-export type BulkAdoptResult = import('../ai/experienceBulk').BulkAdoptResult;
+export type { BulkAdoptInput, BulkAdoptResult };
 
 /** ① → ② 的结果 */
 export type SyncPlanOutcome =

@@ -81,14 +81,10 @@ const SINGLE_TOKEN_SLOTS = 52;
  * 只是没有样式。把它们逐条审计后记在这里，断言对**新增**的死类名仍然有效
  * （新增一个拼错的类名会让 `--check` 红）。
  *
- * - `btn--ghost`：v0.9.0 及更早就有，8 处按钮在用（`App.tsx` / `FileUpload` 系列 /
- *   `AiScenarioPanel` / `SendPreviewDialog` / `SuggestionList` / `PluginsPanel` /
- *   `CsvImportDialog`），`styles.css` 里只有 `btn--danger-ghost`。
- *   即 `.btn--ghost` 按钮没有任何专属样式，视觉上等同裸 `.btn`。
- *   v0.9.1 只做体积债，不在这里补样式（补 CSS 会改变视觉，属于功能变更）。
- *   已上报主理人，作为独立问题另行裁定。
+ * v0.9.2：`btn--ghost` 已补上专属样式（`.btn--ghost`，8 处按钮生效），
+ * 从本白名单移除 —— 白名单归零后，**任何**无样式类名都会让 `--check` 红。
  */
-const KNOWN_UNSTYLED_ATOMS = new Set(['btn--ghost']);
+const KNOWN_UNSTYLED_ATOMS = new Set();
 
 const LOWER = 'abcdefghijklmnopqrstuvwxyz';
 const UPPER = LOWER.toUpperCase();
