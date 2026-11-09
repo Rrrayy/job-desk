@@ -35,6 +35,10 @@ export interface RequestLogInput {
   sentFieldsHash: string;
   status: RequestLog['status'];
   errorCode?: string;
+  /** v0.10：服务端返回的用量；没返回就不传（不写 0） */
+  tokens?: { prompt: number; completion: number; total: number };
+  /** v0.10：端到端耗时（毫秒） */
+  durationMs?: number;
 }
 
 /** 构造一条日志行（含 id/timestamp）；原文字段在类型上就不存在 */
@@ -49,6 +53,10 @@ export function buildRequestLogEntry(input: RequestLogInput, nowIso: string): Re
     status: input.status,
   };
   if (input.errorCode) entry.errorCode = input.errorCode;
+  if (input.tokens) entry.tokens = input.tokens;
+  if (typeof input.durationMs === 'number' && Number.isFinite(input.durationMs)) {
+    entry.durationMs = Math.max(0, Math.round(input.durationMs));
+  }
   return entry;
 }
 

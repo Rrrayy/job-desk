@@ -11,16 +11,24 @@
  */
 
 import type { AIReport, AIVerdict } from '../../types';
+import { reportToMarkdown, VERDICT_TEXT, verdictWarningOf } from '../../ai/reports';
 import { CLS } from '../../lib/classTokens';
 
-const VERDICT_LABEL: Record<AIVerdict, string> = {
-  strong_match: '强匹配',
-  partial_match: '部分匹配',
-  gap: '短板',
-  not_found: '材料未提及',
-};
+const VERDICT_LABEL: Record<AIVerdict, string> = VERDICT_TEXT;
+
+/** 用 data URI 下载：不依赖 Blob URL（jsdom 没有 createObjectURL，测试会白屏） */
+function downloadMarkdown(report: AIReport): void {
+  const text = reportToMarkdown(report);
+  const anchor = document.createElement('a');
+  anchor.href = `data:text/markdown;charset=utf-8,${encodeURIComponent(text)}`;
+  anchor.download = `AI报告-${report.createdAt.slice(0, 10)}.md`;
+  anchor.rel = 'noopener';
+  anchor.click();
+}
 
 export function ReportCard({ report }: { report: AIReport }): JSX.Element {
+  /** v0.10 / L2-7：全 strong / 全 gap / 全 not_found 都可能是模型偷懒，明说一句 */
+  const warning = verdictWarningOf(report.dimensions);
   return (
     <section className="report-card" aria-label="AI 报告">
       <header className="report-card__head">
@@ -29,7 +37,21 @@ export function ReportCard({ report }: { report: AIReport }): JSX.Element {
         </span>
         <span className="report-card__note">本地合成，仅供参考</span>
         {report.model ? <span className="report-card__model">{report.model}</span> : null}
+        <button
+          type="button"
+          className={CLS.k}
+          data-testid="report-export"
+          onClick={() => downloadMarkdown(report)}
+        >
+          导出 Markdown
+        </button>
       </header>
+
+      {warning ? (
+        <p className="report-card__warn" data-testid="report-warning">
+          {warning}
+        </p>
+      ) : null}
 
       {(report.dimensions ?? []).length > 0 ? (
         <ul className="report-card__dims">

@@ -134,10 +134,12 @@ import {
 import { markdownFileName, renderManyMarkdown } from './lib/interviewMarkdown';
 import { applySuggestions, rejectSuggestions, revertAi } from './ai/suggestions';
 import { checkAiReady } from './ai/settings';
-import { chatCompletions, GatewayError } from './ai/gateway';
+import { chatCompletions, probeConnection, ERROR_HINT, GatewayError } from './ai/gateway';
 import { buildRequestLogEntry, capRequestLog, fieldsFingerprint } from './ai/requestLog';
 import { createSuggestions } from './ai/suggestions';
 import { buildScenarioMessages, parseScenarioOutput, scenarioPluginId, toNewSuggestions } from './ai/scenarios';
+import { buildRepairMessages, scenarioParams } from './ai/prompts';
+import { resumeModules } from './ai/context';
 import { capReportsWithDrop, createReport, parseReport } from './ai/reports';
 import {
   applyBulkAdoption,
@@ -145,9 +147,12 @@ import {
   parseBulkOutput,
   type BulkAdoptInput,
   type BulkAdoptResult,
+  type BulkItem,
 } from './ai/experienceBulk';
+import { splitByTokens } from './ai/chunk';
 import { REPORT_SCENARIO_TYPES } from './ai/types';
-import type { AiRunInput, AiRunOutcome, AiScenarioKey, AiUndo, NewAISuggestion, PreviewField } from './ai/types';
+import type { AiRunInput, AiRunOutcome, AiScenarioKey, AiUndo, BulkHeadSuggestion, NewAISuggestion, PreviewField, ProbeResult, RunMeta, TokenUsage } from './ai/types';
+import { auditEvidence } from './ai/evidence';
 import { PluginBroker, type SendAiInput } from './plugins/broker';
 import { parseManifest } from './plugins/manifest';
 import {
@@ -1642,7 +1647,13 @@ export default function App() {
    * 内置场景与插件共用这一个写入口 —— 日志只有一处实现，才不会两套口径。
    */
   const logPluginRequest = useCallback(
-    (pluginId: string, hash: string, status: 'ok' | 'error', errorCode?: string): void => {
+    (
+      pluginId: string,
+      hash: string,
+      status: 'ok' | 'error',
+      errorCode?: string,
+      meta?: { tokens?: TokenUsage; durationMs?: number },
+    ): void => {
       const ai = dbRef.current.settings.ai;
       mutate((draft) => {
         const entry = buildRequestLogEntry(
@@ -1653,6 +1664,8 @@ export default function App() {
             sentFieldsHash: hash,
             status,
             ...(errorCode ? { errorCode } : {}),
+            ...(meta?.tokens ? { tokens: meta.tokens } : {}),
+            ...(meta?.durationMs !== undefined ? { durationMs: meta.durationMs } : {}),
           },
           new Date().toISOString(),
         );
@@ -1684,17 +1697,132 @@ export default function App() {
       if (!ai || !readiness.ready) return { ok: false, error: readiness.reason ?? 'AI 服务未配置' };
       const pluginId = scenarioPluginId(input.scenario);
       const hash = await fieldsFingerprint(input.checked);
+      /** v0.10 / L3-4：一次调用的用量与耗时（面板显示用，日志记账用） */
+      const startedAt = Date.now();
+      const metaOf = (result: { usage?: TokenUsage; reasoning?: string }): RunMeta => ({
+        durationMs: Date.now() - startedAt,
+        model: ai.model,
+        ...(result.usage ? { tokens: result.usage } : {}),
+        ...(result.reasoning ? { reasoning: true } : {}),
+      });
+      /**
+       * 解析失败时的第二次请求（v0.10 / L2-3）：只重排格式，不重答内容 ——
+       * 所以把它上次的原始输出放进 assistant 消息，修复指令只谈结构。
+       * 修复请求自己也失败时返回原文：让用户看到**原来的**错误，而不是「修复也失败了」。
+       */
+      const messages = buildScenarioMessages(input.scenario, input.checked);
+      const repairOnce = async (raw: string): Promise<string> => {
+        try {
+          const repaired = await chatCompletions(ai, {
+            messages: buildRepairMessages(messages, raw),
+            stream: false,
+            params: { temperature: 0, jsonMode: true },
+            ...(input.signal ? { signal: input.signal } : {}),
+          });
+          return repaired.text;
+        } catch {
+          return raw;
+        }
+      };
+      /**
+       * d14-bulk 的分块路径（v0.10 / L2-6）：整段面经超预算时按段切开，逐块拆题再合并。
+       *
+       * 为什么只有这个场景分块：题干之间相互独立，切开不损失语义；
+       * 简历诊断/竞争力分析需要整体视角，切块反而会把「对照」变成「片段比较」。
+       *
+       * 某一块失败时**该块原文进 unmatched** —— 宁可让用户看到一段原文，
+       * 也不要因为模型胡闹就让内容消失（与 D14_BULK 的 unmatched 纪律同一条）。
+       */
+      const runBulkChunked = async (chunks: string[]): Promise<AiRunOutcome> => {
+        const mergedItems: BulkItem[] = [];
+        const mergedUnmatched: string[] = [];
+        const seen = new Set<string>();
+        let head: BulkHeadSuggestion | undefined;
+        let truncated = 0;
+        let firstUsage: TokenUsage | undefined;
+        let failedChunks = 0;
+        for (const chunk of chunks) {
+          const chunkMessages = buildScenarioMessages('d14-bulk', { ...input.checked, note: chunk });
+          try {
+            const part = await chatCompletions(ai, {
+              messages: chunkMessages,
+              stream: false,
+              params: scenarioParams('d14-bulk'),
+              ...(input.signal ? { signal: input.signal } : {}),
+            });
+            if (!firstUsage && part.usage) firstUsage = part.usage;
+            let parsed = parseBulkOutput(part.text);
+            if (!parsed.ok) parsed = parseBulkOutput(await repairOnce(part.text));
+            logPluginRequest(pluginId, hash, parsed.ok ? 'ok' : 'error', parsed.ok ? undefined : 'parse');
+            if (!parsed.ok) {
+              failedChunks += 1;
+              mergedUnmatched.push(chunk.slice(0, 500));
+              continue;
+            }
+            for (const item of parsed.parsed.items) {
+              const key = item.text.toLowerCase();
+              if (seen.has(key)) continue;
+              seen.add(key);
+              mergedItems.push(item);
+            }
+            mergedUnmatched.push(...parsed.parsed.unmatched);
+            if (!head && parsed.parsed.head) head = parsed.parsed.head;
+            truncated += parsed.parsed.truncated;
+          } catch (error) {
+            if (error instanceof GatewayError && error.code === 'cancel') throw error;
+            const code = error instanceof GatewayError ? error.code : 'ai_failed';
+            logPluginRequest(pluginId, hash, 'error', code);
+            failedChunks += 1;
+            mergedUnmatched.push(chunk.slice(0, 500));
+          }
+        }
+        if (mergedItems.length === 0) {
+          return { ok: false, error: `分 ${chunks.length} 段解析都没成功 —— 这次没有写入任何内容，可以重试` };
+        }
+        const list = createSuggestions(
+          bulkItemsToSuggestions(pluginId, mergedItems),
+          new Date().toISOString(),
+        );
+        mutate((draft) => {
+          for (const item of list) draft.aiSuggestions.push(item);
+        });
+        showToast(
+          failedChunks > 0
+            ? `AI 拆出 ${list.length} 题（${failedChunks} 段未能解析，原文已放进未识别段落）`
+            : `整段分 ${chunks.length} 块拆出 ${list.length} 题 —— 勾选后写入，未识别段落不会丢`,
+        );
+        return {
+          ok: true,
+          kind: 'suggestions',
+          created: list.length,
+          ...(head ? { head } : {}),
+          ...(mergedUnmatched.length > 0 ? { unmatched: mergedUnmatched } : {}),
+          ...(truncated > 0 ? { truncated } : {}),
+          meta: {
+            durationMs: Date.now() - startedAt,
+            model: ai.model,
+            ...(firstUsage ? { tokens: firstUsage } : {}),
+          },
+        };
+      };
       try {
+        // 分块路径要在首次整段请求**之前**分叉：已经发出去就收不回来了
+        const bulkChunks = input.scenario === 'd14-bulk' ? splitByTokens(input.checked.note ?? '') : [];
+        if (bulkChunks.length > 1) return await runBulkChunked(bulkChunks);
         const result = await chatCompletions(ai, {
-          messages: buildScenarioMessages(input.scenario, input.checked),
-          stream: true,
+          messages,
+          stream: input.stream ?? true,
+          // v0.10 / L2-5：场景级参数（解析类 0 度、生成类 0.3）+ JSON 模式
+          params: scenarioParams(input.scenario),
           ...(input.onDelta ? { onDelta: input.onDelta } : {}),
           ...(input.signal ? { signal: input.signal } : {}),
         });
         // 报告类场景（d19-diag / d20-analysis）：产出 AIReport，不写建议、不进撤销栈
         if (input.scenario === 'd19-diag' || input.scenario === 'd20-analysis') {
-          const parsed = parseReport(result.text);
-          logPluginRequest(pluginId, hash, parsed.ok ? 'ok' : 'error', parsed.ok ? undefined : 'parse');
+          let parsed = parseReport(result.text);
+          // 格式不合约 → 再要一次（只此一次）；仍不合约就按原错误返回
+          if (!parsed.ok) parsed = parseReport(await repairOnce(result.text));
+          logPluginRequest(pluginId, hash, parsed.ok ? 'ok' : 'error', parsed.ok ? undefined : 'parse', metaOf(result));
           if (!parsed.ok) return { ok: false, error: parsed.error };
           const report = createReport({
             pluginId,
@@ -1721,12 +1849,13 @@ export default function App() {
               ? `报告已生成 —— 同一目标只留最近 3 份，最早那份已被顶掉（本地合成，仅供参考）`
               : '报告已生成 —— 本地合成，仅供参考',
           );
-          return { ok: true, kind: 'report', reportId: report.id };
+          return { ok: true, kind: 'report', reportId: report.id, meta: metaOf(result) };
         }
         // R-AI-11：整段录入要带回 head/unmatched/truncated，ScenarioParse 装不下 —— 独立分支
         if (input.scenario === 'd14-bulk') {
-          const parsed = parseBulkOutput(result.text);
-          logPluginRequest(pluginId, hash, parsed.ok ? 'ok' : 'error', parsed.ok ? undefined : 'parse');
+          let parsed = parseBulkOutput(result.text);
+          if (!parsed.ok) parsed = parseBulkOutput(await repairOnce(result.text));
+          logPluginRequest(pluginId, hash, parsed.ok ? 'ok' : 'error', parsed.ok ? undefined : 'parse', metaOf(result));
           if (!parsed.ok) return { ok: false, error: parsed.error };
           const list = createSuggestions(bulkItemsToSuggestions(pluginId, parsed.parsed.items), new Date().toISOString());
           mutate((draft) => {
@@ -1737,19 +1866,31 @@ export default function App() {
             ok: true,
             kind: 'suggestions',
             created: list.length,
+            meta: metaOf(result),
             ...(parsed.parsed.head ? { head: parsed.parsed.head } : {}),
             ...(parsed.parsed.unmatched.length > 0 ? { unmatched: parsed.parsed.unmatched } : {}),
             ...(parsed.parsed.truncated > 0 ? { truncated: parsed.parsed.truncated } : {}),
           };
         }
-        const parsed = parseScenarioOutput(input.scenario, result.text);
-        logPluginRequest(pluginId, hash, parsed.ok ? 'ok' : 'error', parsed.ok ? undefined : 'parse');
+        let parsed = parseScenarioOutput(input.scenario, result.text);
+        if (!parsed.ok) parsed = parseScenarioOutput(input.scenario, await repairOnce(result.text));
+        logPluginRequest(pluginId, hash, parsed.ok ? 'ok' : 'error', parsed.ok ? undefined : 'parse', metaOf(result));
         if (!parsed.ok) return { ok: false, error: parsed.error };
+        // v0.10 / L2-4：证据要能在用户给的原文里定位；定位不到的摘掉证据（建议本身保留）
+        const evidenceSource =
+          input.scenario === 'd17'
+            ? input.checked.rawSnippet ?? ''
+            : input.scenario === 'd19-jd'
+              ? input.checked.jdText ?? ''
+              : '';
+        const audit = evidenceSource
+          ? auditEvidence(parsed.items, evidenceSource)
+          : { items: parsed.items, unverified: 0 };
         // d19-jd：模型给的是字段键（如 description），真实落点由 modulePicker 的选中模块决定 ——
         // 映射不到的键原样保留，写回时落空（只翻状态），绝不猜一个条目写进去。
         const fieldPaths = input.context?.fieldPaths;
         const list = createSuggestions(
-          toNewSuggestions(input.scenario, input.targetId, parsed.items).map((suggestion) =>
+          toNewSuggestions(input.scenario, input.targetId, audit.items).map((suggestion) =>
             fieldPaths && fieldPaths[suggestion.fieldPath]
               ? { ...suggestion, fieldPath: fieldPaths[suggestion.fieldPath] }
               : suggestion,
@@ -1759,16 +1900,49 @@ export default function App() {
         mutate((draft) => {
           for (const suggestion of list) draft.aiSuggestions.push(suggestion);
         });
-        showToast(`AI 给出 ${list.length} 条建议 —— 勾选后才会写入`);
-        return { ok: true, kind: 'suggestions', created: list.length };
+        showToast(
+          audit.unverified > 0
+            ? `AI 给出 ${list.length} 条建议（${audit.unverified} 条依据未能在原文定位，已隐藏证据）—— 勾选后才会写入`
+            : `AI 给出 ${list.length} 条建议 —— 勾选后才会写入`,
+        );
+        return { ok: true, kind: 'suggestions', created: list.length, meta: metaOf(result) };
       } catch (error) {
         const code = error instanceof GatewayError ? error.code : 'ai_failed';
-        logPluginRequest(pluginId, hash, 'error', code);
+        logPluginRequest(pluginId, hash, 'error', code, { durationMs: Date.now() - startedAt });
         return { ok: false, error: aiErrorText(error) };
       }
     },
     [logPluginRequest, mutate, showToast],
   );
+
+  /**
+   * 连通性自检（v0.10 / L1-2）。**只由设置页的「测试连接」按钮调用**——
+   * 启动、渲染、打开设置都不会触发，「打开页面零请求」不因为有了探针而破例。
+   * 结果写回 `settings.ai.lastCheck`：下次进设置页能看见上次的结论，
+   * 但它**不参与就绪判定**（ready 仍只看 baseURL/model 是否为空）。
+   */
+  const probeAi = useCallback(async (): Promise<ProbeResult> => {
+    const ai = dbRef.current.settings.ai;
+    if (!ai) {
+      return { ok: false, latencyMs: 0, models: [], code: 'network', error: '尚未配置 AI 服务地址' };
+    }
+    const result = await probeConnection(ai);
+    mutate((draft) => {
+      const current = draft.settings.ai ?? { baseURL: '', model: '', isLocal: false };
+      draft.settings.ai = {
+        ...current,
+        lastCheck: {
+          at: new Date().toISOString(),
+          ok: result.ok,
+          latencyMs: result.latencyMs,
+          // 存 50 条足够下拉用；全量列表可能上千条，不该进 localStorage
+          ...(result.models.length > 0 ? { models: result.models.slice(0, 50) } : {}),
+          ...(result.error ? { error: result.error.slice(0, 300) } : {}),
+        },
+      };
+    });
+    return result;
+  }, [mutate]);
 
   /* ------------------------------------------------------------ 插件宿主（v0.8 / T04） */
 
@@ -2978,6 +3152,7 @@ export default function App() {
       clearRequestLog,
       runScenario: runAiScenario,
       analyzeApplication,
+      probe: probeAi,
     },
     plugins: {
       list: () => pluginRegistry,
@@ -2989,6 +3164,20 @@ export default function App() {
       registerWindow: registerPluginWindow,
     },
   };
+
+  /**
+   * d20 投递分析用的简历模块（v0.10 / L2-1）。
+   *
+   * 取「最近更新的未删除简历」—— 产品没有「主简历」概念，最近改动的那份最接近用户意图。
+   * 一份都没有时给空数组：面板不显示模块勾选，模型按 D20 的硬约束全给 not_found
+   * 并在 summary 里说「未提供简历」—— 比编一份匹配度出来诚实。
+   */
+  const analysisModules = useMemo(() => {
+    const latest = [...db.resumes]
+      .filter((resume) => !resume.deletedAt)
+      .sort((a, b) => (a.updatedAt < b.updatedAt ? 1 : a.updatedAt > b.updatedAt ? -1 : 0))[0];
+    return latest ? resumeModules({ templateId: latest.templateId, content: latest.content }) : [];
+  }, [db.resumes]);
 
   const showWelcome = db.applications.length === 0 && db.companies.length === 0 && !welcomeDismissed;
 
@@ -3127,8 +3316,10 @@ export default function App() {
           api={api}
           scenario={aiAnalysisPanel.scenario}
           targetId={aiAnalysisPanel.targetId}
+          modules={analysisModules}
           onClose={() => setAiAnalysisPanel(null)}
           onReport={() => setAiAnalysisPanel(null)}
+          onOpenSettings={() => setSettingsOpen(true)}
         />
       ) : null}
       {quickAddOpen ? (
@@ -3293,10 +3484,17 @@ export default function App() {
  * AI 失败的一句话人话（R-AI-5）：不弹错误框、不白屏，只在面板里内联一行。
  * 网络/超时单独给半句排查提示 —— 「连不上」和「模型胡说」是两种完全不同的挫败感。
  */
+/**
+ * 失败一律变一句人话（R-AI-5：不弹错误框）。
+ * v0.10 起按错误码取 `ERROR_HINT`：同一个「失败」在人眼里有八种不同的下一步
+ * （换密钥 / 改地址 / 等一会儿 / 调超时），不该都回一句「请求失败」。
+ */
 function aiErrorText(error: unknown): string {
   const message = error instanceof Error ? error.message : String(error);
-  if (error instanceof GatewayError && (error.code === 'network' || error.code === 'timeout')) {
-    return `连不上 AI 服务：${message}。检查本地模型是否在运行、地址是否以 /v1 结尾 —— 这次没有写入任何内容。`;
+  if (error instanceof GatewayError) {
+    // http / not_found 的原始信息里带 HTTP 状态与服务端原文片段，对排障有用，附在括号里
+    const detail = error.code === 'http' || error.code === 'not_found' ? `（${message}）` : '';
+    return `${ERROR_HINT[error.code]}${detail} —— 这次没有写入任何内容。`;
   }
   return `AI 请求失败：${message}。这次没有写入任何内容。`;
 }

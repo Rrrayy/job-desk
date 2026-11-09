@@ -19,8 +19,10 @@
 
 import { useEffect, useMemo, useRef, useState } from 'react';
 import type { AppApi } from '../../lib/api';
-import type { AiResumeModule, AiScenarioKey, PreviewField } from '../../ai/types';
-import { scenarioPluginId, scenarioPreviewFields } from '../../ai/scenarios';
+import type { AISuggestion, AiResumeModule, AiScenarioKey, PreviewField, RunMeta } from '../../ai/types';
+import { buildScenarioMessages, scenarioPluginId, scenarioPreviewFields } from '../../ai/scenarios';
+import { parseResumeFieldPath } from '../../ai/suggestions';
+import { CONTEXT_WARN_TOKENS, estimateMessagesTokens, isContextHeavy } from '../../ai/budget';
 import { REPORT_SCENARIO_TYPES } from '../../ai/types';
 import { buildApplicationContext, modulesText } from '../../ai/context';
 import { clampText } from '../../lib/budget';
@@ -131,16 +133,20 @@ function scenarioConfig(api: AppApi, scenario: AiScenarioKey, targetId: string):
   const context = app ? buildApplicationContext(api.db, app) : null;
   return {
     title: '🤖 分析这份投递的竞争力',
-    hint: '默认只发 JD 原文、公司、岗位、状态；库内简历模块默认不勾（勾了才发）。',
+    hint: '勾 1–3 个简历模块，AI 才会拿「你的经历」对照这份 JD；不勾就只分析岗位本身（维度一律 not_found）。库内模块默认不勾。',
     values: context ? { ...context, jdText: app?.jdText ?? '' } : { jdText: '' },
     locked: {},
   };
 }
 
-/** 场景的模块选择形态：润色单选（写回目标只有一个），诊断/定向多选，其余无 */
+/**
+ * 场景的模块选择形态：润色单选（写回目标只有一个），诊断 / 定向 / 投递分析多选，其余无。
+ * ★ v0.10 / L2-1：d20-analysis 必须有模块选择 —— 没有它，「竞争力分析」只是在分析 JD，
+ *   模型不知道候选人是谁，`evidenceFromResume` 只能靠编。
+ */
 function modulePickOf(scenario: AiScenarioKey): 'one' | 'multi' | null {
   if (scenario === 'd19-polish') return 'one';
-  if (scenario === 'd19-diag' || scenario === 'd19-jd') return 'multi';
+  if (scenario === 'd19-diag' || scenario === 'd19-jd' || scenario === 'd20-analysis') return 'multi';
   return null;
 }
 
@@ -154,16 +160,40 @@ export interface AiScenarioPanelProps {
   modules?: AiResumeModule[];
   /** T07：报告产出回调（d19-diag / d20-analysis）。拿到报告 id 后由调用方展示报告卡 */
   onReport?: (reportId: string) => void;
+  /** v0.10 / L3-3：失败时「去检查配置」的出口（App 打开设置抽屉） */
+  onOpenSettings?: () => void;
 }
 
-export function AiScenarioPanel({ api, scenario, targetId, onClose, modules, onReport }: AiScenarioPanelProps): JSX.Element {
+/** 生成阶段（L3-2）。sending 与 streaming 分开：用户能看出「卡在连接」还是「模型在写」 */
+type Stage = 'idle' | 'sending' | 'streaming';
+
+/** 用量一行的文案（L3-4）：没有 usage 就说「用量未知」，不写 0 */
+function fmtMeta(meta: RunMeta): string {
+  const parts: string[] = [];
+  if (meta.tokens) parts.push(`${meta.tokens.total} tokens`);
+  parts.push(`${(meta.durationMs / 1000).toFixed(1)}s`);
+  parts.push(meta.model);
+  if (meta.reasoning) parts.push('推理模型（会先思考）');
+  return parts.join(' · ');
+}
+
+export function AiScenarioPanel({ api, scenario, targetId, onClose, modules, onReport, onOpenSettings }: AiScenarioPanelProps): JSX.Element {
   const { title, hint, values, input, locked } = scenarioConfig(api, scenario, targetId);
   const [text, setText] = useState('');
   const [preview, setPreview] = useState<PreviewField[] | null>(null);
   const [running, setRunning] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [picked, setPicked] = useState<string[]>([]);
+  /** v0.10 / L3-2：阶段与已生成字数（让「卡住了」和「在写」可区分） */
+  const [stage, setStage] = useState<Stage>('idle');
+  const [chars, setChars] = useState(0);
+  /** v0.10 / L3-4：上一次调用的用量 */
+  const [meta, setMeta] = useState<RunMeta | null>(null);
+  /** 失败后重试要复用同一份勾选（否则用户得重新勾一遍） */
+  const [lastChecked, setLastChecked] = useState<Record<string, string> | null>(null);
   const abortRef = useRef<AbortController | null>(null);
+  /** 同步防重入（setRunning 是异步的，连点两下仍会进两次） */
+  const inFlight = useRef(false);
 
   const pluginId = scenarioPluginId(scenario);
   /** 只显示「这一行、这个场景」还待确认的建议 —— 别的场景的建议不在这里冒出 */
@@ -235,8 +265,7 @@ export function AiScenarioPanel({ api, scenario, targetId, onClose, modules, onR
     });
   };
 
-  /** 模型 fieldPath → 真实落点路径（s:sec:i:item:key）。只由选中模块算，模型给不出的键映射不到 */
-  const fieldPathsFor = (): Record<string, string> => {
+  /** 模型 fieldPath → 真实落点路径（s:sec:i:item:key）。只由选中模块算，模型给不出的键映射不到 */  const fieldPathsFor = (): Record<string, string> => {
     if (!showModules) return {};
     if (modulePick === 'one') {
       const primary = pickedModules[0]?.primaryPath;
@@ -245,6 +274,47 @@ export function AiScenarioPanel({ api, scenario, targetId, onClose, modules, onR
     const map: Record<string, string> = {};
     for (const module of pickedModules) Object.assign(map, module.fieldPaths);
     return map;
+  };
+
+  /**
+   * 本次预计要发多少 token（v0.10 / L1-9）。
+   * 口径与 openPreview 完全一致：上下文值 + 输入框 / 选中模块 —— 否则估的就不是「要发的东西」。
+   */
+  const estimatedTokens = ((): number => {
+    const base: Record<string, string> = { ...values, ...locked };
+    if (input) base[input.field] = text.trim();
+    if (modulePick === 'one' && pickedModules[0]) base.selectedText = pickedModules[0].primaryText;
+    else if (modulePick === 'multi') base.selectedModules = modulesText(pickedModules);
+    return estimateMessagesTokens(buildScenarioMessages(scenario, base));
+  })();
+
+  /**
+   * v0.10 / L3-6：这条建议会替换哪段原文。
+   * 只有能**确定**落点时才返回（简历字段路径可解析 / 暂存行有该键）；
+   * 拿不准就返回 undefined —— 宁可少一个 diff，也不要并排显示一段错的原值。
+   */
+  const originalOf = (suggestion: AISuggestion): string | undefined => {
+    if (suggestion.targetType === 'resume_field') {
+      const resume = api.db.resumes.find((item) => item.id === suggestion.targetId);
+      if (!resume) return undefined;
+      const path = parseResumeFieldPath(suggestion.fieldPath);
+      if (!path) return undefined;
+      const section = resume.content.sections.find((item) => item.id === path.sectionId);
+      const row = section?.items.find((item) => item.id === path.itemId);
+      if (!row) return undefined;
+      // 要点类字段的原文存在 bullets 里（fields 里是空串）
+      if (path.key === 'description' || path.key === 'customText' || path.key === 'skillsText') {
+        return (row.bullets ?? []).join('\n');
+      }
+      return row.fields[path.key];
+    }
+    if (suggestion.targetType === 'staging_field') {
+      const row = api.db.staging.find((item) => item.id === suggestion.targetId);
+      if (!row) return undefined;
+      const value = (row.parsed as unknown as Record<string, unknown>)[suggestion.fieldPath];
+      return typeof value === 'string' ? value : undefined;
+    }
+    return undefined;
   };
 
   const openPreview = (): void => {
@@ -260,29 +330,59 @@ export function AiScenarioPanel({ api, scenario, targetId, onClose, modules, onR
     setPreview(scenarioPreviewFields(scenario, base));
   };
 
-  const run = async (checked: Record<string, string>): Promise<void> => {
+  const run = async (checked: Record<string, string>, stream = true): Promise<void> => {
+    // L1-10 防重复提交：连点两下不该发两次（一次调用 = 一次计费）
+    if (inFlight.current) return;
+    inFlight.current = true;
     setPreview(null);
     setRunning(true);
     setError(null);
+    setMeta(null);
+    setChars(0);
+    setStage('sending');
+    setLastChecked(checked);
     const controller = new AbortController();
     abortRef.current = controller;
-    // 仍然是流式请求（首个 token 就到了，不用等全文），但面板只显示「生成中」：
-    // 把原始 JSON 一字一字刷给用户既看不懂，又会把面板自己变成卡顿源。
     const fieldPaths = fieldPathsFor();
-    const outcome = await api.ai.runScenario({
-      scenario,
-      targetId,
-      checked,
-      signal: controller.signal,
-      ...(Object.keys(fieldPaths).length > 0 ? { context: { fieldPaths } } : {}),
-    });
-    abortRef.current = null;
-    setRunning(false);
-    if (!outcome.ok) setError(outcome.error);
-    else if (outcome.kind === 'report') {
-      onReport?.(outcome.reportId);
-      onClose();
+    try {
+      const outcome = await api.ai.runScenario({
+        scenario,
+        targetId,
+        checked,
+        stream,
+        signal: controller.signal,
+        // 结构化输出不把原始 JSON 刷给用户，但这个回调能证明「模型确实在动」
+        onDelta: (delta) => {
+          setStage('streaming');
+          setChars((count) => count + delta.length);
+        },
+        ...(Object.keys(fieldPaths).length > 0 ? { context: { fieldPaths } } : {}),
+      });
+      if (!outcome.ok) {
+        setError(outcome.error);
+        setStage('idle');
+        return;
+      }
+      if (outcome.meta) setMeta(outcome.meta);
+      setStage('idle');
+      if (outcome.kind === 'report') {
+        onReport?.(outcome.reportId);
+        onClose();
+      }
+    } catch (thrown) {
+      // runScenario 按约定只回错误字符串；真抛出来说明是 bug，也要变成一句人话
+      setError(thrown instanceof Error ? `生成失败：${thrown.message}` : '生成失败');
+      setStage('idle');
+    } finally {
+      abortRef.current = null;
+      inFlight.current = false;
+      setRunning(false);
     }
+  };
+
+  /** 失败后的三种救法（L3-3）：正常重试 / 换非流式 / 去检查配置 */
+  const retry = (stream: boolean): void => {
+    if (lastChecked) void run(lastChecked, stream);
   };
 
   return (
@@ -353,15 +453,43 @@ export function AiScenarioPanel({ api, scenario, targetId, onClose, modules, onR
             </label>
           ) : null}
 
+          {/* v0.10 / L1-9：发送前就知道大概多少 token；超预警线只说一句，不阻断 */}
+          <p className={isContextHeavy(estimatedTokens) ? CLS.s : CLS.c} data-testid="ai-tokens">
+            本次约 {estimatedTokens} tokens
+            {isContextHeavy(estimatedTokens)
+              ? ` —— 超过 ${CONTEXT_WARN_TOKENS} 预警线，可能超出模型上下文，建议少选一个模块`
+              : '（估算，用于心里有数）'}
+          </p>
+
           {running ? (
-            <p className={CLS.c} data-testid="ai-running">
-              模型正在生成…（最多等 60 秒，可以点「停止」）
+            <p className={CLS.c} data-testid="ai-running" aria-live="polite">
+              {stage === 'sending' ? '正在连接模型…' : `模型已生成 ${chars} 字，正在整理成建议…`}
+              （可以点「停止」）
             </p>
           ) : null}
 
           {error ? (
-            <p className={CLS.s} data-testid="ai-error">
-              {error}
+            <div className="ai-error" data-testid="ai-error" aria-live="assertive">
+              <p className={CLS.s}>{error}</p>
+              <div className={CLS.r}>
+                <button type="button" className={CLS.b} data-testid="ai-retry" onClick={() => retry(true)}>
+                  重试
+                </button>
+                <button type="button" className={CLS.b} onClick={() => retry(false)}>
+                  改用非流式重试
+                </button>
+                {onOpenSettings ? (
+                  <button type="button" className={CLS.k} onClick={onOpenSettings}>
+                    去检查配置
+                  </button>
+                ) : null}
+              </div>
+            </div>
+          ) : null}
+
+          {meta ? (
+            <p className={CLS.c} data-testid="ai-meta" aria-live="polite">
+              本次：{fmtMeta(meta)}
             </p>
           ) : null}
 
@@ -369,6 +497,7 @@ export function AiScenarioPanel({ api, scenario, targetId, onClose, modules, onR
             <SuggestionList
               suggestions={pending}
               evidence={scenario === 'd17' || scenario === 'd19-jd'}
+              originalOf={originalOf}
               onAccept={(ids) => {
                 api.ai.acceptSuggestions(ids);
                 onClose();

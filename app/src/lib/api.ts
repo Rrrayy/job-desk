@@ -28,6 +28,7 @@ import type {
 import type { MergePlan, PlannedRow } from './sync/types';
 import type { FileLinkCapability } from './fileLink/handle';
 import type { PluginPermission, PluginRegistration } from '../plugins/types';
+import type { ProbeResult } from '../ai/types';
 import type { BulkAdoptInput, BulkAdoptResult } from '../ai/experienceBulk';
 import type { AiRunInput, AiRunOutcome } from '../ai/types';
 import type { SaveVersionResult } from '../resume/versions';
@@ -453,6 +454,11 @@ export interface AppApi {
     runScenario: (input: AiRunInput) => Promise<AiRunOutcome>;
     /** v0.9 / T07：打开「投递分析」面板（d20-analysis，targetId = 投递 id） */
     analyzeApplication: (appId: string) => void;
+    /**
+     * v0.10 / L1-2：连通性自检。**只由用户点击「测试连接」触发**（不参与启动流程）。
+     * 结果同时写回 settings.ai.lastCheck 供下次打开设置页回显。
+     */
+    probe: () => Promise<ProbeResult>;
   };
 
   /** v0.9 / T07：简历编辑器注册它的草稿 flush（AI 写回 / 打印 / 存版本前都要先落库） */

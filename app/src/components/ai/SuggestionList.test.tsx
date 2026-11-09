@@ -111,3 +111,69 @@ describe('SuggestionList', () => {
     expect(onReject).toHaveBeenCalledWith(['s-1', 's-2']);
   });
 });
+
+/* ==================== v0.10 / L3-6：全部忽略 + 原值 diff ==================== */
+
+describe('SuggestionList · v0.10 增强', () => {
+  let container: HTMLDivElement;
+  let root: Root;
+
+  beforeEach(() => {
+    container = document.createElement('div');
+    document.body.appendChild(container);
+    root = createRoot(container);
+  });
+
+  afterEach(() => {
+    act(() => root.unmount());
+    container.remove();
+  });
+
+  async function render(props: {
+    suggestions: AISuggestion[];
+    originalOf?: (item: AISuggestion) => string | undefined;
+    onAccept?: (ids: string[]) => void;
+    onReject?: (ids: string[]) => void;
+  }): Promise<void> {
+    await act(async () => {
+      root.render(
+        <SuggestionList
+          suggestions={props.suggestions}
+          {...(props.originalOf ? { originalOf: props.originalOf } : {})}
+          onAccept={props.onAccept ?? vi.fn()}
+          onReject={props.onReject ?? vi.fn()}
+        />,
+      );
+    });
+  }
+
+  it('全部忽略：不用先勾选，一次交出这一屏的所有 id', async () => {
+    const onReject = vi.fn();
+    await render({ suggestions: LIST, onReject });
+    const button = [...container.querySelectorAll('button')].find((item) =>
+      item.textContent?.includes('全部忽略'),
+    );
+    expect(button?.textContent).toContain('（2）');
+    await act(async () => {
+      button?.click();
+    });
+    expect(onReject).toHaveBeenCalledWith(['s-1', 's-2']);
+  });
+
+  it('原值与建议不同 → 并排显示删除线 diff', async () => {
+    await render({ suggestions: LIST, originalOf: () => '旧公司名' });
+    const diff = container.querySelector('[data-testid="suggestion-diff-s-1"]');
+    expect(diff?.textContent).toContain('旧公司名');
+    expect(diff?.querySelector('.suggestion-diff__old')?.textContent).toBe('旧公司名');
+  });
+
+  it('原值与建议相同 → 不画 diff（纯噪音）', async () => {
+    await render({ suggestions: LIST, originalOf: () => '字节跳动' });
+    expect(container.querySelector('[data-testid="suggestion-diff-s-1"]')).toBeNull();
+  });
+
+  it('给不出原值 → 不画 diff（宁可少一个对照，也不并列错的原值）', async () => {
+    await render({ suggestions: LIST, originalOf: () => undefined });
+    expect(container.querySelector('[data-testid="suggestion-diff-s-1"]')).toBeNull();
+  });
+});

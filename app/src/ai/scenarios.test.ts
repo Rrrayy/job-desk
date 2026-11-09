@@ -16,6 +16,7 @@ import {
   scenarioPreviewFields,
   toNewSuggestions,
 } from './scenarios';
+import { buildRepairMessages, scenarioParams } from './prompts';
 
 const RAW = '字节跳动 前端开发实习生 25k·北京 已投递 3/12 更新';
 
@@ -234,7 +235,7 @@ describe('scenarios · 建议映射', () => {
 /* ---------------------- v0.9 / T07 四场景 ---------------------- */
 
 describe('scenarios · T07 四场景出境表（字段表就是白名单）', () => {
-  it('四个场景的出境字段逐一对齐 PRD §10', () => {
+  it('四个场景的出境字段逐一对齐 PRD §10（v0.10 起 d20 多了简历模块）', () => {
     expect(scenarioPreviewFields('d19-diag', {}).map((field) => field.name)).toEqual(['selectedModules', 'targetJobTitle']);
     expect(scenarioPreviewFields('d19-polish', {}).map((field) => field.name)).toEqual(['selectedText', 'sectionLabel']);
     expect(scenarioPreviewFields('d19-jd', {}).map((field) => field.name)).toEqual(['jdText', 'selectedModules']);
@@ -243,6 +244,8 @@ describe('scenarios · T07 四场景出境表（字段表就是白名单）', ()
       'companyName',
       'jobTitle',
       'status',
+      // ★ v0.10 / L2-1：没有这一项，「竞争力分析」只是在分析 JD
+      'selectedModules',
     ]);
   });
 
@@ -317,5 +320,87 @@ describe('scenarios · d19-jd 解析', () => {
 
   it('非约定形状 → ok:false', () => {
     expect(parseScenarioOutput('d19-jd', '随便一段话').ok).toBe(false);
+  });
+});
+
+/* ==================== v0.10 / L2：分析层的四条硬约束 ==================== */
+
+describe('v0.10 · 提示词质量（正例 / 反例 / 证据要求）', () => {
+  const ALL = ['d14', 'd15', 'd17', 'd19-diag', 'd19-polish', 'd19-jd', 'd14-bulk', 'd20-analysis'] as const;
+
+  it('每个场景都写了 JSON 契约与反例（少一条就是没做完）', () => {
+    for (const key of ALL) {
+      const system = buildScenarioMessages(key, {}).find((m) => m.role === 'system')?.content ?? '';
+      expect(system, `${key} 缺 JSON 契约`).toContain('JSON');
+      expect(system, `${key} 缺反例`).toContain('反例');
+      expect(system, `${key} 缺正例`).toContain('正例');
+    }
+  });
+
+  it('禁止编造这句话出现在每个场景（它比「请仔细」有效）', () => {
+    for (const key of ALL) {
+      const system = buildScenarioMessages(key, {}).find((m) => m.role === 'system')?.content ?? '';
+      expect(/禁止猜|不编造|绝不凭|不要猜/.test(system), `${key} 没有禁编造约束`).toBe(true);
+    }
+  });
+
+  it('d20 明确「没给简历就全 not_found」，不许凭 JD 猜人', () => {
+    const system = buildScenarioMessages('d20-analysis', {}).find((m) => m.role === 'system')?.content ?? '';
+    expect(system).toContain('not_found');
+    expect(system).toContain('绝不凭 JD 猜候选人');
+  });
+});
+
+describe('v0.10 · D20 带上简历（没有它就是「只分析 JD」）', () => {
+  it('简历模块是可选出境字段，默认不勾（库内数据默认不出境）', () => {
+    const field = scenarioPreviewFields('d20-analysis', {}).find((item) => item.name === 'selectedModules');
+    expect(field).toBeDefined();
+    expect(field?.defaultChecked).toBe(false);
+  });
+
+  it('勾了简历 → 消息里出现「选中的简历模块」；没勾则完全不出现', () => {
+    const without = buildScenarioMessages('d20-analysis', { jdText: 'JD 原文', jobTitle: '前端' });
+    expect(without[1].content).not.toContain('选中的简历模块');
+
+    const withModules = buildScenarioMessages('d20-analysis', {
+      jdText: 'JD 原文',
+      jobTitle: '前端',
+      selectedModules: '【项目经历】\n用 React 写了订单页',
+    });
+    expect(withModules[1].content).toContain('选中的简历模块');
+    expect(withModules[1].content).toContain('订单页');
+  });
+});
+
+describe('v0.10 · 场景级参数（温度与 JSON 模式）', () => {
+  it('解析/诊断类固定 0 度；话术与润色 0.3', () => {
+    for (const key of ['d14', 'd17', 'd19-diag', 'd19-jd', 'd20-analysis'] as const) {
+      expect(scenarioParams(key).temperature, `${key} 应为 0 度`).toBe(0);
+    }
+    expect(scenarioParams('d15').temperature).toBe(0.3);
+    expect(scenarioParams('d19-polish').temperature).toBe(0.3);
+  });
+
+  it('一律要求 JSON 模式（服务端不认时网关会自动降级，用户无感）', () => {
+    for (const key of ['d14', 'd15', 'd17', 'd19-diag', 'd19-polish', 'd19-jd', 'd14-bulk', 'd20-analysis'] as const) {
+      expect(scenarioParams(key).jsonMode).toBe(true);
+    }
+  });
+});
+
+describe('v0.10 · 解析纠错（修复请求的消息形状）', () => {
+  it('保留原对话 + 上次输出 + 修复指令，顺序不能错', () => {
+    const base = buildScenarioMessages('d14', { note: '面经原文' });
+    const repaired = buildRepairMessages(base, '好的，我来整理：\n1. 手写防抖');
+    expect(repaired.slice(0, base.length)).toEqual(base);
+    expect(repaired[base.length]).toMatchObject({ role: 'assistant' });
+    expect(repaired[base.length + 1]).toMatchObject({ role: 'user' });
+    expect(repaired[base.length + 1].content).toContain('只输出 JSON');
+  });
+
+  it('上次输出超长时截断到 6000 字（更长的说明格式已经乱到没法就地重排）', () => {
+    const base = buildScenarioMessages('d14', { note: 'x' });
+    const repaired = buildRepairMessages(base, 'y'.repeat(9000));
+    expect(repaired[base.length].content).toHaveLength(6000);
   });
 });

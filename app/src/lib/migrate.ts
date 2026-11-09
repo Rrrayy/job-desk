@@ -330,6 +330,13 @@ export function migrateV1ToV2(input: unknown, ctx: MigrateContext): MigrateResul
  * AI 设置（v0.8）：白名单式重建，缺字段补「未配置」缺省值。
  * 同 normalizeEncryptionSettings 的道理：宁可回落到未配置，也绝不把脏值带进运行时。
  */
+/**
+ * AI 设置清洗（v0.8 / v0.10 扩参数）。
+ *
+ * 白名单式：不在名单里的键一律丢弃 —— 用户从别处粘进来的 `organization`、
+ * `stream_options` 之类不该悄悄进入请求体。v0.10 新增的六个键全部可选，
+ * 缺失即「不发送」，所以**不升 schemaVersion**（老库读出来就是没这些键）。
+ */
 export function normalizeAiSettings(value: unknown): AISettings {
   if (!isRecord(value)) return defaultAiSettings();
   const baseURL = typeof value.baseURL === 'string' ? value.baseURL.slice(0, 200) : '';
@@ -342,7 +349,46 @@ export function normalizeAiSettings(value: unknown): AISettings {
   if (typeof value.apiKey === 'string' && value.apiKey.length > 0) {
     out.apiKey = value.apiKey.slice(0, 200);
   }
+  // 数值参数：非有限数、超范围的直接丢弃（不 clamp —— 猜一个边界值比用服务端默认更糟）
+  if (typeof value.temperature === 'number' && Number.isFinite(value.temperature) && value.temperature >= 0 && value.temperature <= 2) {
+    out.temperature = Math.round(value.temperature * 100) / 100;
+  }
+  if (typeof value.topP === 'number' && Number.isFinite(value.topP) && value.topP > 0 && value.topP <= 1) {
+    out.topP = Math.round(value.topP * 100) / 100;
+  }
+  if (typeof value.maxTokens === 'number' && Number.isFinite(value.maxTokens)) {
+    const tokens = Math.trunc(value.maxTokens);
+    if (tokens >= 1 && tokens <= 32000) out.maxTokens = tokens;
+  }
+  if (value.jsonMode === 'auto' || value.jsonMode === 'on' || value.jsonMode === 'off') {
+    out.jsonMode = value.jsonMode;
+  }
+  if (typeof value.timeoutSec === 'number' && Number.isFinite(value.timeoutSec)) {
+    const seconds = Math.trunc(value.timeoutSec);
+    if (seconds >= 5 && seconds <= 300) out.timeoutSec = seconds;
+  }
+  const lastCheck = normalizeAiLastCheck(value.lastCheck);
+  if (lastCheck) out.lastCheck = lastCheck;
   return out;
+}
+
+/** 「测试连接」回显结果的清洗：形状不对就整体丢弃（半截回显比没有更误导） */
+function normalizeAiLastCheck(value: unknown): AISettings['lastCheck'] {
+  if (!isRecord(value)) return undefined;
+  if (typeof value.at !== 'string' || Number.isNaN(Date.parse(value.at))) return undefined;
+  if (typeof value.ok !== 'boolean') return undefined;
+  if (typeof value.latencyMs !== 'number' || !Number.isFinite(value.latencyMs)) return undefined;
+  const models = Array.isArray(value.models)
+    ? value.models.filter((item): item is string => typeof item === 'string').slice(0, 200)
+    : undefined;
+  const error = typeof value.error === 'string' ? value.error.slice(0, 300) : undefined;
+  return {
+    at: value.at,
+    ok: value.ok,
+    latencyMs: Math.max(0, Math.trunc(value.latencyMs)),
+    ...(models && models.length > 0 ? { models } : {}),
+    ...(error ? { error } : {}),
+  };
 }
 
 /* ==================== v0.6 新字段的清洗（迁移与校验共用） ==================== */

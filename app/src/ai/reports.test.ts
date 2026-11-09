@@ -11,7 +11,7 @@
  */
 
 import { describe, expect, it } from 'vitest';
-import { capReports, capReportsWithDrop, createReport, parseReport, reportsOfTarget, reportQuotaOf, scoreOf } from './reports';
+import { capReports, capReportsWithDrop, createReport, parseReport, reportToMarkdown, reportsOfTarget, reportQuotaOf, scoreOf, verdictPatternOf, verdictWarningOf } from './reports';
 import type { AIReport, AIReportDimension } from '../types';
 import { AI_REPORT_LIMIT } from '../types';
 
@@ -247,5 +247,96 @@ describe('reports · reportsOfTarget / reportQuotaOf', () => {
     const full = Array.from({ length: AI_REPORT_LIMIT }, (_, i) => row(`f${i}`, `r${i}`, i));
     expect(reportQuotaOf(full).full).toBe(true);
     expect(reportQuotaOf(full).used).toBe(AI_REPORT_LIMIT);
+  });
+});
+
+/* ==================== v0.10 / L2-7：维度形态自检 ==================== */
+
+describe('reports · 维度形态自检（防「看起来很权威」的偷懒）', () => {
+  const dim = (verdict: 'strong_match' | 'partial_match' | 'gap' | 'not_found'): { key: string; label: string; verdict: typeof verdict } => ({
+    key: 'k',
+    label: '维度',
+    verdict,
+  });
+
+  it('没有维度 → none，不需要提醒', () => {
+    expect(verdictPatternOf(undefined)).toBe('none');
+    expect(verdictWarningOf([])).toBeNull();
+  });
+
+  it('全 strong → 提醒抽查证据（模型可能在顺着 JD 说好话）', () => {
+    expect(verdictPatternOf([dim('strong_match'), dim('strong_match')])).toBe('all_strong');
+    expect(verdictWarningOf([dim('strong_match')])).toContain('抽查');
+  });
+
+  it('全 gap → 提醒可能是模块选少了', () => {
+    expect(verdictPatternOf([dim('gap'), dim('gap')])).toBe('all_gap');
+    expect(verdictWarningOf([dim('gap'), dim('gap')])).toContain('简历模块');
+  });
+
+  it('全 not_found → 说清楚「不是你不匹配」', () => {
+    expect(verdictPatternOf([dim('not_found'), dim('not_found')])).toBe('all_not_found');
+    expect(verdictWarningOf([dim('not_found')])).toContain('不是「你不匹配」');
+  });
+
+  it('混合形态不提醒（正常报告不该被警告打扰）', () => {
+    expect(verdictPatternOf([dim('strong_match'), dim('gap')])).toBe('none');
+    expect(verdictWarningOf([dim('strong_match'), dim('partial_match')])).toBeNull();
+    // not_found 不参与「全 strong」判定
+    expect(verdictPatternOf([dim('strong_match'), dim('not_found')])).toBe('all_strong');
+  });
+});
+
+/* ==================== v0.10 / L3-7：Markdown 导出 ==================== */
+
+describe('reports · Markdown 导出', () => {
+  const base = {
+    pluginId: 'builtin:d20-analysis',
+    targetType: 'application_analysis' as const,
+    targetId: 'app-1',
+    content: '总评：技术栈基本对齐。\n- 补一个项目',
+    model: 'qwen2.5:7b',
+    createdAt: '2026-11-09T10:00:00.000Z',
+  };
+
+  it('包含标题、分数来源说明与维度表', () => {
+    const report = createReport({
+      ...base,
+      dimensions: [
+        { key: 'stack', label: '技术栈', verdict: 'partial_match', evidenceFromResume: '熟悉 Vue 3', evidenceFromJd: '要求 React 18' },
+      ],
+    });
+    const md = reportToMarkdown(report);
+    expect(md).toContain('# 投递竞争力分析');
+    expect(md).toContain('本地按维度等权合成');
+    expect(md).toContain('| 维度 | 判定 |');
+    expect(md).toContain('部分匹配');
+    expect(md).toContain('总评：技术栈基本对齐。');
+  });
+
+  it('单元格里的竖线与换行被转义（否则整张表会散架）', () => {
+    const report = createReport({
+      ...base,
+      dimensions: [{ key: 'k', label: 'A|B', verdict: 'gap', gapDescription: '第一行\n第二行' }],
+    });
+    const md = reportToMarkdown(report);
+    expect(md).toContain('A\\|B');
+    expect(md).toContain('第一行 第二行');
+    // 表格行内不该出现**裸**竖线把列数撑开（转义的 \| 不算分隔符）
+    const row = md.split('\n').find((line) => line.includes('第一行')) ?? '';
+    const barePipes = [...row].filter((ch, index) => ch === '|' && row[index - 1] !== '\\').length;
+    expect(barePipes).toBe(6);
+  });
+
+  it('没有维度时说明材料不足，不编一个 0 分', () => {
+    const report = createReport({ ...base, dimensions: undefined });
+    const md = reportToMarkdown(report);
+    expect(md).toContain('材料不足');
+    expect(md).not.toContain('0（');
+  });
+
+  it('简历诊断用另一个标题（同一份导出不被误读成投递分析）', () => {
+    const report = createReport({ ...base, targetType: 'resume_diagnosis', targetId: 'resume-1' });
+    expect(reportToMarkdown(report)).toContain('# 简历诊断报告');
   });
 });

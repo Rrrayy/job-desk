@@ -440,7 +440,7 @@ describe('AiScenarioPanel · 报告配额告知（v0.9.1）', () => {
 
   async function render(
     api: AppApi,
-    scenario: 'd19-polish' | 'd19-diag',
+    scenario: 'd14' | 'd19-polish' | 'd19-diag',
   ): Promise<void> {
     root = createRoot(container);
     await act(async () => {
@@ -448,7 +448,7 @@ describe('AiScenarioPanel · 报告配额告知（v0.9.1）', () => {
         <AiScenarioPanel
           api={api}
           scenario={scenario}
-          targetId="res-1"
+          targetId={scenario === 'd14' ? 'exp-1' : 'res-1'}
           modules={MODS}
           onClose={() => {}}
         />,
@@ -458,6 +458,24 @@ describe('AiScenarioPanel · 报告配额告知（v0.9.1）', () => {
 
   const button = (text: string): HTMLButtonElement | null =>
     Array.from(container.querySelectorAll('button')).find((item) => item.textContent?.includes(text)) ?? null;
+
+  /** v0.10：受控 textarea 写入（与第一个 describe 同款，不能直接赋 value） */
+  async function typeText(id: string, value: string): Promise<void> {
+    const element = byTestId(id) as HTMLTextAreaElement;
+    const setter = Object.getOwnPropertyDescriptor(window.HTMLTextAreaElement.prototype, 'value')?.set;
+    await act(async () => {
+      setter?.call(element, value);
+      element.dispatchEvent(new Event('input', { bubbles: true }));
+    });
+  }
+
+  /** 点击并等一轮宏任务：runScenario 是 async 的，不等待就断言会看到中间态 */
+  async function click(element: HTMLElement | null): Promise<void> {
+    await act(async () => {
+      element?.click();
+      await new Promise((resolve) => setTimeout(resolve, 0));
+    });
+  }
 
   it('这个目标还没有报告 → 不出现配额提示（正常路径不打扰）', async () => {
     const { api } = makeApi({ reports: [] });
@@ -505,5 +523,96 @@ describe('AiScenarioPanel · 报告配额告知（v0.9.1）', () => {
 
     expect(byTestId('ai-quota-hint')?.textContent).toContain('全库报告已满');
     expect((byTestId('ai-generate') as HTMLButtonElement).disabled).toBe(true);
+  });
+
+  /* ==================== v0.10 / L3：阶段、失败补救、用量 ==================== */
+
+  it('v0.10 · 失败后给三条补救路径；重试复用同一份勾选（不用重勾一遍）', async () => {
+    const { api, runs } = makeApi({
+      run: async () => ({ ok: false, error: '连接失败 —— 检查网络或本地服务是否启动' }),
+    });
+    let openedSettings = 0;
+    root = createRoot(container);
+    await act(async () => {
+      root.render(
+        <AiScenarioPanel
+          api={api}
+          scenario="d14"
+          targetId="exp-1"
+          onClose={() => undefined}
+          onOpenSettings={() => {
+            openedSettings += 1;
+          }}
+        />,
+      );
+    });
+    await typeText('ai-input', '一面问了防抖');
+    await click(byTestId('ai-generate'));
+    await click(byTestId('send-preview-confirm'));
+
+    expect(byTestId('ai-error')?.textContent).toContain('连接失败');
+    expect(runs).toHaveLength(1);
+
+    await click(byTestId('ai-retry'));
+    expect(runs).toHaveLength(2);
+    expect(runs[1].checked).toEqual(runs[0].checked);
+
+    const setting = [...container.querySelectorAll('button')].find((item) => item.textContent === '去检查配置');
+    await click(setting ?? null);
+    expect(openedSettings).toBe(1);
+  });
+
+  it('v0.10 · 成功后显示本次用量：tokens / 耗时 / 模型', async () => {
+    const { api } = makeApi({
+      run: async () => ({
+        ok: true,
+        kind: 'suggestions',
+        created: 0,
+        meta: { durationMs: 3200, model: 'qwen2.5:7b', tokens: { prompt: 800, completion: 200, total: 1000 } },
+      }),
+    });
+    await render(api, 'd14');
+    await typeText('ai-input', '一面问了防抖');
+    await click(byTestId('ai-generate'));
+    await click(byTestId('send-preview-confirm'));
+
+    const meta = byTestId('ai-meta')?.textContent ?? '';
+    expect(meta).toContain('1000 tokens');
+    expect(meta).toContain('3.2s');
+    expect(meta).toContain('qwen2.5:7b');
+  });
+
+  it('v0.10 · 发送前就有 token 估算（不等发出去才知道多大）', async () => {
+    const { api } = makeApi();
+    await render(api, 'd14');
+    expect(byTestId('ai-tokens')?.textContent).toContain('tokens');
+    await typeText('ai-input', '一面问了 Vue 响应式原理，然后手写防抖函数');
+    expect(byTestId('ai-tokens')?.textContent).toMatch(/约 \d+ tokens/);
+  });
+
+  it('v0.10 · 生成中显示「已生成 N 字」与停止按钮，不再露出生成按钮（连点无处可点）', async () => {
+    let release: ((value: AiRunOutcome) => void) | null = null;
+    const { api } = makeApi({
+      run: (input) =>
+        new Promise<AiRunOutcome>((resolve) => {
+          release = resolve;
+          // 模拟流式：先吐一段增量，让面板进入 streaming 阶段
+          input.onDelta?.('{"questions":[');
+        }),
+    });
+    await render(api, 'd14');
+    await typeText('ai-input', '一面问了防抖');
+    await click(byTestId('ai-generate'));
+    await click(byTestId('send-preview-confirm'));
+
+    expect(byTestId('ai-running')?.textContent).toContain('已生成');
+    expect(byTestId('ai-stop')).not.toBeNull();
+    expect(byTestId('ai-generate')).toBeNull();
+
+    await act(async () => {
+      release?.({ ok: true, kind: 'suggestions', created: 0 });
+      await new Promise((resolve) => setTimeout(resolve, 0));
+    });
+    expect(byTestId('ai-running')).toBeNull();
   });
 });

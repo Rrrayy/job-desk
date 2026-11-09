@@ -32,6 +32,24 @@ export interface ChatMessage {
   content: string;
 }
 
+/**
+ * 生成参数（v0.10）。**所有字段都可缺省**：缺省 = 这个键根本不进请求体，
+ * 由服务端用自己的默认值 —— 这比「猜一个 0.7」诚实得多。
+ *
+ * 两个来源，场景级优先：`settings.ai` 上的全局值 → `opts.params` 的场景覆盖。
+ * 解析类场景（d14/d17/d19-diag）固定 temperature 0，见 `scenarios.scenarioParams`。
+ */
+export interface GenerationParams {
+  /** 0–2 */
+  temperature?: number;
+  /** 0–1 */
+  topP?: number;
+  /** ≥1 的整数 */
+  maxTokens?: number;
+  /** JSON 模式（response_format）。服务端不支持时网关自动降级重试一次 */
+  jsonMode?: boolean;
+}
+
 export interface CompletionOptions {
   messages: ChatMessage[];
   /** 缺省 true（SSE 流式）；显式 false 走一次性 JSON 响应 */
@@ -40,9 +58,52 @@ export interface CompletionOptions {
   onDelta?: (delta: string) => void;
   /** 调用方取消。与 gateway 内部的双超时计时器共用同一个 AbortController */
   signal?: AbortSignal;
+  /** v0.10：场景级参数覆盖（缺省跟随 settings.ai 的全局参数） */
+  params?: GenerationParams;
 }
 
-export type GatewayErrorCode = 'timeout' | 'network' | 'http' | 'parse';
+/**
+ * 用量（v0.10）。**只统计，不参与任何业务判断**。
+ * 服务端不返回 usage 时为 undefined —— 面板显示「用量未知」而不是 0。
+ */
+export interface TokenUsage {
+  prompt: number;
+  completion: number;
+  total: number;
+}
+
+/**
+ * 连通性自检结果（v0.10）。
+ * ★ 只由用户点击「测试连接」触发 —— 绝不在启动/渲染时自动发生，
+ *   「打开页面零请求」的承诺不因为有了探针而破例。
+ */
+export interface ProbeResult {
+  ok: boolean;
+  latencyMs: number;
+  /** 探活成功时列出的模型 id（服务端不提供则为空数组，不当成失败） */
+  models: string[];
+  /** 成功时用的是哪条路：/models 还是最小 chat 探针 */
+  via?: 'models' | 'chat';
+  /** 失败时的中文原因（一句人话，可直接上屏） */
+  error?: string;
+  /** 失败时的错误码，供 UI 决定给什么动作 */
+  code?: GatewayErrorCode;
+}
+
+/**
+ * 错误码（v0.10 细分为 8 类）。
+ * 之所以不用「http + status」让调用方自己判断：状态码到人话的映射是产品责任，
+ * 散在 UI 里迟早各处写法不一。分类口径与给用户的话写在 `gateway.ERROR_HINT`。
+ */
+export type GatewayErrorCode =
+  | 'timeout'
+  | 'network'
+  | 'http'
+  | 'parse'
+  | 'cancel'
+  | 'auth'
+  | 'not_found'
+  | 'rate_limit';
 
 /** 新建议（入库前的形状；status/createdAt 由 suggestions.createSuggestions 补齐） */
 export interface NewAISuggestion {
@@ -159,6 +220,11 @@ export interface AiRunInput {
   context?: { fieldPaths: Record<string, string> };
   signal?: AbortSignal;
   onDelta?: (delta: string) => void;
+  /**
+   * v0.10 / L3-3：重试时可强制走非流式。
+   * 有的自建网关 SSE 会截断或多发空 delta，换非流式能排除这一层。
+   */
+  stream?: boolean;
 }
 
 /**
@@ -173,6 +239,19 @@ export interface BulkHeadSuggestion {
   round?: number | null;
 }
 
+/**
+ * 一次成功的调用留下了什么（v0.10 / L3-4）。
+ * 面板用它显示「1.2k tokens · 3.4s · qwen2.5:7b」；日志用它记账。
+ * 服务端没给 usage 就没有 tokens —— 显示「用量未知」，不显示 0。
+ */
+export interface RunMeta {
+  durationMs: number;
+  model: string;
+  tokens?: TokenUsage;
+  /** 推理模型是否输出了思考过程（面板据此提一句「该模型会先思考」） */
+  reasoning?: boolean;
+}
+
 export type AiRunOutcome =
   | {
       ok: true;
@@ -182,8 +261,10 @@ export type AiRunOutcome =
       head?: BulkHeadSuggestion;
       unmatched?: string[];
       truncated?: number;
+      /** v0.10：用量与耗时（可选，旧调用点不必改） */
+      meta?: RunMeta;
     }
-  | { ok: true; kind: 'report'; reportId: string }
+  | { ok: true; kind: 'report'; reportId: string; meta?: RunMeta }
   | { ok: false; error: string };
 
 /** D13 发送预览的一个字段行 */

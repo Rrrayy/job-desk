@@ -92,4 +92,51 @@ describe('ReportCard（一张两用：简历诊断 / 投递分析）', () => {
     expect(details?.textContent).toContain('下一步：补量化结果');
     expect(container.textContent).toContain('模型没有给出维度判定');
   });
+
+  /* ==================== v0.10 / L2-7 + L3-7 ==================== */
+
+  it('v0.10 · 全 strong 时提示「可能没真正对照材料」，不让人把分当客观评价', () => {
+    render(
+      report({
+        scoreLocal: 100,
+        dimensions: [
+          { key: 'a', label: '技能', verdict: 'strong_match' },
+          { key: 'b', label: '项目', verdict: 'strong_match' },
+        ],
+      }),
+    );
+    const warning = container.querySelector('[data-testid="report-warning"]');
+    expect(warning?.textContent).toContain('抽查');
+  });
+
+  it('v0.10 · 全 not_found 时说清「不是你不匹配」', () => {
+    render(report({ scoreLocal: undefined, dimensions: [{ key: 'a', label: '技能', verdict: 'not_found' }] }));
+    expect(container.querySelector('[data-testid="report-warning"]')?.textContent).toContain('不是「你不匹配」');
+  });
+
+  it('v0.10 · 混合形态不打扰（正常报告不该被警告盖住）', () => {
+    render(report());
+    expect(container.querySelector('[data-testid="report-warning"]')).toBeNull();
+  });
+
+  it('v0.10 · 有「导出 Markdown」按钮，且生成的下载链接是 data URI（不依赖 Blob）', () => {
+    render(report());
+    const button = container.querySelector<HTMLButtonElement>('[data-testid="report-export"]');
+    expect(button?.textContent).toContain('导出 Markdown');
+
+    // 拦截点击，确认 href 里带的是编码后的报告正文
+    const clicked: string[] = [];
+    const original = HTMLAnchorElement.prototype.click;
+    HTMLAnchorElement.prototype.click = function patched(this: HTMLAnchorElement) {
+      clicked.push(this.href);
+    };
+    try {
+      act(() => button?.click());
+    } finally {
+      HTMLAnchorElement.prototype.click = original;
+    }
+    expect(clicked).toHaveLength(1);
+    expect(clicked[0].startsWith('data:text/markdown')).toBe(true);
+    expect(decodeURIComponent(clicked[0])).toContain('简历诊断报告');
+  });
 });

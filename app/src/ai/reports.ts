@@ -177,6 +177,94 @@ export function capReportsWithDrop(rows: AIReport[], limit = AI_REPORT_LIMIT): R
   return { kept, droppedIds };
 }
 
+/* ------------------------------ 报告质量自检（v0.10 / L2-7） ------------------------------ */
+
+/**
+ * 维度的整体形态。模型有三种典型的「偷懒」：
+ * - 全 strong_match：没真读材料，顺着 JD 都说匹配；
+ * - 全 gap：只说要求高，没对照简历；
+ * - 全 not_found：材料确实没给（这时最诚实的做法是提示用户补简历）。
+ *
+ * 前两种要在卡片上明说「这次结论可能不可靠」，第三种要说「没材料，不是你不匹配」。
+ * 不阻断、不重算分数 —— 只是不让一个看起来很权威的分数悄悄骗人。
+ */
+export type VerdictPattern = 'all_strong' | 'all_gap' | 'all_not_found' | 'none';
+
+/**
+ * 判定维度形态。`not_found` 不计入「全 gap」：它表达的是「材料没提到」，
+ * 与「明确不匹配」是两件事（`scoreOf` 也把 not_found 排除在分母外，口径一致）。
+ */
+export function verdictPatternOf(dimensions: AIReportDimension[] | undefined): VerdictPattern {
+  const list = dimensions ?? [];
+  if (list.length === 0) return 'none';
+  if (list.every((dimension) => dimension.verdict === 'not_found')) return 'all_not_found';
+  const scored = list.filter((dimension) => dimension.verdict !== 'not_found');
+  if (scored.length === 0) return 'all_not_found';
+  if (scored.every((dimension) => dimension.verdict === 'strong_match')) return 'all_strong';
+  if (scored.every((dimension) => dimension.verdict === 'gap')) return 'all_gap';
+  return 'none';
+}
+
+/** 形态 → 给用户看的一句提醒（null = 不需要提醒） */
+export function verdictWarningOf(dimensions: AIReportDimension[] | undefined): string | null {
+  const pattern = verdictPatternOf(dimensions);
+  if (pattern === 'all_strong') {
+    return '所有维度都判为「强匹配」—— 模型可能没有真正对照材料，建议抽查两条证据原句。';
+  }
+  if (pattern === 'all_gap') {
+    return '所有维度都判为「有差距」—— 可能是简历模块选少了，或目标岗位与本简历方向不一致。';
+  }
+  if (pattern === 'all_not_found') {
+    return '所有维度都是「材料未提及」—— 这不是「你不匹配」，而是没提供可对照的简历内容。';
+  }
+  return null;
+}
+
+/** verdict 的中文说法（报告卡与 Markdown 导出共用一份，避免两处文案漂移） */
+export const VERDICT_TEXT: Record<AIVerdict, string> = {
+  strong_match: '强匹配',
+  partial_match: '部分匹配',
+  gap: '短板',
+  not_found: '材料未提及',
+};
+
+/** Markdown 表格里不能出现裸的竖线与换行 */
+function cell(value: string): string {
+  return value.replace(/\|/g, '\\|').replace(/\r?\n/g, ' ').trim();
+}
+
+/**
+ * 报告 → Markdown（v0.10 / L3-7）。
+ *
+ * 为什么要有导出：报告是「看完就该拿去改简历」的东西，只能留在应用里
+ * 等于把结论锁在一个标签页里。导出的是纯文本，进任何笔记/文档都能用。
+ *
+ * 分数那句必须带上「本地合成」：导出的文件脱离了应用上下文，
+ * 读者只会看到一个 82，不会知道它不是模型打的分。
+ */
+export function reportToMarkdown(report: AIReport): string {
+  const title = report.targetType === 'resume_diagnosis' ? '简历诊断报告' : '投递竞争力分析';
+  const lines: string[] = [`# ${title}`, ''];
+  lines.push(`- 生成时间：${report.createdAt}`);
+  if (report.model) lines.push(`- 模型：${report.model}`);
+  lines.push(
+    `- 匹配分：${report.scoreLocal === undefined ? '材料不足（没有可计分的维度）' : `${report.scoreLocal}（本地按维度等权合成，仅供参考）`}`,
+  );
+  const dimensions = report.dimensions ?? [];
+  if (dimensions.length > 0) {
+    lines.push('', '## 维度对照', '', '| 维度 | 判定 | 简历依据 | JD 依据 | 差在哪 |', '| --- | --- | --- | --- | --- |');
+    for (const dimension of dimensions) {
+      lines.push(
+        `| ${cell(dimension.label || dimension.key || '维度')} | ${VERDICT_TEXT[dimension.verdict]} | ${cell(
+          dimension.evidenceFromResume ?? '',
+        )} | ${cell(dimension.evidenceFromJd ?? '')} | ${cell(dimension.gapDescription ?? '')} |`,
+      );
+    }
+  }
+  lines.push('', '## 正文', '', report.content, '');
+  return lines.join('\n');
+}
+
 /* ------------------------------ 报告历史与配额（v0.9.1 / R-AI-10） ------------------------------ */
 
 /**

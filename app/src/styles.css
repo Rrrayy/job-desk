@@ -6286,3 +6286,93 @@ button.chip:hover {
     scroll-behavior: auto !important;
   }
 }
+
+/* ==================== v0.10 / L1：AI 配置向导 ==================== */
+
+/* 预设按钮组：8 个厂商，换行排列，不与下面的输入框挤在一起 */
+.ai-presets {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin: 10px 0 12px;
+}
+
+/* 生成参数折叠区：默认收起，展开时与表单同宽 */
+.ai-params {
+  margin: 12px 0;
+  padding: 8px 12px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  background: var(--line-soft);
+}
+
+.ai-params>summary {
+  cursor: pointer;
+  list-style: none;
+  user-select: none;
+}
+
+.ai-params>summary::-webkit-details-marker {
+  display: none;
+}
+
+.ai-params>summary::before {
+  content: '▸ ';
+  color: var(--ink-4);
+}
+
+.ai-params[open]>summary::before {
+  content: '▾ ';
+}
+
+.ai-params[open]>summary {
+  margin-bottom: 10px;
+}
+
+/* 探针结果贴着按钮，不换行时才好看 */
+.ai-probe-line {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
+/* ==================== v0.10 / L3：建议 diff 与失败区 ==================== */
+
+/* 原值 → 建议值：原值划掉，箭头弱化，不与建议正文抢注意力 */
+.suggestion-diff {
+  margin: 2px 0 6px 24px;
+  font-size: 12px;
+  line-height: 1.5;
+}
+
+.suggestion-diff__old {
+  color: var(--ink-4);
+  text-decoration: line-through;
+  text-decoration-color: var(--line);
+}
+
+.suggestion-diff__arrow {
+  margin: 0 6px;
+  color: var(--ink-4);
+}
+
+/* 失败区：错误句与三个补救动作贴在一起，不让用户滚动去找按钮 */
+.ai-error {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin: 10px 0;
+}
+
+/* 维度形态提醒（全 strong / 全 gap / 全 not_found）：不是错误，是「别全信」 */
+.report-card__warn {
+  margin: 8px 0 0;
+  padding: 8px 10px;
+  border-radius: var(--radius-sm);
+  background: var(--amber-soft);
+  color: #8a5a00;
+  font-size: 12px;
+  line-height: 1.6;
+}
+
+

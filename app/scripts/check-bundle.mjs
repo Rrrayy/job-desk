@@ -144,8 +144,16 @@ import { existsSync, statSync } from 'node:fs';
 import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
-const WARN_BYTES = 715 * 1024;
-const FAIL_BYTES = 730 * 1024;
+/**
+ * ★ v0.10（模型层全面升级）：WARN 715→960、FAIL 730→1024（1 MB）。
+ *   这是**产品决策**：用户 2026-11-09 明确批准「体积可以直接拉到 1 mb」。
+ *   本轮构成（均为老实代码，非依赖膨胀）：八场景 prompt 重写（含正例/反例/自检）、
+ *   配置向导与连通性自检、生成阶段化面板、建议 diff 与报告导出、用量面板。
+ *   红线抬到 1 MB 之后仍然保留「本次比基线胖了 20 KB 就提示」的增量告警 ——
+ *   抬总闸不等于拆警报器。
+ */
+const WARN_BYTES = 960 * 1024;
+const FAIL_BYTES = 1024 * 1024;
 
 /**
  * 当前版本的体积基线（每次发版更新，用来在 CI 里显示「这次改动胖了多少」）。

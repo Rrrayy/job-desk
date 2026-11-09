@@ -302,6 +302,31 @@ export interface AISettings {
   model: string;
   /** 本机端口（127.0.0.1 / localhost）时为 true，预览明示「不出公网」 */
   isLocal: boolean;
+  /* ---------------- v0.10：生成参数与连接选项（全部可选，缺省 = 不发/用默认） ---------------- */
+  /** 0–2。缺省不发送（由服务端默认；不猜 0.7） */
+  temperature?: number;
+  /** 0–1 */
+  topP?: number;
+  /** 单次回复上限（整数 ≥1）。缺省不发送 */
+  maxTokens?: number;
+  /**
+   * JSON 模式。'auto'（默认）= 结构化场景带 response_format，服务端拒绝则本次自动降级；
+   * 'on' = 强制带；'off' = 从不带（给不认这个字段的服务用）。
+   */
+  jsonMode?: 'auto' | 'on' | 'off';
+  /** 单次请求总超时（秒，5–300），缺省 60 */
+  timeoutSec?: number;
+  /**
+   * 最近一次「测试连接」的结果。**只是回显，不参与就绪判定** ——
+   * 就绪与否仍只看 baseURL/model 是否为空（启动不探测的承诺不破）。
+   */
+  lastCheck?: {
+    at: string;
+    ok: boolean;
+    latencyMs: number;
+    models?: string[];
+    error?: string;
+  };
 }
 
 /** 全局设置 */
@@ -496,6 +521,11 @@ export interface RequestLog {
   sentFieldsHash: string;
   status: 'ok' | 'error';
   errorCode?: string;
+  /* ---------------- v0.10：用量与耗时（可选，历史日志没有） ---------------- */
+  /** 服务端返回的 token 用量；没返回就不写（不伪造 0） */
+  tokens?: { prompt: number; completion: number; total: number };
+  /** 本次请求端到端耗时（毫秒） */
+  durationMs?: number;
 }
 
 export type AISuggestionTargetType =
