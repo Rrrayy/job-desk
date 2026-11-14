@@ -2,7 +2,13 @@ import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { describe, expect, it } from 'vitest';
 import type { DB } from '../types';
-import { SCHEMA_VERSION_CURRENT, migrateV1ToV2, migrateV2ToV3, resolveSchemaVersion } from './migrate';
+import {
+  SCHEMA_VERSION_CURRENT,
+  migrateV1ToV2,
+  migrateV2ToV3,
+  migrateV5ToV6,
+  resolveSchemaVersion,
+} from './migrate';
 
 /** 造一份「v0.1 真实导出」形状的数据（26 条投递 + 多条 note + 面试） */
 function buildV1Raw(): Record<string, unknown> {
@@ -439,7 +445,7 @@ function buildV3Raw(): Record<string, unknown> {
 }
 
 describe('v0.8 · migrateV3ToV4', () => {
-  it('v3 → v5：三张插件空表落库 + settings.ai 缺省补齐 + 级联抬到 schemaVersion 5', () => {
+  it('v3 → v6：三张插件空表落库 + settings.ai 缺省补齐 + 级联抬到 schemaVersion 6', () => {
     const result = migrateV3ToV4(buildV3Raw(), { now: NOW });
     expect(result.ok).toBe(true);
     if (!result.ok) return;
@@ -448,13 +454,13 @@ describe('v0.8 · migrateV3ToV4', () => {
     expect(db.pluginStorage).toEqual([]);
     expect(db.requestLog).toEqual([]);
     expect(db.aiSuggestions).toEqual([]);
-    // v0.9：v3 → v4 之后继续级联到 v5（每一步只管自己那一个版本号）
-    expect(db.settings.schemaVersion).toBe(5);
+    // v0.9 起 v3 → v4 → v5，v1.0 起再级联 v5 → v6（每一步只管自己那一个版本号）
+    expect(db.settings.schemaVersion).toBe(6);
     expect(db.resumes).toEqual([]);
     expect(db.resumeVersions).toEqual([]);
     expect(db.aiReports).toEqual([]);
     expect(db.settings.ai).toEqual({ baseURL: '', model: '', isLocal: false });
-    expect(db.settings.lastMigration).toMatchObject({ from: 3, to: 5, at: NOW });
+    expect(db.settings.lastMigration).toMatchObject({ from: 3, to: 6, at: NOW });
   });
 
   it('★ 只加不减：v0.7.3 形状的既有数据逐字段原样（含面试记录与挂点）', () => {
@@ -601,7 +607,7 @@ describe('v0.8 · 校验器（written / kind / 三新表）', () => {
 
 /* ====================== v0.9：schema 4→5（简历三表） ====================== */
 
-import { SCHEMA_VERSION_V5, migrateV4ToV5 } from './migrate';
+import { migrateV4ToV5 } from './migrate';
 import { emptyDB } from './defaults';
 
 /** 造一份「v0.8.0 真实导出」形状的 v4 库（有插件三表 / settings.ai，没有简历三表） */
@@ -622,7 +628,7 @@ function buildV4Raw(): Record<string, unknown> {
 }
 
 describe('v0.9 · migrateV4ToV5', () => {
-  it('v4 → v5：三张简历空表落库 + schemaVersion 5 + 审计记「4 → 5」', () => {
+  it('v4 → v6：三张简历空表落库 + schemaVersion 6 + 审计记「4 → 6」', () => {
     const result = migrateV4ToV5(buildV4Raw(), { now: NOW });
     expect(result.ok).toBe(true);
     if (!result.ok) return;
@@ -630,8 +636,8 @@ describe('v0.9 · migrateV4ToV5', () => {
     expect(result.db.resumes).toEqual([]);
     expect(result.db.resumeVersions).toEqual([]);
     expect(result.db.aiReports).toEqual([]);
-    expect(result.db.settings.schemaVersion).toBe(SCHEMA_VERSION_V5);
-    expect(result.db.settings.lastMigration).toMatchObject({ from: 4, to: 5, at: NOW });
+    expect(result.db.settings.schemaVersion).toBe(SCHEMA_VERSION_CURRENT);
+    expect(result.db.settings.lastMigration).toMatchObject({ from: 4, to: 6, at: NOW });
   });
 
   it('★ 不为旧数据凭空造版本：投递不新增 resumeVersionId，settings 不新增 defaultResumeVersionId', () => {
@@ -664,9 +670,9 @@ describe('v0.9 · migrateV4ToV5', () => {
     expect(result.error).toContain('migrateV2ToV3');
   });
 
-  it('来自更新版本（v6）→ 拒绝，不猜结构', () => {
+  it('来自更新版本（CURRENT + 1）→ 拒绝，不猜结构', () => {
     const raw = buildV4Raw();
-    (raw.settings as Record<string, unknown>).schemaVersion = 6;
+    (raw.settings as Record<string, unknown>).schemaVersion = SCHEMA_VERSION_CURRENT + 1;
     const result = migrateV4ToV5(raw, { now: NOW });
     expect(result.ok).toBe(false);
     if (result.ok) return;
@@ -677,12 +683,12 @@ describe('v0.9 · migrateV4ToV5', () => {
     const fromV4 = migrateV2ToV3(buildV4Raw(), { now: NOW });
     if (!fromV4.ok) throw new Error('v4 导入失败');
     expect(fromV4.db.settings.schemaVersion).toBe(SCHEMA_VERSION_CURRENT);
-    expect(fromV4.db.settings.lastMigration).toMatchObject({ from: 4, to: 5 });
+    expect(fromV4.db.settings.lastMigration).toMatchObject({ from: 4, to: 6 });
     expect(fromV4.db.resumes).toEqual([]);
 
     const fromV3 = migrateV2ToV3(buildV3Raw(), { now: NOW });
     if (!fromV3.ok) throw new Error('v3 导入失败');
-    expect(fromV3.db.settings.lastMigration).toMatchObject({ from: 3, to: 5 });
+    expect(fromV3.db.settings.lastMigration).toMatchObject({ from: 3, to: 6 });
   });
 
   it('坏数据：v4 缺关键字段 → 明确报错，不产出半个库', () => {
@@ -885,5 +891,178 @@ describe('v0.9 · 简历三表校验（validateV2）', () => {
     expect(result.ok).toBe(true);
     if (!result.ok) return;
     expect(result.db.aiReports[0].content).toHaveLength(8000);
+  });
+});
+
+/* ====================== v1.0.0：schema 5→6（空迁移五条契约） ====================== */
+
+describe('v1.0.0 · migrateV5ToV6（空迁移，契约 1~5）', () => {
+  /** 造一份「v0.9.x 真实导出」形状的 v5 库：有简历三表，没有 offerDecision / offerWeights / Offer 细节 */
+  function buildV5Raw(): Record<string, unknown> {
+    const raw = buildV4Raw();
+    const settings = { ...(raw.settings as Record<string, unknown>) };
+    settings.schemaVersion = 5;
+    return {
+      ...raw,
+      version: 5,
+      formatVersion: 4,
+      settings,
+      resumes: [],
+      resumeVersions: [],
+      aiReports: [],
+    };
+  }
+
+  /** 抽掉 settings 里「本来就要变」的两处，剩下的用来逐字段比对 */
+  function settingsBody(settings: unknown): Record<string, unknown> {
+    const copy = { ...(settings as Record<string, unknown>) };
+    delete copy.schemaVersion;
+    delete copy.lastMigration;
+    return copy;
+  }
+
+  function migrateOnce(): DB {
+    const result = migrateV5ToV6(buildV5Raw(), { now: NOW });
+    if (!result.ok) throw new Error(`迁移失败：${result.error}`);
+    return result.db;
+  }
+
+  it('★ 契约 1：除 schemaVersion / lastMigration 外逐字段 deep-equal（空迁移一个字段都不补）', () => {
+    const baseline = validateV2(buildV5Raw());
+    if (!baseline.ok) throw new Error(`v5 基线不合法：${baseline.error}`);
+    const before = baseline.db;
+    const after = migrateOnce();
+
+    // 顶层键集合完全一致：没多出 offerDecision，也没少掉任何一张表
+    expect(Object.keys(after).sort()).toEqual(Object.keys(before).sort());
+
+    for (const key of Object.keys(before) as Array<keyof DB>) {
+      if (key === 'settings') continue;
+      expect(after[key]).toEqual(before[key]);
+    }
+    // settings 里除了那两处审计字段，其余（含所有阈值 / 开关）逐字段相等
+    expect(settingsBody(after.settings)).toEqual(settingsBody(before.settings));
+  });
+
+  it('★ 契约 2：幂等 —— 对已是 v6 的库再跑一次，changed=false 且对象引用不变', () => {
+    const once = migrateV5ToV6(buildV5Raw(), { now: NOW });
+    if (!once.ok) throw new Error(`迁移失败：${once.error}`);
+    expect(once.changed).toBe(true);
+
+    const twice = migrateV5ToV6(once.db, { now: '2026-12-01T00:00:00.000Z' });
+    expect(twice.ok).toBe(true);
+    if (!twice.ok) return;
+    expect(twice.changed).toBe(false);
+    expect(twice.db).toBe(once.db);
+  });
+
+  it('★ 契约 3：settings.offerWeights 缺省仍是 undefined（迁移不替用户写一份价值观）', () => {
+    const db = migrateOnce();
+    expect('offerWeights' in db.settings).toBe(false);
+    expect(db.settings.offerWeights).toBeUndefined();
+  });
+
+  it('★ 契约 4：旧公司行 / 旧投递不凭空长出新字段（五个公司字段与 offer 全是 undefined）', () => {
+    const db = migrateOnce();
+    expect(db.companies.length).toBeGreaterThan(0);
+    expect(db.applications.length).toBeGreaterThan(0);
+
+    const companyFields = ['scale', 'financingStage', 'website', 'industryDetail', 'employeeReview'] as const;
+    for (const company of db.companies) {
+      for (const field of companyFields) {
+        expect(field in company).toBe(false);
+      }
+    }
+    for (const app of db.applications) {
+      expect('offer' in app).toBe(false);
+    }
+    // 决策是全局单例：没有就是没有，不建空壳
+    expect('offerDecision' in db).toBe(false);
+  });
+
+  it('★ 契约 5：lastMigration 记「5 → 6」，且链式迁移只留最初的那一条 from', () => {
+    const db = migrateOnce();
+    expect(db.settings.schemaVersion).toBe(6);
+    expect(db.settings.lastMigration).toMatchObject({ from: 5, to: 6, at: NOW });
+
+    // v1 备份直通 v6 仍然记「1 → 6」（不是「5 → 6」）
+    const chained = migrateV2ToV3(buildV1Raw(), { now: NOW });
+    if (!chained.ok) throw new Error(`v1 导入失败：${chained.error}`);
+    expect(chained.db.settings.schemaVersion).toBe(SCHEMA_VERSION_CURRENT);
+    expect(chained.db.settings.lastMigration).toMatchObject({ from: 1, to: SCHEMA_VERSION_CURRENT });
+  });
+
+  it('只接受 v5：喂 v4 数据 → 明确报错并指路分发入口', () => {
+    const result = migrateV5ToV6(buildV4Raw(), { now: NOW });
+    expect(result.ok).toBe(false);
+    if (result.ok) return;
+    expect(result.error).toContain('只接受 v5');
+    expect(result.error).toContain('migrateV2ToV3');
+  });
+
+  it('坏数据：v5 缺关键字段 → 明确报错，不产出半个库', () => {
+    const raw = buildV5Raw();
+    delete (raw.applications as Array<Record<string, unknown>>)[0].jobTitle;
+    const result = migrateV5ToV6(raw, { now: NOW });
+    expect(result.ok).toBe(false);
+    if (result.ok) return;
+    expect(result.error).toContain('v5 数据结构不合法');
+  });
+});
+
+/* ============= v1.0.0 · 空迁移的第二面：级联链与分发入口也不许回填（契约 3 / 4） ============= */
+
+describe('v1.0.0 · 空迁移：级联链 / 分发入口同样不回填新字段', () => {
+  const COMPANY_FIELDS = ['scale', 'financingStage', 'website', 'industryDetail', 'employeeReview'] as const;
+
+  /** 契约 3 + 4 的共同断言：新字段一个都不许出现在旧数据上 */
+  function expectNoBackfill(db: DB): void {
+    expect('offerWeights' in db.settings).toBe(false);
+    expect('offerDecision' in db).toBe(false);
+    for (const app of db.applications) expect('offer' in app).toBe(false);
+    expect(db.companies.length).toBeGreaterThan(0);
+    for (const company of db.companies) {
+      for (const field of COMPANY_FIELDS) expect(field in company).toBe(false);
+    }
+  }
+
+  it('★ v4 备份直通当前版本（4→5→6 两步级联）：新字段仍然是 undefined', () => {
+    const result = migrateV2ToV3(buildV4Raw(), { now: NOW });
+    if (!result.ok) throw new Error(`v4 导入失败：${result.error}`);
+    expect(result.db.settings.schemaVersion).toBe(SCHEMA_VERSION_CURRENT);
+    expectNoBackfill(result.db);
+  });
+
+  it('★ v3 备份直通当前版本（3→4→5→6 三步级联）：新字段仍然是 undefined', () => {
+    const result = migrateV2ToV3(buildV3Raw(), { now: NOW });
+    if (!result.ok) throw new Error(`v3 导入失败：${result.error}`);
+    expect(result.db.settings.schemaVersion).toBe(SCHEMA_VERSION_CURRENT);
+    expectNoBackfill(result.db);
+  });
+
+  it('★ 分发入口幂等：把迁移结果再喂回 migrateV2ToV3 → changed=false 且对象引用不变', () => {
+    const once = migrateV2ToV3(buildV4Raw(), { now: NOW });
+    if (!once.ok) throw new Error(`v4 导入失败：${once.error}`);
+    const twice = migrateV2ToV3(once.db, { now: '2026-12-01T00:00:00.000Z' });
+    expect(twice.ok).toBe(true);
+    if (!twice.ok) return;
+    expect(twice.changed).toBe(false);
+    // 引用相等 = 一个字段都没被重写（幂等的最强形式）
+    expect(twice.db).toBe(once.db);
+    // 第二次不许改写 lastMigration 的时间戳
+    expect(twice.db.settings.lastMigration?.at).toBe(once.db.settings.lastMigration?.at);
+  });
+
+  it('★ 已是 v6 的库不会再被「顺手补一份权重」：migrateV5ToV6 走幂等分支，settings 键集合不变', () => {
+    const once = migrateV5ToV6(buildV4Raw(), { now: NOW });
+    // v4 输入会被入口拒绝（只接受 v5）；用真 v5 走一遍
+    expect(once.ok).toBe(false);
+    const v5 = migrateV2ToV3(buildV4Raw(), { now: NOW });
+    if (!v5.ok) throw new Error('v4 导入失败');
+    const keysBefore = Object.keys(v5.db.settings).sort();
+    const again = migrateV5ToV6(v5.db, { now: NOW });
+    if (!again.ok) throw new Error(`v6 幂等分支失败：${again.error}`);
+    expect(again.changed).toBe(false);
+    expect(Object.keys(again.db.settings).sort()).toEqual(keysBefore);
   });
 });

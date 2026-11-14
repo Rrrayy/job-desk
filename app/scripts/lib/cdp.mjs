@@ -17,6 +17,7 @@
 
 import { spawn } from 'node:child_process';
 import { existsSync } from 'node:fs';
+import { createServer } from 'node:net';
 
 /** 常见的 Edge 安装位置（Windows 优先；其它平台靠 `JOB_DESK_EDGE` 覆盖） */
 export const EDGE_CANDIDATES = [
@@ -166,16 +167,38 @@ export async function waitFor(page, expression, options = {}) {
  * @param {{ edge: string, profileDir: string, extraArgs?: string[], startupTimeoutMs?: number }} options
  * @returns {Promise<{ proc: import('node:child_process').ChildProcess, browser: Cdp, page: Cdp, browserWs: WebSocket, pageWs: WebSocket, port: string, close: () => void }>}
  */
+/**
+ * 挑一个空闲端口给 `--remote-debugging-port`。
+ *
+ * 为什么不再用 `--remote-debugging-port=0`（让浏览器自己挑、再从 stderr 读
+ * "DevTools listening on"）：Edge 157 实测会**立刻退出（code=0）**、什么都不打印，
+ * 而同一个版本给固定端口就能正常起来。自己挑端口 + 轮询 `/json/version`
+ * 比依赖某个版本的 stderr 文案稳。
+ *
+ * @returns {Promise<number>}
+ */
+export function pickFreePort() {
+  return new Promise((resolve, reject) => {
+    const server = createServer();
+    server.unref();
+    server.on('error', reject);
+    server.listen(0, '127.0.0.1', () => {
+      const address = server.address();
+      const port = typeof address === 'object' && address ? address.port : 0;
+      server.close(() => (port ? resolve(port) : reject(new Error('挑不到空闲端口'))));
+    });
+  });
+}
+
 export async function openPage({ edge, profileDir, extraArgs = [], startupTimeoutMs = 20000 }) {
+  const port = await pickFreePort();
   const proc = spawn(
     edge,
     [
       '--headless=new',
       '--disable-gpu',
       '--no-first-run',
-      // 端口 0 = 让浏览器自己挑，从 stderr 的 "DevTools listening on" 里读回来。
-      // 固定端口会在并行跑（或上次没退干净）时撞车。
-      '--remote-debugging-port=0',
+      `--remote-debugging-port=${port}`,
       `--user-data-dir=${profileDir}`,
       // 产物是 file:// 的单文件 HTML：不开这个，页面里 localStorage 与
       // 同源读取会被当作跨源隔离处理
@@ -185,34 +208,40 @@ export async function openPage({ edge, profileDir, extraArgs = [], startupTimeou
     ],
     { stdio: ['ignore', 'pipe', 'pipe'] },
   );
+  // 不读 stderr 也必须排空，否则管道写满会把浏览器卡住
+  proc.stdout?.resume();
+  proc.stderr?.resume();
 
-  const wsUrl = await new Promise((res, reject) => {
-    let buffer = '';
-    const timer = setTimeout(() => reject(new Error('Edge 启动超时')), startupTimeoutMs);
-    proc.stderr?.on('data', (chunk) => {
-      buffer += chunk.toString();
-      const match = /DevTools listening on (ws:\/\/\S+)/.exec(buffer);
-      if (match) {
-        clearTimeout(timer);
-        res(match[1]);
-      }
-    });
-    proc.on('error', (error) => {
-      clearTimeout(timer);
-      reject(error);
-    });
-    proc.on('exit', (code) => {
-      clearTimeout(timer);
-      reject(new Error(`Edge 提前退出，code=${code}`));
-    });
+  /** @type {number | null} */
+  let exitCode = null;
+  proc.on('exit', (code) => {
+    exitCode = code ?? 0;
   });
 
-  // 浏览器级 ws → 开一个页面 → 拿页面级 ws。
-  // （浏览器级的 Target.createTarget 是唯一稳定的开页面方式；
-  //  直接用 /json/new 需要 PUT 且不同版本行为不一致。）
-  const port = new URL(wsUrl).port;
-  const versionRes = await fetch(`http://127.0.0.1:${port}/json/version`);
-  const version = await versionRes.json();
+  const deadline = Date.now() + startupTimeoutMs;
+  /** @type {{ webSocketDebuggerUrl: string } | null} */
+  let version = null;
+  while (Date.now() < deadline) {
+    // ★ 不把「父进程退出」当失败：Windows 版 Edge 的启动器是个存根，
+    //   它拉起真正的浏览器后立刻 exit(0)，而 DevTools 端口是通的（Edge 157 实测）。
+    //   判据只能是「端口有没有起来」，不是「子进程还活着没有」。
+    try {
+      const res = await fetch(`http://127.0.0.1:${port}/json/version`);
+      if (res.ok) {
+        version = await res.json();
+        break;
+      }
+    } catch {
+      // 还没起来，继续等
+    }
+    await new Promise((res) => setTimeout(res, 100));
+  }
+  if (!version) {
+    throw new Error(
+      `Edge 启动超时（${startupTimeoutMs}ms，端口 ${port}${exitCode === null ? '，启动器仍在运行' : `，启动器已退出 code=${exitCode}`}）`,
+    );
+  }
+
   const browserWs = new WebSocket(version.webSocketDebuggerUrl);
   await new Promise((res) => browserWs.addEventListener('open', res, { once: true }));
 
@@ -225,6 +254,13 @@ export async function openPage({ edge, profileDir, extraArgs = [], startupTimeou
   await new Promise((res) => pageWs.addEventListener('open', res, { once: true }));
 
   const close = () => {
+    // ★ 先让浏览器自己退：启动器是存根，`proc.kill()` 杀不到真正的浏览器进程
+    //   （Edge 157 实测会留一堆孤儿进程）。`Browser.close` 才是对的那一刀。
+    try {
+      browser.send('Browser.close').catch(() => {});
+    } catch {
+      /* 连接已断 */
+    }
     try {
       pageWs.close();
     } catch {
@@ -242,5 +278,5 @@ export async function openPage({ edge, profileDir, extraArgs = [], startupTimeou
     }
   };
 
-  return { proc, browser, page: new Cdp(pageWs), browserWs, pageWs, port, close };
+  return { proc, browser, page: new Cdp(pageWs), browserWs, pageWs, port: String(port), close };
 }

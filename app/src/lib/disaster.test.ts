@@ -7,7 +7,7 @@
 
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { emptyDB } from './defaults';
-import { SCHEMA_VERSION_CURRENT } from './migrate';
+import { FORMAT_VERSION_CURRENT, SCHEMA_VERSION_CURRENT } from './migrate';
 import { buildSampleDB } from './sample';
 import {
   exportJSON,
@@ -369,7 +369,8 @@ describe('v0.8 迁移（3→4）：v0.7.3 备份导入零损失', () => {
     const parsed = JSON.parse(exportJSON(db)) as Record<string, unknown> & {
       formatVersion: number; pluginStorage: unknown[]; requestLog?: unknown[]; aiSuggestions: unknown[];
     };
-    expect(parsed.formatVersion).toBe(4);
+    // v1.0.0：导出格式带 offerDecision / 敞口字段 → formatVersion 抬到 5
+    expect(parsed.formatVersion).toBe(FORMAT_VERSION_CURRENT);
     expect(parsed.pluginStorage).toHaveLength(1);
     expect(parsed.aiSuggestions).toHaveLength(1);
     expect(parsed.requestLog).toBeUndefined();
@@ -489,7 +490,7 @@ describe('v0.9 迁移（4→5）：v0.8.0 备份导入零损失', () => {
     unlockPersistence();
   });
 
-  it('导出 JSON 带上简历三表（formatVersion 4），仍然不含 requestLog', () => {
+  it('导出 JSON 带上简历三表（formatVersion 5），仍然不含 requestLog', () => {
     const db = buildSampleDB(new Date('2026-10-21T09:00:00'));
     db.resumes = [{
       id: 'r1', name: '我的简历', templateId: 'tech-single',
@@ -509,7 +510,8 @@ describe('v0.9 迁移（4→5）：v0.8.0 备份导入零损失', () => {
     const parsed = JSON.parse(exportJSON(db)) as Record<string, unknown> & {
       formatVersion: number; resumes: unknown[]; resumeVersions: unknown[]; aiReports: unknown[]; requestLog?: unknown[];
     };
-    expect(parsed.formatVersion).toBe(4);
+    // 同前：formatVersion 由常量统一发号，v1.0.0 是 5
+    expect(parsed.formatVersion).toBe(FORMAT_VERSION_CURRENT);
     expect(parsed.resumes).toHaveLength(1);
     expect(parsed.resumeVersions).toHaveLength(1);
     expect(parsed.aiReports).toHaveLength(1);

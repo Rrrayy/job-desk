@@ -53,7 +53,7 @@ export function MigrationFailPage(props: MigrationFailPageProps) {
           </p>
         </div>
 
-        <section className={CLS.v}>
+        <section className="card">
           <h2 className={CLS.l}>原始数据已经另存了一份</h2>
           {failedAtKey ? (
             <>
@@ -81,7 +81,7 @@ export function MigrationFailPage(props: MigrationFailPageProps) {
           )}
         </section>
 
-        <section className={CLS.v}>
+        <section className="card">
           <h2 className={CLS.l}>① 先下载原始数据（最稳的一步）</h2>
           <p className={CLS.d}>
             下载下来的是一份完整的 JSON 文本，改坏了也能用编辑器修。修好之后放回 localStorage 的{' '}
@@ -102,7 +102,7 @@ export function MigrationFailPage(props: MigrationFailPageProps) {
           </div>
         </section>
 
-        <section className={CLS.v}>
+        <section className="card">
           <h2 className={CLS.l}>② 重试</h2>
           <p className={CLS.d}>
             如果你刚把数据修好、或者换了浏览器配置，点一下重新读取。这条不会覆盖任何东西，只是再读一次。
@@ -114,7 +114,7 @@ export function MigrationFailPage(props: MigrationFailPageProps) {
           </div>
         </section>
 
-        <section className={CLS.v}>
+        <section className="card">
           <h2 className={CLS.l}>③ 用空数据继续</h2>
           <p className={CLS.d}>
             进去之后可以先看看界面。注意：从这一刻起<strong>才会开始正常保存</strong> ——

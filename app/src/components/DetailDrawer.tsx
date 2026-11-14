@@ -47,6 +47,7 @@ import { BindVersionSelect } from './BindVersionSelect';
 import { JdPanel } from './JdPanel';
 import { ReportCard } from './resume/ReportCard';
 import { AiScenarioPanel } from './ai/AiScenarioPanel';
+import { OfferSection } from './offer/OfferSection';
 import { CLS } from '../lib/classTokens';
 
 export function DetailDrawer({ api }: { api: AppApi }) {
@@ -179,7 +180,22 @@ function DetailBody({ api, app }: { api: AppApi; app: Application }) {
       <header className={CLS.K}>
         <div className={CLS.ah}>
           <h2 className={CLS.I}>
-            {company ? company.name : '未知公司'} · {app.jobTitle}
+            {/* v1.0.0：公司名可点 → 打开公司档案抽屉（模块二的入口之一）。
+                用 button 而不是 a：它是应用内跳转，不是外链。 */}
+            {company ? (
+              <button
+                type="button"
+                className="drawer__company-link"
+                title="打开这家公司的档案"
+                data-testid="open-dossier"
+                onClick={() => api.company.openDossier(company.id)}
+              >
+                {company.name}
+              </button>
+            ) : (
+              '未知公司'
+            )}{' '}
+            · {app.jobTitle}
           </h2>
           <div className="drawer__chips">
             <span className="chip chip--status">{statusLabelOf(app.status)}</span>
@@ -506,7 +522,7 @@ function DetailBody({ api, app }: { api: AppApi; app: Application }) {
                         <button
                           key={String(option.value)}
                           type="button"
-                          className={cx('chip-toggle', active && 'is-active')}
+                          className={cx(CLS.v, active && 'is-active')}
                           onClick={() => update({ rejectedAtRound: option.value })}
                         >
                           {option.label}
@@ -652,6 +668,11 @@ function DetailBody({ api, app }: { api: AppApi; app: Application }) {
           )}
         </section>
 
+        {/* ---------------- v1.0.0：Offer 对比信息 ----------------
+            放在「面试」与「时间线」之间：它属于「事实」层，且编辑它不会污染时间线
+            （改了薪资不该让沉默天数归零）。 */}
+        <OfferSection api={api} app={app} />
+
         {/* ---------------- 时间线 ---------------- */}
         <section className={CLS.n}>
           <div className={CLS.w}>
@@ -665,7 +686,7 @@ function DetailBody({ api, app }: { api: AppApi; app: Application }) {
                 <button
                   key={type}
                   type="button"
-                  className={cx('chip-toggle', noteType === type && 'is-active')}
+                  className={cx(CLS.v, noteType === type && 'is-active')}
                   onClick={() => setNoteType(type)}
                 >
                   {NOTE_TYPE_LABEL[type]}
@@ -813,7 +834,7 @@ function RejectRoundPicker({
           <button
             key={String(option.value)}
             type="button"
-            className={cx('chip-toggle', isActive(option.value) && 'is-active')}
+            className={cx(CLS.v, isActive(option.value) && 'is-active')}
             onClick={() => {
               if (option.value === null) setPickedUnknown(true);
               onPick(option.value);

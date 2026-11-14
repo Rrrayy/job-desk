@@ -16,6 +16,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { DetailDrawer } from './DetailDrawer';
 import type { AppApi } from '../lib/api';
 import { emptyDB } from '../lib/defaults';
+import { DEFAULT_OFFER_WEIGHTS } from '../lib/offer/score';
 import type { Application, DB, Interview } from '../types';
 
 const NOW = new Date(2026, 9, 20, 10, 0, 0);
@@ -78,6 +79,23 @@ function makeApi(db: DB): AppApi {
     openExperience: vi.fn(),
     openQuickNote: vi.fn(),
     toast: vi.fn(),
+    // v1.0.0：抽屉里新挂的 OfferSection 读 api.offer.weights，公司名可点读 api.company.openDossier
+    offer: {
+      candidates: [],
+      weights: DEFAULT_OFFER_WEIGHTS,
+      setWeights: vi.fn(),
+      saveOffer: vi.fn(),
+      saveDecision: vi.fn(),
+      decision: null,
+    },
+    company: {
+      dossierId: null,
+      openDossier: vi.fn(),
+      closeDossier: vi.fn(),
+      saveExtras: vi.fn(),
+      sameName: () => [],
+      openQuestionBank: vi.fn(),
+    },
     // v0.8 / T05：D15 入口读就绪状态（默认未配置 → 按钮置灰，不影响本文件的管线断言）
     ai: {
       ready: false,

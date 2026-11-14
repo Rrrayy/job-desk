@@ -34,10 +34,10 @@ export const DEFAULT_NEW_SETTINGS = {
   dailyActionBudget: 5,
 } as const;
 
-/** 默认设置（schemaVersion 5） */
+/** 默认设置（schemaVersion 6） */
 export function defaultSettings(): Settings {
   return {
-    schemaVersion: 5,
+    schemaVersion: 6,
     warnAfterDays: 3,
     staleAfterDays: 7,
     interviewResultWaitDays: 5,

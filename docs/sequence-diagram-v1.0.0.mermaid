@@ -1,0 +1,127 @@
+%% 求职工作台 v1.0.0 · 关键流程时序图（两个场景，共用一份文件）
+%% 图 1：模块三「一句话快记」输入 → 解析 → 确认 → 写库
+%% 图 2：模块一「Offer 决策台」评分 → 加权 → 对比 → 记录决策
+%% 约定：红色 rect = 失败 / 歧义 / 边界分支；所有"不猜"的分支都必须有出口
+
+%% ============================================================
+%% 图 1  ·  快记（CAP-1 ~ CAP-13）
+%% ============================================================
+sequenceDiagram
+  autonumber
+  actor U as 用户
+  participant QA as QuickAdd
+  participant QC as QuickCapture
+  participant Dict as dict.ts (纯函数)
+  participant P as parseQuickNote (纯函数)
+  participant CC as CaptureChips
+  participant App as App.capture.commit
+  participant Act as 既有 action
+  participant DB as DB / localStorage
+
+  U->>QA: 点「＋记一家」（或按 Q）
+  QA->>QC: 渲染顶部输入行
+  U->>QC: 键入「明天下午3点字节二面，顺便问下美团」
+  Note over QC: 停止输入 400ms 才解析<br/>不按回车 —— 回车在本弹窗是「保存」
+  QC->>Dict: splitFirstSentence(text)
+  Dict-->>QC: head=「明天下午3点字节二面」 tail=「顺便问下美团」
+  QC->>P: parseQuickNote(head, {now, companies, applications, interviews})
+  P->>Dict: parseTimePhrase(head, now)
+  Dict-->>P: iso=明天15:00, partial=null, vague=false, pastDate=false
+  P->>P: 意图=interview（命中「二面」）→ round=2, kind=null
+  P->>P: 公司匹配：normalize 后最长命中「字节跳动」→ unique
+  P->>P: 岗位：该公司 2 条投递 → state='none'（D-12 不猜岗位）
+  P->>P: format=null（不默认 video，CAP-12）/ statusSuggestion=null
+  P-->>QC: CaptureDraft
+  QC->>CC: 渲染确认条 + 提示「一次记一件，先记了前半句」
+  Note over QC,DB: ★ 此刻 localStorage 与解析前逐字节相同（CAP-1 的断言）
+
+  alt 必填项缺失（岗位 / 形式）
+    CC->>U: 保存 disabled +「形式（必选）」
+    U->>CC: 选「抖音前端」+ 选「视频」
+  end
+
+  U->>CC: 点「保存」
+  CC->>QC: ConfirmedCapture
+  QC->>P: planCaptureCommit(draft, ctx)
+  P-->>QC: [ addInterview ]（statusConfirmed=false → 无 changeStatus）
+  QC->>App: capture.commit(draft)
+  App->>Act: addInterview({applicationId, round:2, format:'video', scheduledAt})
+  Act->>DB: mutate（一个撤销点）+ 刷新 lastActivityAt
+  App-->>QC: toast「记了 1 件事（⌘Z 可撤销）」
+  QC->>QA: 关闭确认条 / 清空输入
+
+  rect rgb(255, 235, 235)
+  Note over Dict,P: 失败与歧义分支 —— 全部「不猜、不落库」
+  P-->>QC: { ok:false, reason:'no_intent' }<br/>确认条为空、无保存按钮、原文留在输入框（CAP-9）
+  P-->>QC: { ok:false, reason:'no_company' }<br/>保存 disabled +「哪家公司？」+「新建公司『小鹅』」（CAP-5）
+  P-->>QC: company.state='ambiguous'<br/>列出两条投递让用户选，不许默认第一条（CAP-5）
+  P-->>QC: timePartial='dateOnly' | 'timeOnly'<br/>只生成 note 草案，不产生 Interview（CAP-3）
+  P-->>QC: pastDate=true<br/>弹「这天已经过了，是明年吗？」选否 → 时间 chip 清空（CAP-4）
+  P-->>QC: timeVague=true（过两天/下周左右/月底前）<br/>chip 标黄「时间不确定，请手选日期」（CAP-13）
+  P-->>QC: droppedTail 非空<br/>提示「一次记一件，先记了前半句」（CAP-10）
+  Note over P: format 恒为 null 或用户手选值，<br/>永远不默认 'video'（CAP-12）
+  end
+
+%% ============================================================
+%% 图 2  ·  Offer 决策台（OFF-1 ~ OFF-9）
+%% ============================================================
+sequenceDiagram
+  autonumber
+  actor U as 用户
+  participant T as TodayView / BoardView / DetailDrawer
+  participant OP as OfferPanel
+  participant S as score.ts (纯函数)
+  participant W as WeightPanel
+  participant C as CompareTable
+  participant DF as DecisionForm
+  participant App as App.offer
+  participant DB as DB / localStorage
+
+  U->>T: 点「3 个 Offer 待决策」/「对比 3 个 ▸」/「去对比」
+  T->>OP: open（App state，Esc 可关）
+  OP->>S: offerCandidatesOf(db, now)
+  S-->>OP: [字节, 美团, 快手]（status ∈ {offer, onboarded}，已排除回收站）
+  OP->>OP: defaultSelection → 全选；>8 时按 offer.updatedAt 取最近 8 并提示
+  loop 每个候选
+    OP->>S: computeOfferScore(offer.scores, weights)
+    S-->>OP: total / rows / ratedCount / normalized
+  end
+  OP->>C: buildCompareRows(selected, weights)
+  C-->>U: 综合分 + 每维贡献摊开 + 「已评维度」行<br/>缺维格写「未评（不计入）」而非留空
+
+  alt 勾选数 < 2
+    C-->>U: 对比区 disabled +「至少选 2 个才能对比」
+  else 勾选第 9 个
+    OP-->>U: chip 条拒绝 + 提示上限 8
+  end
+
+  U->>W: 拖动「薪资」滑块到 60
+  W->>S: rebalanceWeights(30/30/20/20, 'salary', 60)
+  S-->>W: 60/18/11/11（最大余数法，余数相等按 salary→growth→city→wlb）
+  Note over W: 拖动结束（pointerup）才写库<br/>不是每一帧都写（D-04）
+  W->>App: offer.setWeights(60/18/11/11)
+  App->>DB: updateSettings（不入撤销栈）
+  OP->>S: 权重重算（db 变了自动重渲染，无草稿副本）
+
+  U->>DF: 切「我的选择」tab
+  DF->>DF: 选投递 + 理由标签（≤5，内置 8 + 自定义）+ 一段话（≤500）+ 放弃多选
+  alt 已有决策（改选）
+    DF->>U: 二次确认「改选会覆盖 3/12 的记录」
+    U->>DF: 确认
+  end
+  U->>DF: 点「保存选择」
+  DF->>App: saveDecision({applicationId, decidedAt, reasonTags, note, declinedIds})
+  App->>App: applyDecision(draft, input)
+  Note over App: ★ 只改 draft.offerDecision<br/>不改任何 Application.status / statusChangedAt（OFF-8）
+  App->>DB: mutate + pushUndo（快照旧决策）
+  App-->>DF: toast「已记录」
+  OP->>U: 今日出现只读卡「你 3/12 选了字节 · 理由：成长」（绝对日期）
+
+  rect rgb(255, 235, 235)
+  Note over App,DB: 边界与降级分支
+  App-->>U: 决策指向的投递已被删 → decisionViewOf 输出「（投递已删除）」<br/>不报错、不清库（D-14 / 同 A-12）
+  App-->>U: 导出 → 导入：validateV2 不校验 applicationId 存在性<br/>否则「删投递 → 导出 → 导入」会整库失败
+  App-->>U: 「一键标记已放弃」不自动执行 → 用户点了才 changeStatus('dropped')（OFF-8）
+  App-->>U: deadlineAt 距今 ≤ deadlineWarnDays → 面板顶部与今日各一条琥珀提示（OFF-9）
+  App-->>U: 某 Offer 缺 ≥1 维 → 对比表该行标「还有 N 维没评」（OFF-9）
+  end

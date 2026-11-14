@@ -16,6 +16,7 @@ import {
   buildActionItems,
   buildDailyPlan,
   buildNoteIndex,
+  applyStatusChange,
   buildTodos,
   deadlineStateOf,
   effectiveStaleDays,
@@ -991,5 +992,256 @@ describe('v0.9 · aggregateByVersion：性能（验收 27）', () => {
     );
     expect(rows).toHaveLength(keys.size);
     expect(elapsed).toBeLessThan(20);
+  });
+});
+
+/* ====================== v1.0.0：applyStatusChange / revertStatusChange ====================== */
+
+describe('v1.0.0 · applyStatusChange（从 App.changeStatus 逐行搬运）', () => {
+  function dbWith(app: Application): DB {
+    const db = emptyDB();
+    db.companies = [{ id: 'c-1', name: '字节跳动', createdAt: '2026-09-01T00:00:00.000Z' }];
+    db.applications = [app];
+    return db;
+  }
+
+  function opts(at = '2026-10-21T08:00:00.000Z') {
+    return { at, round: 2, noteId: 'note-sys-1', text: '状态推进到「面试中」' };
+  }
+
+  it('推进状态：四个时间戳 + userEditedAt.status 都写，并追加一条防篡改的 system note', () => {
+    const db = dbWith(makeApp({ status: 'applied' }));
+    const undo = applyStatusChange(db, 'app-1', 'interviewing', opts());
+    expect(undo).not.toBeNull();
+    if (!undo) return;
+
+    const app = db.applications[0];
+    expect(app.status).toBe('interviewing');
+    expect(app.statusChangedAt).toBe('2026-10-21T08:00:00.000Z');
+    expect(app.lastActivityAt).toBe('2026-10-21T08:00:00.000Z');
+    expect(app.updatedAt).toBe('2026-10-21T08:00:00.000Z');
+    expect(app.userEditedAt?.status).toBe('2026-10-21T08:00:00.000Z');
+
+    const note = db.notes.find((item) => item.id === 'note-sys-1');
+    expect(note).toMatchObject({
+      applicationId: 'app-1',
+      type: 'system',
+      auto: true,
+      content: '状态推进到「面试中」',
+      touchedAt: '2026-10-21T08:00:00.000Z',
+    });
+  });
+
+  it('撤销快照装齐 5 个字段（少一个就静默回滚不干净）', () => {
+    const db = dbWith(makeApp({ status: 'applied', rejectedAtRound: null }));
+    const undo = applyStatusChange(db, 'app-1', 'interviewing', opts());
+    expect(undo).toEqual({
+      appId: 'app-1',
+      prevStatus: 'applied',
+      prevStatusChangedAt: '2026-10-20T01:00:00.000Z',
+      prevLastActivityAt: '2026-10-20T01:00:00.000Z',
+      prevRejectedAtRound: null,
+      createdNoteId: 'note-sys-1',
+    });
+  });
+
+  it('挂掉时带轮次 → 写 rejectedAtRound；没带轮次 → 不动原值', () => {
+    const withRound = dbWith(makeApp({ status: 'interviewing' }));
+    applyStatusChange(withRound, 'app-1', 'rejected', { ...opts(), round: 2 });
+    expect(withRound.applications[0].rejectedAtRound).toBe(2);
+
+    const noRound = dbWith(makeApp({ status: 'interviewing', rejectedAtRound: null }));
+    applyStatusChange(noRound, 'app-1', 'rejected', {
+      at: '2026-10-21T08:00:00.000Z',
+      noteId: 'note-sys-2',
+      text: '状态推进到「已挂」',
+    });
+    expect(noRound.applications[0].rejectedAtRound).toBeNull();
+  });
+
+  it('状态没变 → null，一条 note 都不写（不能把「点了同一个状态」记成一次互动）', () => {
+    const db = dbWith(makeApp({ status: 'applied' }));
+    expect(applyStatusChange(db, 'app-1', 'applied', opts())).toBeNull();
+    expect(db.notes).toHaveLength(0);
+  });
+
+  it('投递不存在 → null，不抛异常', () => {
+    const db = dbWith(makeApp({ status: 'applied' }));
+    expect(applyStatusChange(db, 'app-missing', 'offer', opts())).toBeNull();
+  });
+
+  it('★ 循环调用 N 次只产生 N 个撤销点（SIL-4 批量放弃「一次 ⌘Z 回滚 N 条」的前提）', () => {
+    const db = emptyDB();
+    db.applications = [
+      makeApp({ id: 'a1' }),
+      makeApp({ id: 'a2' }),
+      makeApp({ id: 'a3' }),
+    ];
+    const undos = ['a1', 'a2', 'a3']
+      .map((id, index) =>
+        applyStatusChange(db, id, 'dropped', {
+          at: `2026-10-21T08:0${index}:00.000Z`,
+          noteId: `note-${id}`,
+          text: '批量放弃',
+        }),
+      )
+      .filter((undo): undo is NonNullable<typeof undo> => undo !== null);
+    expect(undos).toHaveLength(3);
+    expect(db.applications.every((app) => app.status === 'dropped')).toBe(true);
+    expect(db.notes).toHaveLength(3);
+  });
+
+  it('撤销只删自己那一条 system note，用户手写的备注仍然生效（lastActivityAt 重算）', () => {
+    const db = dbWith(makeApp({ status: 'applied' }));
+    const userNote: Note = {
+      id: 'note-user',
+      applicationId: 'app-1',
+      type: 'chat',
+      content: 'HR 说下周给答复',
+      touchedAt: '2026-10-22T09:00:00.000Z',
+    };
+    db.notes.push(userNote);
+
+    const undo = applyStatusChange(db, 'app-1', 'interviewing', opts());
+    if (!undo) throw new Error('应该拿到撤销快照');
+    revertStatusChange(db, undo);
+
+    const app = db.applications[0];
+    expect(app.status).toBe('applied');
+    expect(app.statusChangedAt).toBe('2026-10-20T01:00:00.000Z');
+    expect(db.notes.map((note) => note.id)).toEqual(['note-user']);
+    // 撤销后基准回落到「用户那条备注」，而不是创建时间
+    expect(app.lastActivityAt).toBe('2026-10-22T09:00:00.000Z');
+  });
+
+  it('revert 时投递已被删 → 只清那条 note，不抛异常', () => {
+    const db = dbWith(makeApp({ status: 'applied' }));
+    const undo = applyStatusChange(db, 'app-1', 'interviewing', opts());
+    if (!undo) throw new Error('应该拿到撤销快照');
+    db.applications = [];
+    expect(() => revertStatusChange(db, undo)).not.toThrow();
+    expect(db.notes).toHaveLength(0);
+  });
+});
+
+/* ============== v1.0.0 · 批量放弃的撤销闭环（SIL-4「一次 ⌘Z 回滚 N 条」/ R-09） ============== */
+
+describe('v1.0.0 · 批量放弃的撤销闭环（SIL-4 / R-09）', () => {
+  /**
+   * 只取「契约点名的五列」做快照。
+   * PRD SIL-4 的验收原文是「撤销后 status / statusChangedAt / 自动 note 三者一并回滚」，
+   * ARCH R-09 把它扩到 status / statusChangedAt / lastActivityAt / rejectedAtRound / 自动 note。
+   * 这五列之外还有 updatedAt 与 userEditedAt.status 不参与回滚 —— 单独用一条用例记下来。
+   */
+  interface ContractRow {
+    id: string;
+    status: Status;
+    statusChangedAt: string;
+    lastActivityAt: string;
+    rejectedAtRound: number | null;
+  }
+
+  function contractRows(db: DB): ContractRow[] {
+    return db.applications.map((app) => ({
+      id: app.id,
+      status: app.status,
+      statusChangedAt: app.statusChangedAt,
+      lastActivityAt: app.lastActivityAt,
+      rejectedAtRound: app.rejectedAtRound ?? null,
+    }));
+  }
+
+  /** 5 条混合状态（含一条已挂过的，用来验证 rejectedAtRound 也被还原） */
+  function seedFive(): { db: DB; ids: string[] } {
+    const ids = ['a1', 'a2', 'a3', 'a4', 'a5'];
+    const db = makeDB([
+      makeApp({ id: 'a1', jobTitle: '岗位 1', status: 'chatting' }),
+      makeApp({ id: 'a2', jobTitle: '岗位 2', status: 'applied' }),
+      makeApp({ id: 'a3', jobTitle: '岗位 3', status: 'interviewing', rejectedAtRound: 2 }),
+      makeApp({ id: 'a4', jobTitle: '岗位 4', status: 'written' }),
+      makeApp({ id: 'a5', jobTitle: '岗位 5', status: 'offer' }),
+    ]);
+    return { db, ids };
+  }
+
+  it('★ 5 条一次放弃 → 一次撤销 → 5 条全部回滚，逐字段 diff 为空', () => {
+    const { db, ids } = seedFive();
+    const before = contractRows(db);
+
+    // App.batchDrop 的真实做法：一个 mutate 里循环 applyStatusChange，只入栈一个 multiStatus
+    const entries = ids.map((id, index) =>
+      applyStatusChange(db, id, 'dropped', {
+        at: `2026-10-21T08:0${index}:00.000Z`,
+        noteId: `note-${id}`,
+        text: '状态：已放弃',
+      }),
+    );
+    expect(entries.every((entry) => entry !== null)).toBe(true);
+    expect(db.applications.map((app) => app.status)).toEqual(['dropped', 'dropped', 'dropped', 'dropped', 'dropped']);
+    expect(db.notes).toHaveLength(5);
+
+    // 撤销 = performUndo 的 multiStatus 分支：逐个 revertStatusChange
+    for (const entry of entries) if (entry) revertStatusChange(db, entry);
+
+    expect(contractRows(db)).toEqual(before);
+    // 5 条自动 system note 一并回滚：一条都不许剩（否则时间线上留着 5 条假记录）
+    expect(db.notes).toEqual([]);
+  });
+
+  it('★ LIFO：先改 A 再改 B，连按两次撤销的顺序必须是 B → A', () => {
+    const db = makeDB([makeApp({ id: 'a1', jobTitle: 'A' }), makeApp({ id: 'a2', jobTitle: 'B' })]);
+    const undoA = applyStatusChange(db, 'a1', 'interviewing', {
+      at: '2026-10-21T08:00:00.000Z',
+      noteId: 'note-a',
+      text: 'A',
+    });
+    const undoB = applyStatusChange(db, 'a2', 'offer', {
+      at: '2026-10-21T08:01:00.000Z',
+      noteId: 'note-b',
+      text: 'B',
+    });
+    if (!undoA || !undoB) throw new Error('两次变更都该拿到撤销快照');
+
+    // App.tsx 的撤销栈是 push + pop（undoLast），所以这里按同样的顺序弹
+    const stack = [undoA, undoB];
+    revertStatusChange(db, stack.pop() as NonNullable<typeof undoA>);
+    // 后改的 B 先回滚
+    expect(db.applications.find((app) => app.id === 'a2')?.status).toBe('applied');
+    expect(db.notes.map((note) => note.id)).toEqual(['note-a']);
+    // 先改的 A 还保持着改后的状态 —— 一次撤销只退一步，不许顺手连带
+    expect(db.applications.find((app) => app.id === 'a1')?.status).toBe('interviewing');
+
+    revertStatusChange(db, stack.pop() as NonNullable<typeof undoA>);
+    expect(db.applications.find((app) => app.id === 'a1')?.status).toBe('applied');
+    expect(db.applications.find((app) => app.id === 'a2')?.status).toBe('applied');
+    expect(db.notes).toEqual([]);
+  });
+
+  it('（记录用，不是要求）撤销只还原本次变更：updatedAt 与 userEditedAt.status 不还原', () => {
+    const { db } = seedFive();
+    const before = { ...db.applications[0] };
+    const entry = applyStatusChange(db, 'a1', 'dropped', {
+      at: '2026-10-21T08:00:00.000Z',
+      noteId: 'note-a1',
+      text: '状态：已放弃',
+    });
+    if (!entry) throw new Error('应该拿到撤销快照');
+    revertStatusChange(db, entry);
+    const after = db.applications[0];
+
+    // 契约里的五列：全部回到原值
+    expect(after.status).toBe(before.status);
+    expect(after.statusChangedAt).toBe(before.statusChangedAt);
+    expect(after.lastActivityAt).toBe(before.lastActivityAt);
+    expect(after.rejectedAtRound ?? null).toBe(before.rejectedAtRound ?? null);
+    expect(db.notes).toEqual([]);
+
+    // 这两列没有回滚（v1.0.0 之前就是这样，不是本版引入）：
+    // updatedAt 被写成「撤销这一刻」——「撤销」本身是一次写操作，这个行为可以接受；
+    // userEditedAt.status 仍指着刚才那次变更 —— 语义上这一刻用户并没有手动改过状态。
+    // 所以「整条投递对象逐字节相同」这个更强的断言**不成立**，SIL-4 的「逐字段 diff 为空」
+    // 只能按契约那五列理解（见 QA 报告的「不修但要记录」一档）。
+    expect(after.updatedAt).not.toBe(before.updatedAt);
+    expect(after.userEditedAt?.status).toBe('2026-10-21T08:00:00.000Z');
   });
 });

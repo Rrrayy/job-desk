@@ -16,6 +16,7 @@ import {
   MAX_ENTRIES,
   cssAtoms,
   decodeLiteral,
+  detokenizeStale,
   diffGolden,
   findMatching,
   lex,
@@ -30,6 +31,7 @@ import {
   scanOccurrences,
   splitArgs,
   stablePlan,
+  stripUnusedClsImport,
   tokenNames,
   trimSpan,
 } from './tokenize-classes.mjs';
@@ -306,5 +308,70 @@ describe('tokenize-classes · 仓库现状（门禁口径）', () => {
     expect(atoms.has('btn')).toBe(true);
     expect(atoms.has('btn--small')).toBe(true);
     expect(atoms.has('b-c')).toBe(true);
+  });
+});
+
+/**
+ * v1.0.0 回归：token 被复用时，旧代码里的 `CLS.x` 必须被还原成字面量。
+ *
+ * 这一组直接对应一次真实翻车：`card` 掉出表后 token `v` 分给了 `chip-toggle`，
+ * 29 处 `<section className="card">` 静默变成了小药丸，而全部测试与门禁都是绿的
+ * （`check:classes` 只校验「表里的串都写成 CLS.x」，不校验 token 的语义）。
+ */
+describe('tokenize-classes · 掉出表的串必须被还原（v1.0.0 回归）', () => {
+  const oldTable = [{ token: 'v', value: 'card' }];
+
+  it('★ 值不在新表里 → JSX 形态还原成双引号字面量', () => {
+    const tokenByValue = new Map([['chip-toggle', 'v']]);
+    const { next, changed, detokenized } = detokenizeStale('<section className={CLS.v}>', oldTable, tokenByValue);
+    expect(next).toBe('<section className="card">');
+    expect(changed).toBe(1);
+    expect(detokenized).toEqual(['card']);
+  });
+
+  it('★ 值不在新表里 → 参数形态还原成单引号字面量', () => {
+    const tokenByValue = new Map([['chip-toggle', 'v']]);
+    const { next } = detokenizeStale("cx(CLS.v, 'extra')", oldTable, tokenByValue);
+    expect(next).toBe("cx('card', 'extra')");
+  });
+
+  it('值还在新表里且 token 没变 → 一个字符都不动', () => {
+    const tokenByValue = new Map([['card', 'v']]);
+    const { next, changed } = detokenizeStale('<section className={CLS.v}>', oldTable, tokenByValue);
+    expect(next).toBe('<section className={CLS.v}>');
+    expect(changed).toBe(0);
+  });
+
+  it('值还在新表里但换了 token → 跟到新 token（复用也安全）', () => {
+    const tokenByValue = new Map([['card', 'bB']]);
+    const { next, changed } = detokenizeStale('cx(CLS.v)', oldTable, tokenByValue);
+    expect(next).toBe('cx(CLS.bB)');
+    expect(changed).toBe(1);
+  });
+
+  it('不误伤 token 前缀相同的邻居（CLS.v 不能吃掉 CLS.vx）', () => {
+    const tokenByValue = new Map([['chip-toggle', 'v']]);
+    const src = 'cx(CLS.v, CLS.vx)';
+    const { next } = detokenizeStale(src, oldTable, tokenByValue);
+    expect(next).toBe("cx('card', CLS.vx)");
+  });
+
+  it('文件里不再有 CLS. 时，import 行必须被摘掉（否则 typecheck 报未使用）', () => {
+    const src = "import { CLS } from '../../lib/classTokens';\n\nexport const a = 1;\n";
+    expect(stripUnusedClsImport(src)).toBe('\nexport const a = 1;\n');
+    expect(stripUnusedClsImport("import { CLS } from 'x';\nconst b = CLS.a;\n")).toContain("import { CLS }");
+  });
+
+  it('★ stablePlan：存活的串保留原 token，新串只拿空位（token 复用不再改语义）', () => {
+    const existing = [{ token: 'v', value: 'card' }];
+    const plan = [
+      { token: '', value: 'card', count: 9 },
+      { token: '', value: 'brand-new', count: 3 },
+      ...Array.from({ length: 28 }, (_, i) => ({ token: '', value: `filler-${i}`, count: 1 })),
+    ];
+    const out = stablePlan(plan, existing);
+    expect(out.find((e) => e.value === 'card')?.token).toBe('v');
+    expect(out.find((e) => e.value === 'brand-new')?.token).not.toBe('v');
+    expect(new Set(out.map((e) => e.token)).size).toBe(out.length);
   });
 });

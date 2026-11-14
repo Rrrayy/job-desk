@@ -1265,8 +1265,50 @@ export function revertStatusChange(draft: DB, undo: StatusUndo): void {
   target.updatedAt = new Date().toISOString();
 }
 
-/* ------------------------------------------------------ 删除投递的撤销包 */
+/**
+ * 一个「设置状态」的写库配方（从 `App.changeStatus` **逐行搬运**，行为一字不差）。
+ * 返回撤销快照（null = 投递不存在或状态未变），调用方负责 `pushUndo`。
+ *
+ * ★ 抽它的唯一理由是 SIL-4「批量放弃一次撤销回滚 N 条」——
+ *   循环调用 `changeStatus` 会得到 N 个撤销点，一次 ⌘Z 只能回滚 1 条。
+ * ★ 搬运时**没有做任何顺手优化**（R-08）：`userEditedAt`、`rejectedAtRound`、
+ *   system note 三处细节都是「少搬一行就静默失效」的地方。
+ */
+export function applyStatusChange(
+  draft: DB,
+  appId: string,
+  status: Status,
+  opts: { at: string; round?: number; noteId: string; text: string },
+): StatusUndo | null {
+  const target = draft.applications.find((app) => app.id === appId);
+  if (!target || target.status === status) return null;
+  const from = target.status;
+  const undo: StatusUndo = {
+    appId,
+    prevStatus: from,
+    prevStatusChangedAt: target.statusChangedAt,
+    prevLastActivityAt: target.lastActivityAt,
+    prevRejectedAtRound: target.rejectedAtRound ?? null,
+    createdNoteId: opts.noteId,
+  };
+  target.status = status;
+  target.statusChangedAt = opts.at;
+  target.lastActivityAt = opts.at;
+  target.updatedAt = opts.at;
+  target.userEditedAt = { ...(target.userEditedAt ?? {}), status: opts.at };
+  if (status === 'rejected' && opts.round) target.rejectedAtRound = opts.round;
+  draft.notes.push({
+    id: opts.noteId,
+    applicationId: appId,
+    type: 'system',
+    content: opts.text,
+    auto: true,
+    touchedAt: opts.at,
+  });
+  return undo;
+}
 
+/* ------------------------------------------------------ 删除投递的撤销包 */
 /**
  * 删除一条投递时被一并移走的东西。
  *

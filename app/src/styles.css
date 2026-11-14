@@ -6376,3 +6376,1089 @@ button.chip:hover {
 }
 
 
+
+/* ==========================================================================
+   v1.0.0 / 模块一：Offer 决策（.offer* / .cmp* / .wcmp* / .dec*）
+   ========================================================================== */
+
+/* ---- 详情抽屉里的 Offer 录入区块 ---- */
+
+/*
+ 折叠态也用按钮而不是 div：它是「点开看细节」的入口，
+ 用 button 才有键盘可达性与 hover/focus 反馈。整行可点，热区够大。
+*/
+.offer-fold {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  width: 100%;
+  padding: 8px 10px;
+  border: 1px dashed var(--line);
+  border-radius: var(--radius-sm);
+  background: var(--surface);
+  color: var(--ink-2);
+  font-size: 12px;
+  text-align: left;
+  cursor: pointer;
+}
+
+.offer-fold:hover {
+  border-color: var(--indigo);
+  color: var(--ink);
+}
+
+.offer-fold.is-empty {
+  color: var(--ink-4);
+}
+
+.offer-fold__text {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.offer-fold__hint {
+  flex: none;
+  color: var(--indigo);
+}
+
+.offer-form {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  margin-top: 10px;
+  padding: 12px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  background: var(--bg);
+}
+
+/* 六个短字段挤在一行会看不清，所以用自动换行的 grid（窄屏自动降列） */
+.offer-form__row {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
+  gap: 10px;
+}
+
+.offer-form__scores {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.offer-scores {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.offer-scores__row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.offer-scores__label {
+  flex: none;
+  width: 84px;
+  font-size: 12px;
+  color: var(--ink-2);
+}
+
+.offer-scores__btns {
+  display: flex;
+  gap: 4px;
+}
+
+/* 1–5 的评分点：不做星星，做 5 个方格 —— 数字比星星更容易对齐和核对 */
+.score-btn {
+  width: 28px;
+  height: 26px;
+  padding: 0;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-sm);
+  background: var(--surface);
+  color: var(--ink-3);
+  font-size: 12px;
+  cursor: pointer;
+}
+
+.score-btn:hover {
+  border-color: var(--indigo);
+  color: var(--indigo);
+}
+
+.score-btn.is-on {
+  border-color: var(--indigo);
+  background: var(--indigo-soft);
+  color: var(--indigo-dark);
+  font-weight: 600;
+}
+
+/* ---- 决策面板 ---- */
+
+/* 面板比「记一家」宽：对比表 4 列以上必须有横向空间，否则每一格都在折行 */
+.modal--offer {
+  width: min(960px, 94vw);
+  max-height: 88vh;
+}
+
+.offer-alerts {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  margin: 0 0 12px;
+  padding: 0;
+  list-style: none;
+}
+
+.offer-alerts__item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 10px;
+  border-radius: var(--radius-sm);
+  background: var(--line-soft);
+  color: var(--ink-2);
+  font-size: 12px;
+}
+
+.offer-alerts__item.is-warn {
+  background: var(--amber-soft);
+  color: #8a5a00;
+}
+
+/* ---- 对比表 ---- */
+
+.cmp {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.cmp__pick {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.cmp__chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.cmp__empty {
+  margin: 8px 0;
+  padding: 16px;
+  border: 1px dashed var(--line);
+  border-radius: var(--radius);
+  text-align: center;
+}
+
+/* 8 列 × 140px 已经到 1120px，超出就只能横向滚动 —— 不缩字号，宁可可读性优先 */
+.cmp__scroll {
+  overflow-x: auto;
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  background: var(--surface);
+}
+
+.cmp__table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 12px;
+}
+
+.cmp__table th,
+.cmp__table td {
+  min-width: 132px;
+  padding: 7px 10px;
+  border-bottom: 1px solid var(--line-soft);
+  text-align: left;
+  vertical-align: top;
+}
+
+.cmp__table thead th {
+  position: sticky;
+  top: 0;
+  background: var(--bg);
+  color: var(--ink-2);
+  font-weight: 600;
+  white-space: nowrap;
+}
+
+/* 行首那一列钉在左边：横向滚动时「这一行是什么」不能跟着跑掉 */
+.cmp__table tbody th {
+  position: sticky;
+  left: 0;
+  background: var(--surface);
+  color: var(--ink-3);
+  font-weight: 500;
+  white-space: nowrap;
+}
+
+.cmp__table tbody tr:hover td {
+  background: var(--line-soft);
+}
+
+.cmp__head-company {
+  display: block;
+  font-weight: 600;
+}
+
+.cmp__head-job {
+  display: block;
+  margin-top: 2px;
+  color: var(--ink-4);
+  font-weight: 400;
+}
+
+/* 综合分是这张表的结论，给它一条重线 + 略大的字 */
+.cmp__row--total td {
+  font-size: 15px;
+  font-weight: 600;
+  color: var(--ink);
+}
+
+.cmp__row--total th {
+  color: var(--ink-2);
+}
+
+.cmp__cell--muted {
+  color: var(--ink-4);
+}
+
+.cmp__cell--warn {
+  color: #a35a00;
+}
+
+.cmp__cell--primary {
+  color: var(--indigo-dark);
+}
+
+/* 格内补充说明（「按 2/4 维归一」）：必须比正文弱，但它存在本身就是提醒 */
+.cmp__note {
+  display: block;
+  margin-top: 2px;
+  color: var(--ink-4);
+  font-size: 11px;
+  font-weight: 400;
+}
+
+/* ---- 权重面板 ---- */
+
+.wcmp {
+  margin: 14px 0;
+  padding: 12px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  background: var(--surface);
+}
+
+.wcmp__sliders {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+  gap: 10px 18px;
+  margin-top: 10px;
+}
+
+.wcmp__slider {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.wcmp__slider-label {
+  font-size: 12px;
+  color: var(--ink-2);
+}
+
+.wcmp__slider input[type='range'] {
+  width: 100%;
+  accent-color: var(--indigo);
+}
+
+/* 这一句是这一块的价值观说明，不能省：否则用户会以为权重是「这次比较的参数」 */
+.wcmp__hint {
+  grid-column: 1 / -1;
+  margin: 0;
+}
+
+/* ---- 决策 ---- */
+
+.dec {
+  margin: 14px 0;
+  padding: 12px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  background: var(--surface);
+}
+
+.dec__view {
+  margin-top: 8px;
+  padding-top: 8px;
+  border-top: 1px dashed var(--line);
+}
+
+.dec__tags {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin: 0 0 6px;
+}
+
+/* 回看时只露前三行：给的是「当时怎么想的」，不是整篇日记 */
+.dec__note {
+  margin: 0;
+  color: var(--ink-2);
+  font-size: 12px;
+  white-space: pre-line;
+}
+
+.dec__form {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  margin-top: 10px;
+  padding-top: 10px;
+  border-top: 1px dashed var(--line);
+}
+
+.dec__tags-pick,
+.dec__declined {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.dec__tag-btns {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+/* ==========================================================================
+   v1.0.0 / 模块二：公司档案（.dossier*）
+   ========================================================================== */
+
+/* 档案比详情抽屉略宽：它要放下「五字段表单 + 概览 + 时间轴」 */
+.drawer--dossier {
+  width: min(560px, 100vw);
+}
+
+.dossier__sub {
+  margin: 4px 0 0;
+  color: var(--ink-3);
+  font-size: 12px;
+}
+
+.dossier__overview {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  margin: 0 0 12px;
+}
+
+.dossier__overview-row {
+  display: grid;
+  grid-template-columns: 84px 1fr;
+  gap: 10px;
+  padding: 3px 0;
+  font-size: 12px;
+}
+
+.dossier__overview-row dt {
+  color: var(--ink-4);
+}
+
+.dossier__overview-row dd {
+  margin: 0;
+  color: var(--ink);
+  word-break: break-word;
+}
+
+.dossier__overview-row a {
+  color: var(--indigo);
+}
+
+.dossier__fields {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+  gap: 10px;
+  padding: 12px;
+  border-radius: var(--radius);
+  background: var(--bg);
+}
+
+/* 「面试体感 vs 员工口碑」那句说明要跨满整行，不然会被挤成窄条 */
+.dossier__fields > .field__hint {
+  grid-column: 1 / -1;
+}
+
+.dossier__stats {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(84px, 1fr));
+  gap: 8px;
+}
+
+.dossier__stat {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 2px;
+  padding: 10px 6px;
+  border-radius: var(--radius-sm);
+  background: var(--bg);
+}
+
+.dossier__stat-value {
+  font-size: 18px;
+  font-weight: 600;
+  color: var(--ink);
+}
+
+.dossier__stat-label {
+  color: var(--ink-4);
+  font-size: 11px;
+}
+
+.dossier__apps,
+.dossier__interviews {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.dossier__apps li,
+.dossier__interviews li {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  padding: 6px 0;
+  border-bottom: 1px solid var(--line-soft);
+  font-size: 12px;
+}
+
+.dossier__apps li:last-child,
+.dossier__interviews li:last-child {
+  border-bottom: 0;
+}
+
+.dossier__interview-when {
+  flex: none;
+  color: var(--ink-2);
+  font-variant-numeric: tabular-nums;
+}
+
+.dossier__exp {
+  align-items: center;
+  gap: 10px;
+  font-size: 12px;
+  color: var(--ink-2);
+}
+
+/* 时间轴：左侧一条细线串起所有事件；系统条目弱化（它是推导出来的，不是用户写的） */
+.dossier__timeline {
+  display: flex;
+  flex-direction: column;
+  gap: 0;
+  margin: 0;
+  padding: 0 0 0 12px;
+  list-style: none;
+  border-left: 1px solid var(--line);
+}
+
+.dossier__tl-item {
+  position: relative;
+  display: grid;
+  grid-template-columns: 92px 1fr;
+  gap: 2px 10px;
+  padding: 6px 0;
+  font-size: 12px;
+}
+
+.dossier__tl-item::before {
+  content: '';
+  position: absolute;
+  left: -17px;
+  top: 12px;
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: var(--indigo);
+}
+
+.dossier__tl-item.is-system::before {
+  background: var(--ink-4);
+}
+
+.dossier__tl-at {
+  color: var(--ink-4);
+  font-variant-numeric: tabular-nums;
+}
+
+.dossier__tl-text {
+  color: var(--ink);
+  word-break: break-word;
+}
+
+.dossier__tl-job {
+  grid-column: 2;
+  color: var(--ink-4);
+  font-size: 11px;
+}
+
+.dossier__tl-item.is-system .dossier__tl-text {
+  color: var(--ink-3);
+}
+
+/* 抽屉标题里的公司名是可点的：用弱下划线暗示，不抢标题权重 */
+.drawer__company-link {
+  padding: 0;
+  border: 0;
+  border-bottom: 1px dashed var(--line);
+  background: none;
+  color: inherit;
+  font: inherit;
+  cursor: pointer;
+}
+
+.drawer__company-link:hover {
+  border-bottom-color: var(--indigo);
+  color: var(--indigo-dark);
+}
+
+/* ==========================================================================
+   v1.0.0 / 模块三：一句话快记（.cap*）
+   ========================================================================== */
+
+.cap-wrap {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 12px;
+  border-radius: var(--radius);
+  background: var(--indigo-soft);
+}
+
+.cap {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 10px 12px;
+  border-radius: var(--radius-sm);
+  background: var(--surface);
+}
+
+/* 每行都是「标签 + 值」：标签固定宽度，值可以换行 —— 手机上一行也别撑破 */
+.cap__row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px 10px;
+  font-size: 12px;
+}
+
+.cap__label {
+  flex: none;
+  width: 72px;
+  color: var(--ink-4);
+}
+
+/* CAP-4：过去日期必须二选 —— 提示与两个按钮排在一行，别让用户找不到「否」 */
+.cap__past {
+  display: inline-flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+}
+
+.cap__chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 3px 10px;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  background: var(--bg);
+  color: var(--ink-2);
+}
+
+.cap__chip.is-on {
+  border-color: var(--indigo);
+  background: var(--indigo-soft);
+  color: var(--indigo-dark);
+  font-weight: 600;
+}
+
+/* 时间没解析出来（或只有半截）时标黄：它进不了日历，用户得知道 */
+.cap__chip.is-warn {
+  border-color: var(--amber);
+  background: var(--amber-soft);
+  color: #96601b;
+}
+
+.cap__choices {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+}
+
+.cap__ask {
+  font-weight: 600;
+}
+
+.cap__check {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  cursor: pointer;
+}
+
+.cap__tail {
+  margin: 0;
+  padding: 8px 10px;
+  border-radius: var(--radius-sm);
+  background: var(--amber-soft);
+  color: #96601b;
+  font-size: 12px;
+}
+
+.cap__foot {
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+/* 必填但没选：红框提示，配合下面那句「形式是必填项」 */
+.cap__select--required {
+  border-color: var(--red);
+  background: var(--red-soft);
+}
+
+.cap-fail {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  padding: 10px 12px;
+  border-radius: var(--radius-sm);
+  background: var(--amber-soft);
+  color: #96601b;
+  font-size: 12px;
+}
+
+/* ==========================================================================
+   v1.0.0 / 模块四：沉默待办（.sil*）
+   ========================================================================== */
+
+.sil {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.sil__head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.sil__stat {
+  color: var(--ink-2);
+  font-size: 13px;
+}
+
+.sil__stat strong {
+  color: var(--ink);
+  font-size: 18px;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+}
+
+.sil__controls {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px 12px;
+}
+
+.sil__toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 12px;
+  color: var(--ink-2);
+  cursor: pointer;
+}
+
+.sil__group {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.sil__group-head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin: 0;
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--ink-2);
+}
+
+/* 计数胶囊延续看板列头的口径：红=已沉默，黄=该跟进 */
+.sil__group-count {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 22px;
+  padding: 1px 7px;
+  border-radius: 999px;
+  font-size: 12px;
+  font-variant-numeric: tabular-nums;
+}
+
+.sil__group-count--stale {
+  background: var(--red-soft);
+  color: #b83a3e;
+}
+
+.sil__group-count--warn {
+  background: var(--amber-soft);
+  color: #96601b;
+}
+
+.sil__rows {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+/* 行本身是「勾选框 + 主体 + 角标 + 动作」四段；窄屏时主体换到第二行 */
+.sil__row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px 10px;
+  padding: 8px 10px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-sm);
+  background: var(--surface);
+}
+
+.sil__row--stale {
+  border-left: 3px solid var(--red);
+}
+
+.sil__row--warn {
+  border-left: 3px solid var(--amber);
+}
+
+.sil__row.is-checked {
+  background: var(--indigo-soft);
+  border-color: var(--indigo);
+}
+
+/* 静音行灰显但仍留在原组：它只是不催你，不是不重要 */
+.sil__row.is-muted {
+  opacity: 0.62;
+}
+
+.sil__check {
+  flex: none;
+  margin: 0;
+  cursor: pointer;
+}
+
+.sil__main {
+  display: flex;
+  flex: 1 1 200px;
+  flex-direction: column;
+  gap: 1px;
+  min-width: 0;
+  padding: 0;
+  border: 0;
+  background: none;
+  text-align: left;
+  cursor: pointer;
+}
+
+.sil__names {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  min-width: 0;
+}
+
+.sil__company {
+  flex: none;
+  font-weight: 600;
+  color: var(--ink);
+}
+
+.sil__job {
+  overflow: hidden;
+  color: var(--ink-2);
+  font-size: 12px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.sil__meta {
+  color: var(--ink-4);
+  font-size: 11px;
+}
+
+.sil__mute {
+  flex: none;
+  padding: 2px 8px;
+  border-radius: 999px;
+  background: var(--bg);
+  color: var(--ink-4);
+  font-size: 11px;
+}
+
+/* 红组内 15 天分割线：只是一条线，不建子组 —— 计数口径只有一套 */
+.sil__split {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin: 4px 0;
+  color: var(--ink-4);
+  font-size: 11px;
+}
+
+.sil__split::after {
+  content: '';
+  flex: 1;
+  height: 1px;
+  background: var(--line);
+}
+
+.sil-bar {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 10px 12px;
+  border: 1px solid var(--indigo);
+  border-radius: var(--radius-sm);
+  background: var(--indigo-soft);
+}
+
+.sil-bar__row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px 10px;
+}
+
+.sil-bar__count {
+  color: var(--indigo-dark);
+  font-size: 12px;
+  font-weight: 600;
+}
+
+.sil-bar__mute {
+  display: inline-flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+}
+
+.sil-bar__mute-label {
+  color: var(--ink-4);
+  font-size: 12px;
+}
+
+/* 放弃是破坏性动作：给它一点颜色，但不用整块红底去吓人 */
+.sil-bar__danger {
+  color: var(--red);
+}
+
+.sil-scripts {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding-top: 8px;
+  border-top: 1px dashed var(--line);
+}
+
+.sil-script {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 10px;
+  border-radius: var(--radius-sm);
+  background: var(--surface);
+}
+
+.sil-script__head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 12px;
+  color: var(--ink-2);
+  cursor: pointer;
+}
+
+/* 话术是只读文本：选中即复制走，所以给它等宽数字+可换行，别一行截断 */
+.sil-script__text {
+  width: 100%;
+  resize: vertical;
+  font-size: 12px;
+  line-height: 1.7;
+}
+
+/* 「改用手动记录」把原文交接过来：留在表单上方，让人照着填（不猜、不写库） */
+.qa-fallback {
+  margin: 0 0 12px;
+  padding: 8px 10px;
+  border-left: 3px solid var(--amber);
+  border-radius: var(--radius-sm);
+  background: var(--amber-soft);
+  color: #96601b;
+  font-size: 12px;
+}
+
+/* 列表页的两个页签（v1.0 模块四的入口；不占导航） */
+.list-shell {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  max-width: 1440px;
+  margin: 0 auto;
+}
+
+.list-tabs {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  padding-bottom: 2px;
+  border-bottom: 1px solid var(--line);
+}
+
+.list-tab {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 12px;
+  border: 0;
+  border-bottom: 2px solid transparent;
+  background: none;
+  color: var(--ink-3);
+  font-size: 13px;
+  cursor: pointer;
+}
+
+.list-tab:hover {
+  color: var(--ink);
+}
+
+.list-tab.is-active {
+  border-bottom-color: var(--indigo);
+  color: var(--ink);
+  font-weight: 600;
+}
+
+.list-tab__count {
+  color: var(--ink-4);
+  font-size: 12px;
+  font-variant-numeric: tabular-nums;
+}
+
+/* 待办数量用红点：它是「该做点什么」的信号，不是普通计数 */
+.list-tab__badge {
+  padding: 0 6px;
+  border-radius: 999px;
+  background: var(--red-soft);
+  color: #b83a3e;
+  font-size: 11px;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+}
+
+/* ==========================================================================
+   v1.0.0 / 入口接线（看板列头下方 / 今日卡 / 待办条 / 题库筛选）
+   ========================================================================== */
+
+/* 对比入口独立成行，宽高都跟列头分开 —— 它是一条动作，不是一个计数 */
+.board__compare {
+  margin: 0 8px 6px;
+  padding: 4px 8px;
+  border: 1px dashed var(--indigo);
+  border-radius: var(--radius-sm);
+  background: var(--indigo-soft);
+  color: var(--indigo-dark);
+  font-size: 12px;
+  cursor: pointer;
+}
+
+.board__compare:hover {
+  background: var(--indigo);
+  color: #fff;
+}
+
+.todobar__silence {
+  margin-left: auto;
+}
+
+.card--offer {
+  border-left: 3px solid var(--indigo);
+}
+
+.today-dec {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  font-size: 13px;
+}
+
+.today-dec__pick {
+  margin: 0;
+  color: var(--ink);
+}
+
+.today-dec__reasons,
+.today-dec__declined {
+  margin: 0;
+  color: var(--ink-3);
+  font-size: 12px;
+}
+
+/* 回看卡只露前 3 行：多行文本要保留换行，同时不许撑高卡片 */
+.today-dec__note {
+  margin: 0;
+  color: var(--ink-2);
+  font-size: 12px;
+  white-space: pre-line;
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 3;
+  overflow: hidden;
+}
+
+/* 题库被档案带过来的公司筛选：摆成一行文字 + 一个出口，不占一个下拉的位置 */
+.qb__filter-note {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 4px 10px;
+  border-radius: var(--radius-sm);
+  background: var(--indigo-soft);
+  color: var(--indigo-dark);
+  font-size: 12px;
+}

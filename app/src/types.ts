@@ -65,6 +65,17 @@ export interface Company {
   referrer?: string;
   impression?: string;
   createdAt: string;
+  /* ---------- v1.0.0 新增（全部可选，缺失即「没填」，不写空串占位） ---------- */
+  /** 规模原文，"1000-9999人"。自由文本 —— 各平台分档不一致，不做枚举 */
+  scale?: string;
+  /** 融资阶段（7 值枚举）。'unknown' = 查过但没查到 */
+  financingStage?: CompanyStage;
+  /** 官网，http(s):// 开头，≤200 字 */
+  website?: string;
+  /** 行业细分，≤40 字 —— 与粗粒度的 industry 是两个问题 */
+  industryDetail?: string;
+  /** 员工口碑 ≤300 字。★ 与 impression（面试体感）是两个字段，不能合并 */
+  employeeReview?: string;
 }
 
 /** 同步元信息。**平台独占，用户不可见不可编辑** */
@@ -181,6 +192,11 @@ export interface Application {
   sync?: SyncMeta;
   /** v2：用户手改时间戳，只记被改过的字段 */
   userEditedAt?: UserEditedMap;
+  /**
+   * v1.0.0：这一条投递拿到的 Offer 详情（嵌套，不建 offers 表 —— 一个岗位最多一个 Offer）。
+   * ★ 编辑它**不写 note、不动 lastActivityAt**：改了薪资不该让沉默天数归零。
+   */
+  offer?: OfferDetail;
   /**
    * v0.5：软删除时间（ISO）。有值 = 在回收站里，不是真删。
    *
@@ -331,7 +347,8 @@ export interface AISettings {
 
 /** 全局设置 */
 export interface AppSettings {
-  schemaVersion: 5;
+  /** v1.0.0：5 → 6（空迁移，只改这一个数字） */
+  schemaVersion: 6;
   warnAfterDays: number;
   staleAfterDays: number;
   interviewResultWaitDays: number;
@@ -371,6 +388,12 @@ export interface AppSettings {
   encryption: EncryptionSettings;
   /** v0.8 新增：AI 客户端设置；缺省 = AI 未配置 */
   ai?: AISettings;
+  /**
+   * v1.0.0：四维权重（%，四项和恒为 100）。
+   * ★ **缺省不写** —— 迁移绝不替用户决定价值观；缺省值只活在 `lib/offer/score.ts`。
+   *   写进 `defaultSettings()` 会让「迁移后 offerWeights === undefined」这条契约不成立。
+   */
+  offerWeights?: Record<OfferScoreKey, number>;
   /** v2 新增：上一次迁移审计 */
   lastMigration?: MigrationRecord;
 }
@@ -776,4 +799,71 @@ export interface DB {
   resumes: Resume[];
   resumeVersions: ResumeVersion[];
   aiReports: AIReport[];
+  /**
+   * v1.0.0：最终选择（顶层单对象 —— 一个人一次只能选一个 Offer）。
+   * ★ 缺省不写；`applicationId` 悬空是设计的一部分（同 resumeVersionId 的 A-12）。
+   */
+  offerDecision?: OfferDecision;
 }
+
+/* ===================== v1.0.0 模块一：Offer（schemaVersion 6，纯 additive） ===================== */
+
+/**
+ * 四维自评键。★ 顺序即展示顺序，也是「最大余数法取先者」的顺序，**禁止重排**。
+ */
+export type OfferScoreKey = 'salary' | 'growth' | 'city' | 'wlb';
+
+/** 计薪方式：日常实习按天给钱，校招 / 全职按月。缺省按月 */
+export type OfferPayMode = 'monthly' | 'daily';
+
+/**
+ * Offer 详情。★ 除 `updatedAt` 外全部可选 —— 拿到口头 offer 时用户只知道公司名。
+ * ★ `scores` 的缺 = 未评，**不按 0 分参与**（OFF-4 的数学前提）。
+ * ★ 编辑本区块**不写 note、不动 lastActivityAt**（改了薪资不该让沉默天数归零）。
+ */
+export interface OfferDetail {
+  /** 计薪方式，缺省 'monthly' */
+  payMode?: OfferPayMode;
+  /** 月薪（元/月，税前）。整数 0–1,000,000 */
+  monthlySalary?: number;
+  /** 一年发几个月（12–24）。**年终奖已含在薪数里，不另设字段** */
+  salaryMonths?: number;
+  /** 日薪（元/天）。payMode === 'daily' 时用 */
+  dailyRate?: number;
+  /** 签字费（元，一次性）。0 ≠ 未填 */
+  signOnBonus?: number;
+  /** 股权 / 期权原文，≤60 字。**不折算成钱** */
+  equityText?: string;
+  /** 职级原文（"P5" / "T1.2" / "SP"）。自由文本，不做枚举 */
+  level?: string;
+  /** 单程通勤分钟数。整数 0–240 */
+  commuteMin?: number;
+  /** 四维自评分 1–5。缺 = 未评 */
+  scores?: Partial<Record<OfferScoreKey, 1 | 2 | 3 | 4 | 5>>;
+  /** 补充说明 ≤200 字 */
+  notes?: string;
+  /** 本区块最后编辑时间（ISO）。★ 必填 —— 也是「最近收到 Offer」的排序依据 */
+  updatedAt: string;
+}
+
+/**
+ * 最终选择。★ 单对象而非数组 —— 一个人一次只能选一个 Offer；改选即覆盖（组件层二次确认）。
+ * ★ `applicationId` 悬空是设计的一部分：故意不校验存在性。
+ */
+export interface OfferDecision {
+  /** 选中的投递 → Application.id。**故意不校验存在性** */
+  applicationId: string;
+  /** 决策日，YYYY-MM-DD（用户可改，便于补记） */
+  decidedAt: string;
+  /** 理由标签，≤5 个。内置 8 个 + 允许自由追加（≤10 字/个） */
+  reasonTags: string[];
+  /** 一段话，≤500 字。回看时展示前 3 行 */
+  note?: string;
+  /** 当时放弃的 Offer（Application.id[]），用于回看「我放弃了谁」 */
+  declinedIds?: string[];
+}
+
+/* ===================== v1.0.0 模块二：Company 扩充 ===================== */
+
+/** 融资阶段。'unknown' 显式表示「查过但没查到」，与「没填」区分 */
+export type CompanyStage = 'angel' | 'a' | 'b' | 'c' | 'd' | 'listed' | 'unknown';

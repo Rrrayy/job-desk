@@ -49,6 +49,7 @@ import {
   normalizeFileLinkSettings,
 } from './migrate';
 import { STAGING_LIMIT } from './sync/engine';
+import { normalizeOfferDecision, normalizeOfferWeights } from './offer/validate';
 import { capAiReports } from './trash';
 import { V2_NOTE_TYPES, asOptionalString, asString, isRecord, normalizeCoreArrays } from './validateV1';
 
@@ -160,6 +161,9 @@ export function normalizeV2Settings(raw: unknown): AppSettings {
       }
     : undefined;
 
+  // v1.0.0：权重**缺省不写** —— 缺失即「用代码里的 30/30/20/20」，不能落库成一份值
+  const offerWeights = normalizeOfferWeights(source.offerWeights);
+
   return {
     // schemaVersion 恒等于「当前内部版本」：校验器输出就是当前形状的库
     schemaVersion: SCHEMA_VERSION_CURRENT,
@@ -189,6 +193,7 @@ export function normalizeV2Settings(raw: unknown): AppSettings {
     encryption: normalizeEncryptionSettings(source.encryption),
     // v0.8：AI 设置缺省补齐（「未配置」），脏值回落而非报错（与 fileLink 同口径）
     ai: normalizeAiSettings(source.ai),
+    ...(offerWeights ? { offerWeights: offerWeights.weights } : {}),
     lastMigration,
   };
 }
@@ -783,6 +788,9 @@ export function validateV2(raw: unknown): ImportResult {
 
   const reports = capAiReports(reportResult.rows);
 
+  // v1.0.0：最终选择（顶层单对象）。★ 故意**不校验** applicationId 存在性（D-14）
+  const offerDecision = raw.offerDecision === undefined ? null : normalizeOfferDecision(raw.offerDecision);
+
   const db: DB = {
     settings,
     companies: core.data.companies,
@@ -801,7 +809,43 @@ export function validateV2(raw: unknown): ImportResult {
     resumeVersions: versionResult.rows,
     // 总数超上限（200）时丢最旧 —— 与 staging 的丢弃策略一致
     aiReports: reports,
+    ...(offerDecision ? { offerDecision } : {}),
   };
+
+  /**
+   * 未知顶层键**原样保留**（不静默丢用户数据）。
+   * 唯一的例外是导出外壳的四个键：它们属于文件格式，不属于数据库本体 ——
+   * 让 `exportedAt` 落进 localStorage 只会让「这一份数据是什么时候导出的」
+   * 变成一句会过期的谎话。
+   */
+  const out = db as unknown as Record<string, unknown>;
+  for (const key of Object.keys(raw)) {
+    if (DB_KEYS.has(key) || ENVELOPE_KEYS.has(key)) continue;
+    out[key] = raw[key];
+  }
 
   return { ok: true, db };
 }
+
+/** DB 本体已有的顶层键（这些统一走上面的白名单式重建，不再原样透传） */
+const DB_KEYS = new Set([
+  'settings',
+  'companies',
+  'applications',
+  'interviews',
+  'notes',
+  'experiences',
+  'questions',
+  'staging',
+  'events',
+  'pluginStorage',
+  'requestLog',
+  'aiSuggestions',
+  'resumes',
+  'resumeVersions',
+  'aiReports',
+  'offerDecision',
+]);
+
+/** 导出文件的外壳键（属于格式，不属于数据） */
+const ENVELOPE_KEYS = new Set(['exportedAt', 'app', 'formatVersion', 'version']);

@@ -1,6 +1,9 @@
 /**
- * 列表视图：表格化、可排序、可筛选，重点突出沉默天数。
- * stale 行整行浅红底，一眼就能看出「哪家最久没动静」。
+ * 列表视图。
+ *
+ * v1.0 起这里是**两个页签**：`全部投递`（表格，本文下面那个）与 `沉默待办`（模块四）。
+ * 页签放在页面里而不是导航里 —— PRD §E.1 的约定是「不加导航项」。
+ * 表格部分：可排序、可筛选，重点突出沉默天数，stale 行整行浅红底。
  */
 
 import { useEffect, useMemo, useState } from 'react';
@@ -23,7 +26,9 @@ import { isDeleted } from '../lib/trash';
 import { useVirtualList } from '../lib/virtual';
 import { DEFAULT_LIST_FILTERS, loadListFilters, saveListFilters, type ListFilterState } from '../lib/storage';
 import { CLS } from '../lib/classTokens';
+import { silenceRowsOf } from '../lib/silence/list';
 import { LegacyBindPanel } from './resume/LegacyBindPanel';
+import { SilenceList } from './list/SilenceList';
 
 /**
  * 列表行高（px）。固定值 —— 虚拟滚动靠它算区间，改 CSS 必须同步改这里。
@@ -54,7 +59,8 @@ const SORT_LABEL: Record<SortKey, string> = {
   status: '状态',
 };
 
-export function ListView({ api }: { api: AppApi }) {
+/** 页签一：全部投递（表格 + 筛选 + 虚拟滚动），v1.0 之前它就是整个列表页 */
+function ApplicationsTable({ api }: { api: AppApi }) {
   const { db, now } = api;
   /**
    * 筛选条件跨刷新保留（QA D7）：状态/渠道/简历版本/城市/关键词/排序一起存。
@@ -469,6 +475,54 @@ export function ListView({ api }: { api: AppApi }) {
             </tbody>
           </table>
         </div>
+      )}
+    </div>
+  );
+}
+
+/**
+ * 列表页外壳：两个页签 + 页签对应的内容。
+ *
+ * `api.listTab` 读不到时按「全部投递」处理 —— 默认视图不该因为少一个字段就变成空白页。
+ */
+export function ListView({ api }: { api: AppApi }) {
+  const tab = api.listTab === 'silence' ? 'silence' : 'all';
+  /** 徽标数字与清单同源（silenceRowsOf），两处算法一致才不会「说 7 条只显示 6 条」 */
+  const silenceCount = useMemo(() => silenceRowsOf(api.db, api.now).length, [api.db, api.now]);
+
+  return (
+    <div className="list-shell">
+      <div className="list-tabs" role="tablist" aria-label="列表视图">
+        <button
+          type="button"
+          role="tab"
+          aria-selected={tab === 'all'}
+          className={cx('list-tab', tab === 'all' && 'is-active')}
+          data-testid="list-tab-all"
+          onClick={() => api.setListTab('all')}
+        >
+          全部投递
+          <span className="list-tab__count">{api.db.applications.length}</span>
+        </button>
+        <button
+          type="button"
+          role="tab"
+          aria-selected={tab === 'silence'}
+          className={cx('list-tab', tab === 'silence' && 'is-active')}
+          data-testid="list-tab-silence"
+          onClick={() => api.setListTab('silence')}
+        >
+          沉默待办
+          {silenceCount > 0 ? <span className="list-tab__badge">{silenceCount}</span> : null}
+        </button>
+      </div>
+
+      {tab === 'silence' ? (
+        <div className="page">
+          <SilenceList api={api} />
+        </div>
+      ) : (
+        <ApplicationsTable api={api} />
       )}
     </div>
   );

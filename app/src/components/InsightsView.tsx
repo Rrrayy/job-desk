@@ -83,7 +83,7 @@ function DataTab({ api }: { api: AppApi }) {
       ) : null}
 
       <div className="insight-grid">
-        <section className={CLS.v}>
+        <section className="card">
           <header className={CLS.t}>
             <h2 className={CLS.l}>漏斗</h2>
             <span className={CLS.u}>每一阶段 = 走到这一步及以后的公司数</span>
@@ -111,7 +111,7 @@ function DataTab({ api }: { api: AppApi }) {
           )}
         </section>
 
-        <section className={CLS.v}>
+        <section className="card">
           <header className={CLS.t}>
             <h2 className={CLS.l}>渠道回复率</h2>
             <span className={CLS.u}>走到「已沟通」及以后算有回复</span>
@@ -128,7 +128,7 @@ function DataTab({ api }: { api: AppApi }) {
                   </div>
                   <span className={CLS.aK}>
                     {pct(stat.rate)}
-                    <span className={CLS.aN}>
+                    <span className="stat-row__sub">
                       {stat.replied}/{stat.total}
                     </span>
                   </span>
@@ -141,7 +141,7 @@ function DataTab({ api }: { api: AppApi }) {
           </p>
         </section>
 
-        <section className={CLS.v}>
+        <section className="card">
           <header className={CLS.t}>
             <h2 className={CLS.l}>简历版本面试率</h2>
             <span className={CLS.u}>有任意面试记录即算进面</span>
@@ -164,7 +164,7 @@ function DataTab({ api }: { api: AppApi }) {
                   </div>
                   <span className={CLS.aK}>
                     {pct(stat.rate)}
-                    <span className={CLS.aN}>
+                    <span className="stat-row__sub">
                       {stat.interviewed}/{stat.total}
                     </span>
                   </span>
@@ -174,7 +174,7 @@ function DataTab({ api }: { api: AppApi }) {
           )}
         </section>
 
-        <section className={CLS.v}>
+        <section className="card">
           <header className={CLS.t}>
             <h2 className={CLS.l}>每周投递量</h2>
             <span className={CLS.u}>最近 8 周</span>
@@ -247,7 +247,7 @@ function InterviewTab({ api, pendingCount }: { api: AppApi; pendingCount: number
         </div>
       </div>
 
-      <section className={CLS.v}>
+      <section className="card">
         <header className={CLS.t}>
           <h2 className={CLS.l}>面经统计</h2>
           <span className={CLS.u}>哪类题最容易挂 · 这家爱问什么</span>
@@ -255,7 +255,7 @@ function InterviewTab({ api, pendingCount }: { api: AppApi; pendingCount: number
         <InterviewStats db={db} />
       </section>
 
-      <section className={CLS.v}>
+      <section className="card">
         <header className={CLS.t}>
           <h2 className={CLS.l}>题库与复习</h2>
           <span className={CLS.u}>不会的排前面，到期的标红</span>
@@ -263,7 +263,7 @@ function InterviewTab({ api, pendingCount }: { api: AppApi; pendingCount: number
         <QuestionBank api={api} onRecord={() => api.openQuickNote()} />
       </section>
 
-      <section className={CLS.v}>
+      <section className="card">
         <header className={CLS.t}>
           <h2 className={CLS.l}>面经列表</h2>
           <span className={CLS.u}>点开补「我当时怎么答的」</span>

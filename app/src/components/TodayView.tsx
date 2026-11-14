@@ -20,6 +20,7 @@ import {
 } from '../lib/rules';
 import { fmtDateTime, relativeCountdown } from '../lib/date';
 import { pendingReviewInterviews } from '../lib/interview';
+import { silenceRowsOf } from '../lib/silence/list';
 import { companyLabel, cx } from '../lib/util';
 import { CLS } from '../lib/classTokens';
 
@@ -44,6 +45,11 @@ export function TodayView({ api }: { api: AppApi }) {
   const recent = useMemo(() => recentNotes(db.notes, 10), [db.notes]);
   // 与 TodoBar 共用同一个数据源（lib/interview.ts 的 pendingReviewInterviews），不各算一遍
   const pendingReviews = useMemo(() => pendingReviewInterviews(db, now), [db, now]);
+  /** v1.0 模块四的入口条数：与清单同源，不另算一套 */
+  const silenceCount = useMemo(() => silenceRowsOf(db, now).length, [db, now]);
+  /** v1.0 模块一：候选与决策由 App 算好（含「投递已删除」的兜底），这里只展示 */
+  const offerCandidates = api.offer.candidates;
+  const decision = api.offer.decision;
 
   const weekly = weeklyAppliedCount(db.applications, now);
   const goal = Math.max(1, db.settings.weeklyApplyGoal);
@@ -150,6 +156,22 @@ export function TodayView({ api }: { api: AppApi }) {
               {showOverflow ? null : <span className={CLS.u}>{'\u3000'}今天的预算就 {plan.budget} 件</span>}
             </p>
           ) : null}
+          {/* ③ v1.0：沉默清单的入口 —— 那里才有分组、批量催问与静音 */}
+          {silenceCount > 0 ? (
+            <p className={CLS.R}>
+              <button
+                type="button"
+                className={CLS.k}
+                data-testid="today-silence-link"
+                onClick={() => {
+                  api.setListTab('silence');
+                  api.setView('list');
+                }}
+              >
+                {silenceCount} 家待跟进 —— 去沉默清单 →
+              </button>
+            </p>
+          ) : null}
         </section>
 
         {/* 本周投递进度 */}
@@ -217,6 +239,42 @@ export function TodayView({ api }: { api: AppApi }) {
         </section>
       </div>
 
+      {/*
+        ①② v1.0：Offer 待决策卡 与 决策回看只读卡。
+        日期一律**绝对**（OFF-7）——「上周选的」这种话过两天就是错的。
+      */}
+      {offerCandidates.length > 0 || decision ? (
+        <section className="card card--offer" data-testid="today-offer-card">
+          <header className={CLS.t}>
+            <h2 className={CLS.l}>{decision ? '我的选择' : `${offerCandidates.length} 个 Offer 待决策`}</h2>
+            <button type="button" className={CLS.k} onClick={() => api.offer.open()}>
+              {decision ? '回看 / 改选 →' : '并排比一比 →'}
+            </button>
+          </header>
+          {decision ? (
+            <div className="today-dec">
+              <p className="today-dec__pick">
+                {decision.decidedAtText} 选了 <strong>{decision.companyLabel}</strong>
+                {decision.jobTitle ? ` · ${decision.jobTitle}` : ''}
+              </p>
+              {decision.reasonText ? (
+                <p className="today-dec__reasons">理由：{decision.reasonText}</p>
+              ) : null}
+              {decision.firstLines ? <p className="today-dec__note">{decision.firstLines}</p> : null}
+              {decision.declined.length > 0 ? (
+                <p className="today-dec__declined">
+                  我放弃了：{decision.declined.map((item) => item.label).join('、')}
+                </p>
+              ) : null}
+            </div>
+          ) : (
+            <p className={CLS.R}>
+              薪资 / 成长 / 城市 / WLB 四项按你自己的权重算分 —— 分数只帮你排清偏好，不替你做决定。
+            </p>
+          )}
+        </section>
+      ) : null}
+
       {/* 待复盘面试：面完了、结果也记了、但还没记面经 —— 这是唯一会「过期作废」的事，所以单独一张卡 */}
       {pendingReviews.length > 0 ? (
         <section className="card card--revisit">
@@ -283,7 +341,7 @@ export function TodayView({ api }: { api: AppApi }) {
       ) : null}
 
       {/* 最近动态 */}
-      <section className={CLS.v}>
+      <section className="card">
         <header className={CLS.t}>
           <h2 className={CLS.l}>最近动态</h2>
           <span className={CLS.u}>跨公司最近 {recent.length} 条</span>

@@ -153,4 +153,23 @@ describe('App 冒烟（jsdom）', () => {
 
     await waitFor(() => container.querySelectorAll('.app-card').length > 0, '快捷键切看板');
   });
+
+  /**
+   * v1.0.0 回归（QA 补）：文件头说「不断言样式」，这里断言的是**类名契约**而不是视觉值 ——
+   * token 表重排后 `CLS.v`（原本 = `card`）被重指向成新模块的 `chip-toggle`，
+   * 于是今日视图 / 复盘页 / 迁移失败页的 12 个 `<section>` 从「卡片」变成了「11.5px 小药丸」。
+   * 这条守的是「既有视图的语义类名不许被 token 重排挤掉」。
+   */
+  it('★ 今日视图的区块仍是 section.card（不是 chip-toggle）', async () => {
+    await mount();
+    await waitFor(() => container.querySelector('.welcome') !== null, '欢迎页渲染');
+    await act(async () => {
+      buttonByText(container, '加载示例数据看看')?.click();
+    });
+    await waitFor(() => container.querySelector('.welcome') === null, '离开欢迎页');
+
+    await waitFor(() => container.querySelector('section.card') !== null, '今日视图区块渲染');
+    expect(container.querySelectorAll('section.card').length).toBeGreaterThan(0);
+    expect(container.querySelector('section.chip-toggle')).toBeNull();
+  }, 15000);
 });

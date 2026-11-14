@@ -136,4 +136,19 @@ describe('StagingList · D17 AI 入口', () => {
     await render({ aiReady: true });
     expect(container.querySelector('[data-testid="ai-retry-st-1"]')).toBeNull();
   });
+
+  /**
+   * v1.0.0 回归（QA 补）：token 表重排后 `CLS.aQ` → `dossier__stat`、
+   * `CLS.aU` → `cap__chip is-on`，而暂存行仍在用它们渲染「来源 · 抓取时间」与操作区。
+   * 两处都掉了原来的类（`sync__source` / `sync__staging-controls`），
+   * 文字断言全绿所以既有测试抓不到。
+   */
+  it('★ 来源行仍带 sync__source、操作区仍带 sync__staging-controls（CLS token 重排回归）', async () => {
+    await render({ items: [item()] });
+    expect(container.querySelector('.sync__source')).not.toBeNull();
+    expect(container.querySelector('.sync__staging-controls')).not.toBeNull();
+    // 反向断言：这两个位置不该出现 v1.0.0 新模块的类名
+    expect(container.querySelector('.dossier__stat')).toBeNull();
+    expect(container.querySelector('.cap__chip')).toBeNull();
+  });
 });

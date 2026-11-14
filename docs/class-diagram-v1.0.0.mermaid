@@ -1,0 +1,463 @@
+%% 求职工作台 v1.0.0 · 类图（增量）
+%% 只画本版新增/变动的类型与纯函数模块；既有 v2/v5 结构见 docs/class-diagram-v0.2.mermaid
+%% 约定：..> 派生依赖（不落库）；*-- 组成（嵌套存同一行）；o-- 弱引用（可悬空）
+
+classDiagram
+  direction LR
+
+  %% ================= 模块一：Offer =================
+  class OfferScoreKey {
+    <<type>>
+    'salary' | 'growth' | 'city' | 'wlb'
+  }
+
+  class OfferPayMode {
+    <<type>>
+    'monthly' | 'daily'
+  }
+
+  class OfferDetail {
+    <<interface>>
+    +payMode? OfferPayMode
+    +monthlySalary? number(0..1000000)
+    +salaryMonths? number(12..24)
+    +dailyRate? number
+    +signOnBonus? number
+    +equityText? string(60)
+    +level? string
+    +commuteMin? number(0..240)
+    +scores? Partial~Record~OfferScoreKey,1..5~~
+    +notes? string(200)
+    +updatedAt string
+  }
+
+  class OfferDecision {
+    <<interface>>
+    +applicationId string
+    +decidedAt string(YYYY-MM-DD)
+    +reasonTags string(<=5)
+    +note? string(500)
+    +declinedIds? string[]
+  }
+
+  class OfferScoreRow {
+    <<interface>>
+    +key OfferScoreKey
+    +score number
+    +weight number
+    +contribution number
+    +rated boolean
+  }
+
+  class OfferScoreResult {
+    <<interface>>
+    +total number|null
+    +rows OfferScoreRow[]
+    +ratedCount number
+    +normalized boolean
+  }
+
+  class OfferCandidate {
+    <<interface>>
+    +app Application
+    +company Company|undefined
+    +offer OfferDetail|undefined
+    +score OfferScoreResult
+    +deadline DeadlineState
+    +silence SilenceState
+  }
+
+  class CompareRow {
+    <<interface>>
+    +key string
+    +label string
+    +cells Cell[]
+  }
+
+  class DecisionView {
+    <<interface>>
+    +decision OfferDecision
+    +app Application|null
+    +companyLabel string
+    +jobTitle string
+    +decidedAtText string
+    +reasonText string
+    +firstLines string
+    +declined DeclinedRef[]
+  }
+
+  class OfferApi {
+    <<interface>>
+    +candidates OfferCandidate[]
+    +weights Record
+    +decision DecisionView|null
+    +setWeights(weights) void
+    +saveOffer(appId, patch) void
+    +saveDecision(input) void
+  }
+
+  class scoreModule {
+    <<module lib/offer/score.ts>>
+    +DEFAULT_OFFER_WEIGHTS Record
+    +OFFER_SCORE_KEYS OfferScoreKey[]
+    +offerWeightsOf(settings) Record
+    +computeOfferScore(scores, weights) OfferScoreResult
+    +rebalanceWeights(weights, key, value) Record
+    +annualTotalOf(offer) number|null
+    +annualTotalText(offer) string
+    +missingScoreCount(offer) number
+  }
+
+  class compareModule {
+    <<module lib/offer/compare.ts>>
+    +MAX_COMPARE = 8
+    +offerCandidatesOf(db, now) OfferCandidate[]
+    +defaultSelection(candidates) Selection
+    +toggleSelection(ids, next) Selection
+    +buildCompareRows(selected, weights) CompareRow[]
+    +buildOfferAlerts(candidates, settings, now) OfferAlert[]
+  }
+
+  class decisionModule {
+    <<module lib/offer/decision.ts>>
+    +REASON_TAG_PRESETS
+    +sanitizeReasonTags(raw) string[]
+    +applyDecision(draft, input) void
+    +applyOfferPatch(draft, appId, patch, nowIso) boolean
+    +decisionViewOf(db, decision) DecisionView|null
+    +decisionToMarkdown(input) string
+  }
+
+  class validateOfferModule {
+    <<module lib/offer/validate.ts>>
+    +normalizeOfferDetail(raw, nowIso) OfferDetail|null
+    +normalizeOfferDecision(raw) OfferDecision|null
+    +normalizeOfferWeights(raw) WeightsResult|null
+  }
+
+  %% ================= 模块二：公司档案 =================
+  class CompanyStage {
+    <<type>>
+    angel|a|b|c|d|listed|unknown
+  }
+
+  class Company {
+    <<interface 既有 +5>>
+    +id string
+    +name string
+    +shortName? string
+    +industry? string
+    +city? string
+    +referrer? string
+    +impression? string
+    +createdAt string
+    +scale? string
+    +financingStage? CompanyStage
+    +website? string
+    +industryDetail? string
+    +employeeReview? string
+  }
+
+  class CompanyDossier {
+    <<interface>>
+    +company Company
+    +applications ApplicationRow[]
+    +interviews InterviewRow[]
+    +timeline DossierTimelineEntry[]
+    +stats Stats
+    +experienceNames string[]
+    +experience ExperienceStat
+  }
+
+  class DossierTimelineEntry {
+    <<interface>>
+    +id string
+    +at string
+    +who me|system
+    +text string
+    +jobLabel string
+    +kind note|interview
+  }
+
+  class dossierModule {
+    <<module lib/company/dossier.ts>>
+    +companyDossierOf(db, companyId, now) CompanyDossier|null
+    +sameNameCompanies(db, name, excludeId) Company[]
+  }
+
+  class fieldsModule {
+    <<module lib/company/fields.ts>>
+    +COMPANY_STAGES CompanyStage[]
+    +COMPANY_STAGE_LABEL Record
+    +normalizeCompanyExtras(raw) CompanyExtraPatch
+    +companyOverviewRows(company) OverviewRow[]
+  }
+
+  class CompanyApi {
+    <<interface>>
+    +dossierId string|null
+    +openDossier(companyId) void
+    +closeDossier() void
+    +saveExtras(companyId, patch) void
+    +sameName(name, excludeId) Company[]
+    +openQuestionBank(names) void
+  }
+
+  %% ================= 模块三：快记 =================
+  class CaptureIntent {
+    <<type>>
+    interview|chat|followup|memo
+  }
+
+  class CapturePick {
+    <<type>>
+    none | unique(item) | ambiguous(items)
+  }
+
+  class CaptureDraft {
+    <<interface>>
+    +ok true
+    +raw string
+    +droppedTail string|null
+    +intent CaptureIntent
+    +company CapturePick~Company~
+    +application CapturePick~Application~
+    +scheduledAt string|null
+    +timePartial dateOnly|timeOnly|null
+    +timeVague boolean
+    +pastDate boolean
+    +round number|null
+    +kind InterviewKind|null
+    +format InterviewFormat|null
+    +statusSuggestion Status|null
+    +noteType NoteType|null
+    +needsTimeHint boolean
+  }
+
+  class ConfirmedCapture {
+    <<interface>>
+    +raw string
+    +intent CaptureIntent
+    +applicationId string|null
+    +newCompanyName string|null
+    +newJobTitle string|null
+    +scheduledAt string|null
+    +round number|null
+    +kind InterviewKind|null
+    +format InterviewFormat|null
+    +noteType NoteType|null
+    +statusSuggestion Status|null
+    +statusConfirmed boolean
+  }
+
+  class CaptureStep {
+    <<type>>
+    createApplication | addNote | changeStatus | addInterview
+  }
+
+  class parseModule {
+    <<module lib/capture/parse.ts>>
+    +parseQuickNote(text, ctx) CaptureResult
+    +planCaptureCommit(draft, ctx) CaptureStep[]
+  }
+
+  class dictModule {
+    <<module lib/capture/dict.ts>>
+    +CAPTURE_DICT_VERSION = 1
+    +INTENT_RULES
+    +STATUS_WORDS
+    +ROUND_WORDS
+    +FORMAT_WORDS
+    +VAGUE_TIME_WORDS
+    +splitFirstSentence(text) Sentence
+    +parseTimePhrase(text, now) ParsedTime|null
+  }
+
+  class CaptureApi {
+    <<interface>>
+    +commit(draft ConfirmedCapture) void
+  }
+
+  %% ================= 模块四：沉默清单 =================
+  class SilenceRow {
+    <<interface>>
+    +app Application
+    +company Company|undefined
+    +silence SilenceState
+    +muted boolean
+    +muteRemain number|null
+    +suggestion Suggestion
+  }
+
+  class SilenceGroups {
+    <<interface>>
+    +stale SilenceRow[]
+    +warn SilenceRow[]
+    +staleSplitAt number
+    +total number
+    +mutedTotal number
+  }
+
+  class silenceModule {
+    <<module lib/silence/list.ts>>
+    +SILENCE_RENDER_LIMIT = 200
+    +silenceRowsOf(db, now) SilenceRow[]
+    +buildSilenceGroups(rows, opts) SilenceGroups
+    +planBatchFollowup(ids, confirmedIds) string[]
+    +planBatchMute(ids, preset, now) MutePlan[]
+    +silenceListToMarkdown(rows) string
+  }
+
+  class SilenceApi {
+    <<interface>>
+    +batchDrop(ids) void
+    +batchMute(ids, until) void
+    +batchFollowup(ids, confirmedIds) number
+  }
+
+  %% ================= 既有底座（被复用，本版只加不改） =================
+  class Application {
+    <<interface 既有>>
+    +id string
+    +companyId string
+    +jobTitle string
+    +status Status
+    +statusChangedAt string
+    +lastActivityAt string
+    +deadlineAt? string|null
+    +mutedUntil? string|null
+    +offer? OfferDetail
+  }
+
+  class DB {
+    <<interface 既有 +1>>
+    +settings AppSettings
+    +companies Company[]
+    +applications Application[]
+    +interviews Interview[]
+    +notes Note[]
+    +offerDecision? OfferDecision
+  }
+
+  class AppSettings {
+    <<interface 既有 +1-1>>
+    +schemaVersion 6
+    +warnAfterDays number
+    +staleAfterDays number
+    +offerSilenceDays number
+    +deadlineWarnDays number
+    +channelFactor Record
+    +offerWeights? Record
+  }
+
+  class SilenceState {
+    <<interface 既有>>
+    +days number
+    +level stale|warn|null
+    +text string
+  }
+
+  class StatusUndo {
+    <<interface 既有>>
+    +appId string
+    +prevStatus Status
+    +prevStatusChangedAt string
+    +prevLastActivityAt string
+    +prevRejectedAtRound number|null
+    +createdNoteId string
+  }
+
+  class rulesModule {
+    <<module lib/rules.ts 既有 +1>>
+    +silenceStateOf(app, notes, settings, now, index) SilenceState
+    +effectiveWarnDays(app, settings) number
+    +effectiveStaleDays(app, settings) number
+    +isMuted(app, now) boolean
+    +suggestionFor(app, silence) Suggestion
+    +revertStatusChange(draft, undo) void
+    +applyStatusChange(draft, appId, status, opts) StatusUndo|null
+  }
+
+  class AppApi {
+    <<interface 既有 +6>>
+    +db DB
+    +now Date
+    +offer OfferApi
+    +company CompanyApi
+    +capture CaptureApi
+    +silence SilenceApi
+    +listTab all|silence
+    +interviewCompanyFilter string[]|null
+  }
+
+  class App {
+    <<class App.tsx>>
+    -db DB
+    -dbRef Ref~DB~
+    -undoStackRef Ref~UndoEntry[]~
+    +mutate(recipe) void
+    +pushUndo(entry) void
+    +changeStatus(id, status, opts) void
+  }
+
+  %% ================= 关系 =================
+  Application *-- OfferDetail : 嵌套 1:1（不建 offers 表）
+  DB o-- OfferDecision : 顶层单对象，可悬空
+  DB *-- AppSettings
+  DB *-- Application
+  AppSettings ..> OfferScoreKey : offerWeights 的键域
+
+  OfferDetail ..> OfferScoreKey : scores 的键域
+  OfferDecision ..> Application : applicationId 弱引用（不校验存在性）
+
+  scoreModule ..> OfferDetail
+  scoreModule ..> OfferScoreResult
+  scoreModule ..> OfferScoreRow
+  compareModule ..> OfferCandidate
+  compareModule ..> CompareRow
+  compareModule ..> scoreModule
+  decisionModule ..> DecisionView
+  decisionModule ..> OfferDecision
+  decisionModule ..> Application
+  validateOfferModule ..> OfferDetail
+  validateOfferModule ..> OfferDecision
+  validateOfferModule ..> scoreModule : DEFAULT_OFFER_WEIGHTS
+
+  OfferCandidate *-- Application
+  OfferCandidate *-- OfferScoreResult
+  OfferCandidate ..> OfferDetail
+  OfferCandidate ..> SilenceState
+  OfferApi ..> OfferCandidate
+  OfferApi ..> DecisionView
+
+  CompanyDossier *-- Company
+  CompanyDossier *-- DossierTimelineEntry
+  CompanyDossier ..> SilenceState
+  dossierModule ..> CompanyDossier
+  dossierModule ..> Company
+  fieldsModule ..> CompanyStage
+  CompanyApi ..> CompanyDossier
+
+  CaptureDraft ..> CapturePick
+  CaptureDraft ..> CaptureIntent
+  parseModule ..> CaptureDraft
+  parseModule ..> ConfirmedCapture
+  parseModule ..> CaptureStep
+  parseModule ..> dictModule
+  CaptureStep ..> Application
+  CaptureApi ..> ConfirmedCapture
+
+  silenceModule ..> SilenceRow
+  silenceModule ..> SilenceGroups
+  silenceModule ..> SilenceState
+  silenceModule ..> rulesModule : 复用 silenceStateOf / suggestionFor
+  SilenceApi ..> SilenceGroups
+
+  rulesModule ..> StatusUndo
+  rulesModule ..> Application
+  App --> AppApi : 唯一实现者
+  App ..> rulesModule : applyStatusChange
+  AppApi ..> OfferApi
+  AppApi ..> CompanyApi
+  AppApi ..> CaptureApi
+  AppApi ..> SilenceApi

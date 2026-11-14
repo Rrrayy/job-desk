@@ -696,10 +696,53 @@ export function saveListFilters(state: ListFilterState): void {
   }
 }
 
+/* ------------------- 沉默面板的 UI 偏好（v1.0.0 / SIL-6） ------------------- */
+
+/**
+ * 沉默清单的面板偏好。
+ *
+ * ★ **为什么不塞进 `ListFilterState`**：`storage.test.ts` 对 `loadListFilters()`
+ *   做的是整对象 `toEqual` round-trip 断言 —— 往里加一个字段会让 4 条既有断言失效，
+ *   而「隐藏已静音」和列表筛选本来就是两件事（一个是过滤器，一个是显示偏好）。
+ *   独立 key + 独立 sanitize，两边的脏缓存互不影响。
+ */
+const SILENCE_PREF_KEY = 'jobdesk.v1.silencePrefs';
+
+export interface SilencePrefs {
+  /** 打开后清单不含 `mutedUntil > now` 的条目 */
+  hideMuted: boolean;
+}
+
+export const DEFAULT_SILENCE_PREFS: SilencePrefs = { hideMuted: false };
+
+/** 认不出来的一律回默认值（与 sanitizeListFilters 同口径：宁可回默认，不要筛成空的） */
+export function sanitizeSilencePrefs(raw: unknown): SilencePrefs | null {
+  if (!isRecord(raw)) return null;
+  return { hideMuted: raw.hideMuted === true };
+}
+
+export function loadSilencePrefs(): SilencePrefs {
+  try {
+    const raw = localStorage.getItem(SILENCE_PREF_KEY);
+    if (!raw) return { ...DEFAULT_SILENCE_PREFS };
+    return sanitizeSilencePrefs(JSON.parse(raw) as unknown) ?? { ...DEFAULT_SILENCE_PREFS };
+  } catch {
+    return { ...DEFAULT_SILENCE_PREFS };
+  }
+}
+
+export function saveSilencePrefs(prefs: SilencePrefs): void {
+  try {
+    localStorage.setItem(SILENCE_PREF_KEY, JSON.stringify({ hideMuted: prefs.hideMuted === true }));
+  } catch {
+    // 偏好存不下不影响清单本身
+  }
+}
+
 /* ------------------------------ 导出导入 ------------------------------ */
 
 /**
- * 导出为格式化 JSON（formatVersion 4，settings.schemaVersion 原样保留）。
+ * 导出为格式化 JSON（formatVersion 由 `FORMAT_VERSION_CURRENT` 发号，settings.schemaVersion 原样保留）。
  *
  * v0.6：`formatVersion` 改用常量 `FORMAT_VERSION_CURRENT`，与内部 schemaVersion
  * 彻底解耦 —— 内部结构升到 v5，导出格式跟到 4（老版本的备份带更小的 schemaVersion，
@@ -708,6 +751,8 @@ export function saveListFilters(state: ListFilterState): void {
  * v0.8：pluginStorage / aiSuggestions 随导出（可往返）；
  * **requestLog 剥离**（PRD 验收 13：导出 JSON 默认不含请求日志 —— 审计数据只留在本机）。
  * v0.9：resumes / resumeVersions / aiReports 随导出（版本历史是用户数据，不是缓存）。
+ * v1.0.0：offerDecision 随导出（条件展开 —— 没有决策时这个键根本不出现），格式版本抬到 5。
+ * Company 五个新字段与 Application.offer 挂在既有数组里，导出结构本身不用动。
  */
 export function exportJSON(db: DB): string {
   const payload = {
@@ -729,6 +774,8 @@ export function exportJSON(db: DB): string {
     resumes: db.resumes,
     resumeVersions: db.resumeVersions,
     aiReports: db.aiReports,
+    // v1.0.0：决策是用户写下的资产（理由 + 日期），必须随导出走；旧库没有这个键 → 导出零变化
+    ...(db.offerDecision ? { offerDecision: db.offerDecision } : {}),
   };
   return JSON.stringify(payload, null, 2);
 }

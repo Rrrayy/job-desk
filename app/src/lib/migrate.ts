@@ -20,14 +20,16 @@ export const SCHEMA_VERSION_V3 = 3;
 export const SCHEMA_VERSION_V4 = 4;
 /** v0.9：简历三表落库 + 投递绑定字段（全部 additive，见 ARCH-v09 §2.2） */
 export const SCHEMA_VERSION_V5 = 5;
+/** v1.0.0：**空迁移**（只改版本号），四模块全部 additive（见 ARCH-v100 D-07） */
+export const SCHEMA_VERSION_V6 = 6;
 /** 当前支持的最高内部数据版本 */
-export const SCHEMA_VERSION_CURRENT = SCHEMA_VERSION_V5;
+export const SCHEMA_VERSION_CURRENT = SCHEMA_VERSION_V6;
 /**
  * 导出文件格式版本（与内部 schemaVersion **解耦**，见 §2.3 冲突 ②）。
  * v0.4.1 及更早的备份没有这个字段 → 按 1 处理。
- * v0.8：2 → 3（随插件三表）；v0.9：3 → 4（随简历三表）。
+ * v0.8：2 → 3（随插件三表）；v0.9：3 → 4（随简历三表）；v1.0.0：4 → 5（顶层多了 offerDecision）。
  */
-export const FORMAT_VERSION_CURRENT = 4;
+export const FORMAT_VERSION_CURRENT = 5;
 
 /**
  * 「备份版本过新」报错的共用字面串（migrate 三个迁移入口 + storage 的导入检查各拼一次）。
@@ -83,7 +85,10 @@ export function migrateV2ToV3(input: unknown, ctx: MigrateContext): MigrateResul
     };
   }
 
-  // v4 输入直接进入 v0.9 那一步；v3 输入先补 v0.8 再级联到 v0.9
+  // v5 输入直接进入 v1.0.0 那一步；v4 输入先补 v0.9 再级联到 v1.0.0
+  if (version === SCHEMA_VERSION_V5) {
+    return migrateV5ToV6(input, ctx);
+  }
   if (version === SCHEMA_VERSION_V4) {
     return migrateV4ToV5(input, ctx);
   }
@@ -228,24 +233,73 @@ export function migrateV4ToV5(input: unknown, ctx: MigrateContext): MigrateResul
   const prevFrom = from.settings.lastMigration?.from;
   const chainFrom = typeof prevFrom === 'number' ? prevFrom : SCHEMA_VERSION_V4;
 
-  const settings: AppSettings = {
+  // 中间态：schemaVersion 的字面量类型是「当前版本 6」，中间的 5 只能经 unknown 中转。
+  // migrateV5ToV6 会立刻把它抬回 6，这个中间值不会出现在任何落库结果里。
+  const settings = {
     ...from.settings,
     schemaVersion: SCHEMA_VERSION_V5,
     lastMigration: { from: chainFrom, to: SCHEMA_VERSION_V5, at: ctx.now, backupKey: '' },
+  } as unknown as AppSettings;
+
+  const v5: DB = {
+    ...from,
+    settings,
+    // 三张简历空表：validateV2 已保证数组存在（缺失补 []、行内容校验过），这里原样透传
+    resumes: from.resumes,
+    resumeVersions: from.resumeVersions,
+    aiReports: from.aiReports,
   };
 
-  return {
-    ok: true,
-    db: {
-      ...from,
-      settings,
-      // 三张简历空表：validateV2 已保证数组存在（缺失补 []、行内容校验过），这里原样透传
-      resumes: from.resumes,
-      resumeVersions: from.resumeVersions,
-      aiReports: from.aiReports,
-    },
-    changed: true,
+  // 级联到 v1.0.0（与 v1→v2→v3 同一模式：每步只管自己那一个版本号）
+  return migrateV5ToV6(v5, ctx);
+}
+
+/**
+ * v5 → v6（v1.0.0）。**纯函数、幂等、空迁移**：
+ * - 唯一改动：`settings.schemaVersion` 5 → 6 + 写 `lastMigration`；
+ * - **不补 offerWeights、不补空 offer、不填 Company 新字段、不建 offerDecision 空对象** ——
+ *   「缺省即默认」是这一版的承诺：迁移替用户写一份权重，就等于替他决定了价值观；
+ * - 幂等：输入已是 v6 → `{ ok:true, changed:false, db: 原对象引用 }`；
+ * - 链式保留最初的 `from`（沿用 migrateV4ToV5 的 chainFrom 写法）。
+ *
+ * ★ 这个函数里**只允许两行赋值**。任何「顺手补字段」都会让契约 1 的逐字段 deep-equal 失效。
+ */
+export function migrateV5ToV6(input: unknown, ctx: MigrateContext): MigrateResult {
+  if (!isRecord(input)) return { ok: false, error: '顶层不是一个对象' };
+
+  const version = resolveSchemaVersion(input);
+  if (version === SCHEMA_VERSION_CURRENT) {
+    return { ok: true, db: input as unknown as DB, changed: false };
+  }
+  if (typeof version === 'number' && version > SCHEMA_VERSION_CURRENT) {
+    return {
+      ok: false,
+      error: `${MSG_BACKUP_TOO_NEW_HEAD}${version}${MSG_BACKUP_TOO_NEW_MID}${SCHEMA_VERSION_CURRENT}）`,
+    };
+  }
+  if (version !== SCHEMA_VERSION_V5) {
+    return {
+      ok: false,
+      error: `这一步只接受 v5 数据，收到的是 ${version === 'unknown' ? '未知版本' : `v${version}`}（v1~v4 请走 migrateV2ToV3 分发入口）`,
+    };
+  }
+
+  // 幂等保护：v5 结构必须先过校验，否则「迁移」会掩盖真正的损坏
+  const verified = validateV2(input);
+  if (!verified.ok) return { ok: false, error: `v5 数据结构不合法：${verified.error}` };
+  const from = verified.db;
+
+  // 链式迁移保留最初的 from：v1 直通 v6 仍然记「1 → 6」，不是「5 → 6」
+  const prevFrom = from.settings.lastMigration?.from;
+  const chainFrom = typeof prevFrom === 'number' ? prevFrom : SCHEMA_VERSION_V5;
+
+  const settings: AppSettings = {
+    ...from.settings,
+    schemaVersion: SCHEMA_VERSION_V6,
+    lastMigration: { from: chainFrom, to: SCHEMA_VERSION_V6, at: ctx.now, backupKey: '' },
   };
+
+  return { ok: true, db: { ...from, settings }, changed: true };
 }
 
 /**

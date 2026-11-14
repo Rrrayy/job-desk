@@ -302,14 +302,14 @@ export function BoardView({ api }: { api: AppApi }) {
                       style={{ borderTopColor: STATUS_TONE[status] }}
                     >
                       <span className={CLS.aB}>{STATUS_LABEL[status]} ▸</span>
-                      <span className={CLS.aP}>{win.total}</span>
+                      <span className="board__count">{win.total}</span>
                     </button>
                   ) : (
                     <>
                       <div className="board__col-head" style={{ borderTopColor: STATUS_TONE[status] }}>
                         <span className={CLS.aB}>{STATUS_LABEL[status]}</span>
                         <span className="board__col-head-right">
-                          <span className={CLS.aP}>{win.total}</span>
+                          <span className="board__count">{win.total}</span>
                           <button
                             type="button"
                             className="col-add"
@@ -320,6 +320,22 @@ export function BoardView({ api }: { api: AppApi }) {
                           </button>
                         </span>
                       </div>
+                      {/*
+                        v1.0：对比入口在列头**下方**，绝不塞进 .board__col-head-right ——
+                        那一块被既有测试用来读计数文本（BoardView.test.tsx），塞进去会让
+                        「N 张」读成「N 张对比 3 个」。
+                      */}
+                      {status === 'offer' && win.total > 0 ? (
+                        <button
+                          type="button"
+                          className="board__compare"
+                          data-testid="board-compare"
+                          title="把这几个 Offer 并排比一比（综合分按你的权重算）"
+                          onClick={() => api.offer.open()}
+                        >
+                          对比 {win.total} 个 ▸
+                        </button>
+                      ) : null}
                       <div className="board__col-body">
                         {win.visible.map(renderCard)}
                         {win.hidden > 0 ? (
@@ -348,7 +364,7 @@ export function BoardView({ api }: { api: AppApi }) {
                 style={{ borderTopColor: '#C9CDD8' }}
               >
                 <span className={CLS.aB}>已结束 {endedOpen ? '▾' : '▸'}</span>
-                <span className={CLS.aP}>{endedWin.total}</span>
+                <span className="board__count">{endedWin.total}</span>
               </button>
               {endedOpen ? (
                 <div className="board__col-body">

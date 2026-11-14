@@ -1091,6 +1091,61 @@ function gitShow(cwd, spec) {
 // ---------------------------------------------------------------------------
 
 /**
+ * 把「值已经不在新表里」的 `CLS.<token>` 还原成字面量。
+ *
+ * 为什么必须有这一步：`rewriteFile` 只处理源码里的**字面量**，从不看已经写好的
+ * `CLS.x`。于是某个串值掉出表之后，它的 token 会被释放、进而分给新串，而旧代码里
+ * 的 `CLS.x` 一个字符都没动 —— 运行时静默换了类名。
+ *
+ * v1.0.0 真实翻车过：`card` 掉出表后 token `v` 被分给 `chip-toggle`，今日视图、
+ * 复盘页、迁移失败页共 29 处 `<section class="card">` 变成了小药丸，而 1473 条测试
+ * 与三道门禁全绿（它们都不校验 token 的语义）。
+ *
+ * 规则：用**旧表**把 token 解析成值，再按**新表**决定写回什么 ——
+ * 值还在新表里就写成新 token，不在了就写成字面量。这样 token 复用也不再危险。
+ *
+ * @param {string} src
+ * @param {Array<{token: string, value: string}>} oldTable 本次改写前的表
+ * @param {Map<string, string>} tokenByValue 新表（值 → token）
+ * @returns {{ next: string, changed: number, detokenized: string[] }}
+ */
+export function detokenizeStale(src, oldTable, tokenByValue) {
+  let next = src;
+  let changed = 0;
+  /** @type {string[]} */
+  const detokenized = [];
+  for (const { token, value } of oldTable) {
+    const fresh = tokenByValue.get(value);
+    if (fresh === token) continue; // 没变，一格不动
+    const braced = new RegExp(`\\{CLS\\.${token}\\}`, 'g');
+    const bare = new RegExp(`\\bCLS\\.${token}\\b`, 'g');
+    if (!braced.test(next) && !bare.test(next)) continue;
+    // 先处理 JSX 形态 {CLS.x}（否则会被下面的裸 token 规则拦腰截断）
+    if (fresh) {
+      next = next.replace(new RegExp(`\\{CLS\\.${token}\\}`, 'g'), `{CLS.${fresh}}`);
+      next = next.replace(new RegExp(`\\bCLS\\.${token}\\b`, 'g'), `CLS.${fresh}`);
+    } else {
+      next = next.replace(new RegExp(`\\{CLS\\.${token}\\}`, 'g'), `"${value}"`);
+      next = next.replace(new RegExp(`\\bCLS\\.${token}\\b`, 'g'), `'${value}'`);
+      detokenized.push(value);
+    }
+    changed += 1;
+  }
+  return { next, changed, detokenized };
+}
+
+/**
+ * 文件里已经不再使用 `CLS.` 时，把 import 行去掉（否则类型检查会报未使用）。
+ *
+ * @param {string} src
+ * @returns {string}
+ */
+export function stripUnusedClsImport(src) {
+  if (/\bCLS\./.test(src)) return src;
+  return src.replace(/^import \{ CLS \} from '[^']*';\r?\n/m, '');
+}
+
+/**
  * `--write`：生成表 + 改写源文件。
  *
  * @returns {void}
@@ -1110,13 +1165,19 @@ export function runWrite() {
   let changedSites = 0;
   for (const file of files) {
     const src = readFileSync(file, 'utf8');
-    const { next, changed } = rewriteFile(src, tokenByValue);
-    if (changed === 0) continue;
+    // ★ 先把「值已掉出表」的 CLS.x 还原成字面量，再做常规改写（v1.0.0 回归的根因）
+    const { next: deTok, changed: deTokChanged, detokenized } = detokenizeStale(src, existing, tokenByValue);
+    const { next: rewritten, changed } = rewriteFile(deTok, tokenByValue);
+    const next = stripUnusedClsImport(rewritten);
+    if (changed === 0 && deTokChanged === 0) continue;
     const line = `import { CLS } from '${importSpecifierFor(file)}';`;
-    const withImport = insertImport(next, line);
+    const withImport = /\bCLS\./.test(next) ? insertImport(next, line) : next;
     writeFileSync(file, withImport, 'utf8');
     changedFiles += 1;
     changedSites += changed;
+    if (detokenized.length > 0) {
+      console.log(`  · ${relative(SRC_ROOT, file).split(sep).join('/')} 还原字面量：${[...new Set(detokenized)].join('、')}`);
+    }
   }
   console.log(`✓ 改写 ${changedFiles} 个源文件，共 ${changedSites} 处`);
 

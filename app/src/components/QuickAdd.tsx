@@ -11,18 +11,26 @@ import { CHANNEL_LABEL, CHANNEL_OPTIONS, STATUS_LABEL } from '../lib/rules';
 import { todayISO } from '../lib/date';
 import { cx } from '../lib/util';
 import { CLS } from '../lib/classTokens';
+import { QuickCapture } from './capture/QuickCapture';
 
 export interface QuickAddProps {
   api: AppApi;
   /** 初始状态：看板某一列点「＋」时带入该列状态，默认「已投递」 */
   initialStatus?: Status;
+  /**
+   * 打开时焦点落在哪。
+   *
+   * `Q` 键进来是「我有一句话想说」，焦点必须在快记框上 —— 落在公司名上等于
+   * 让人先把那句话打进公司名里。点「＋记一家」进来则相反。
+   */
+  initialFocus?: 'form' | 'capture';
   onClose: () => void;
 }
 
 /** 浮层里可一眼切换的两个高频状态 */
 const PRIMARY_STATUSES: Status[] = ['wishlist', 'applied'];
 
-export function QuickAdd({ api, initialStatus, onClose }: QuickAddProps) {
+export function QuickAdd({ api, initialStatus, initialFocus = 'form', onClose }: QuickAddProps) {
   const [company, setCompany] = useState('');
   const [jobTitle, setJobTitle] = useState('');
   const [status, setStatus] = useState<Status>(() => initialStatus || 'applied');
@@ -38,6 +46,8 @@ export function QuickAdd({ api, initialStatus, onClose }: QuickAddProps) {
   const [added, setAdded] = useState(0);
   /** 重复提醒出现后，用户第二次点击才真正写入（不做静默拦截，也不做静默放行） */
   const [dupConfirmed, setDupConfirmed] = useState(false);
+  /** 快记里点了「改用手动记录」：把这句原文留在这儿给人照着填，不猜、不写库 */
+  const [fallbackRaw, setFallbackRaw] = useState('');
 
   /**
    * 同公司 + 同岗位是否已经记过。
@@ -63,8 +73,9 @@ export function QuickAdd({ api, initialStatus, onClose }: QuickAddProps) {
   const jobRef = useRef<HTMLInputElement | null>(null);
 
   useEffect(() => {
+    if (initialFocus === 'capture') return;
     companyRef.current?.focus();
-  }, []);
+  }, [initialFocus]);
 
   const canSave = company.trim().length > 0 && jobTitle.trim().length > 0;
 
@@ -77,6 +88,7 @@ export function QuickAdd({ api, initialStatus, onClose }: QuickAddProps) {
     setDurationMonths('');
     setJdUrl('');
     setDupConfirmed(false);
+    setFallbackRaw('');
     setAppliedAt(todayISO());
     companyRef.current?.focus();
   };
@@ -129,6 +141,23 @@ export function QuickAdd({ api, initialStatus, onClose }: QuickAddProps) {
         </header>
 
         <div className={CLS.aa}>
+          {/* 模块三落在浮层顶部：一句话能记清就不用填表单；听不懂时它自己会让路（改用手动记录） */}
+          <QuickCapture
+            api={api}
+            autoFocus={initialFocus === 'capture'}
+            onFallback={(raw) => {
+              setFallbackRaw(raw);
+              companyRef.current?.focus();
+            }}
+          />
+
+          {fallbackRaw ? (
+            <p className="qa-fallback">
+              刚才那句留在这儿：<strong>{fallbackRaw}</strong>
+              —— 照着填就行。快记只是没听懂，一个字都没写进库。
+            </p>
+          ) : null}
+
           <div className="qa-row">
             <label className={CLS.g}>
               <span className={CLS.a}>公司名 *</span>

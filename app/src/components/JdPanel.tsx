@@ -215,13 +215,13 @@ export function JdPanel({ api, app }: { api: AppApi; app: Application }) {
               </ul>
 
               {digest.hints.daysPerWeek && (
-                <p className={CLS.aM}>线索：每周 {digest.hints.daysPerWeek} 天（供参考，不自动写入）</p>
+                <p className="jd-panel__hint">线索：每周 {digest.hints.daysPerWeek} 天（供参考，不自动写入）</p>
               )}
               {digest.hints.durationMonths && (
-                <p className={CLS.aM}>线索：实习 {digest.hints.durationMonths} 个月（供参考，不自动写入）</p>
+                <p className="jd-panel__hint">线索：实习 {digest.hints.durationMonths} 个月（供参考，不自动写入）</p>
               )}
               {digest.record?.companyName && (
-                <p className={CLS.aM}>
+                <p className="jd-panel__hint">
                   识别到公司「{digest.record.companyName}」—— 公司名不自动写入：改名会影响这家公司的全部投递，请到公司页手改。
                 </p>
               )}

@@ -16,6 +16,7 @@ import type {
   InterviewKind,
   Mastery,
   NoteType,
+  OfferScoreKey,
   PlatformId,
   Question,
   QuestionCategory,
@@ -25,6 +26,12 @@ import type {
   Status,
   TemplateId,
 } from '../types';
+import type { OfferCandidate } from './offer/compare';
+import type { DecisionView } from './offer/decision';
+import type { CompanyExtraPatch } from './company/fields';
+import type { ConfirmedCapture } from './capture/parse';
+
+export type { CompanyExtraPatch };
 import type { MergePlan, PlannedRow } from './sync/types';
 import type { FileLinkCapability } from './fileLink/handle';
 import type { PluginPermission, PluginRegistration } from '../plugins/types';
@@ -248,6 +255,88 @@ export interface ResumeApi {
   extendTrash: (resumeId: string) => void;
 }
 
+/* ---------------- 模块一：Offer 决策台（v1.0.0） ---------------- */
+
+/**
+ * 写 Offer 详情的一次补丁。
+ * `null` / `undefined` = **清空该字段**（写库时删键，不写空串、不写 0 冒充「没填」）。
+ */
+export interface OfferPatch {
+  /** `null` = 清空该字段（回到缺省「按月」），写库时删键而不是写脏枚举 */
+  payMode?: 'monthly' | 'daily' | null;
+  monthlySalary?: number | null;
+  salaryMonths?: number | null;
+  dailyRate?: number | null;
+  signOnBonus?: number | null;
+  equityText?: string | null;
+  level?: string | null;
+  commuteMin?: number | null;
+  scores?: Partial<Record<OfferScoreKey, 1 | 2 | 3 | 4 | 5>> | null;
+  notes?: string | null;
+}
+
+export interface SaveDecisionInput {
+  applicationId: string;
+  /** YYYY-MM-DD（用户可改，便于补记） */
+  decidedAt: string;
+  reasonTags: string[];
+  note?: string;
+  declinedIds?: string[];
+}
+
+export interface OfferApi {
+  /** 可对比的投递（status ∈ {offer, onboarded}，已排除回收站） */
+  candidates: OfferCandidate[];
+  weights: Record<OfferScoreKey, number>;
+  /** 拖动滑块结束即写 settings.offerWeights（不入撤销栈，D-04） */
+  setWeights: (weights: Record<OfferScoreKey, number>) => void;
+  /** 写 Offer 详情：一次 mutate = 一个撤销点；不动 lastActivityAt、不写 note */
+  saveOffer: (appId: string, patch: OfferPatch) => void;
+  /** 保存决策（覆盖式）。调用方必须已完成二次确认 */
+  saveDecision: (input: SaveDecisionInput) => void;
+  /** 决策视图（悬空时 companyLabel = '（投递已删除）'）；没决策 = null */
+  decision: DecisionView | null;
+  /**
+   * 打开决策台。
+   *
+   * 入口有四处（今日卡 / 看板列头下方 / 详情抽屉 / 键盘），开合状态必须留在 App ——
+   * 否则 `Esc` 与「一次只开一个浮层」的既有约定管不到它（D-03）。
+   */
+  open: () => void;
+}
+
+/* ---------------- 模块二：公司档案 ---------------- */
+
+export interface CompanyApi {
+  dossierId: string | null;
+  openDossier: (companyId: string) => void;
+  closeDossier: () => void;
+  /** 五字段就地编辑（逐字写库，不入撤销栈） */
+  saveExtras: (companyId: string, patch: CompanyExtraPatch) => void;
+  /** COM-6：归一化后同名的既有公司（只提示，不拦、不合并） */
+  sameName: (name: string, excludeId?: string) => Company[];
+  /** COM-3：跳题库并按这批 companyName 精确筛选（集合来自 dossier.experienceNames） */
+  openQuestionBank: (companyNames: string[]) => void;
+}
+
+/* ---------------- 模块三：一句话快记 ---------------- */
+
+export interface CaptureApi {
+  /** 已确认的草案 → 顺序执行写库步骤（D-13：N 步 = N 个撤销点） */
+  commit: (draft: ConfirmedCapture) => void;
+}
+
+/* ---------------- 模块四：沉默待办 ---------------- */
+
+export interface SilenceApi {
+  /** 一次 mutate 写完 N 条 dropped，入栈一个 multiStatus 撤销（SIL-4） */
+  batchDrop: (ids: string[]) => void;
+  /** 一次 mutate 写完 N 条 mutedUntil（SIL-5，不入栈：静音可再点一次取消） */
+  batchMute: (ids: string[], until: string) => void;
+  /** 只对 confirmedIds 写 followup note（SIL-3：生成话术 ≠ 发了消息） */
+  batchFollowup: (ids: string[], confirmedIds: string[]) => number;
+}
+
 export interface AppApi {
   db: DB;
   now: Date;
@@ -301,6 +390,18 @@ export interface AppApi {
 
   updateCompany: (id: string, patch: Partial<Company>) => void;
   updateSettings: (patch: Partial<AppSettings>) => void;
+
+  /* ---------------- v1.0.0 四个模块的写库 + 派生入口 ---------------- */
+  offer: OfferApi;
+  company: CompanyApi;
+  capture: CaptureApi;
+  silence: SilenceApi;
+  /** 'all' = 全部投递，'silence' = 沉默待办（列表二级 tab） */
+  listTab: 'all' | 'silence';
+  setListTab: (tab: 'all' | 'silence') => void;
+  /** COM-3：题库的公司筛选集合；null = 用下拉单选（既有行为） */
+  interviewCompanyFilter: string[] | null;
+  setInterviewCompanyFilter: (names: string[] | null) => void;
 
   /* ---------------- 简历草稿（v0.9 · T02 写入通道） ---------------- */
   /**

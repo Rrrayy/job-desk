@@ -121,7 +121,7 @@ export function VersionMenu({ api, resume, onBeforeSave }: VersionMenuProps) {
             return (
               <li className={cx('ver-item', isPrimary && 'ver-item--primary')} key={version.id}>
                 {renamingId === version.id ? (
-                  <div className={CLS.aO}>
+                  <div className="ver-item__row">
                     <input
                       className={CLS.G}
                       type="text"
@@ -146,7 +146,7 @@ export function VersionMenu({ api, resume, onBeforeSave }: VersionMenuProps) {
                   </div>
                 ) : (
                   <>
-                    <div className={CLS.aO}>
+                    <div className="ver-item__row">
                       <span className="ver-item__label">{version.label}</span>
                       {isPrimary ? <span className="ver-item__badge">主版本</span> : null}
                       <span className="ver-item__meta">{fmtDateTime(version.createdAt)}</span>
@@ -261,7 +261,7 @@ export function VersionMenu({ api, resume, onBeforeSave }: VersionMenuProps) {
             <ul className="ver-list ver-list--trash">
               {trashed.map((version) => (
                 <li className="ver-item" key={version.id}>
-                  <div className={CLS.aO}>
+                  <div className="ver-item__row">
                     <span className="ver-item__label">{version.label}</span>
                     <span className="ver-item__meta">删除于 {fmtDateTime(version.deletedAt ?? '')}</span>
                   </div>

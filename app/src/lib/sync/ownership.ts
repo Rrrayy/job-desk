@@ -79,6 +79,12 @@ export const FIELD_OWNERSHIP: Record<keyof Application, Ownership> = {
   /** 静音是纯个人意图（「这段时间别催我」），平台永远不该碰 */
   mutedUntil: 'user-only',
   /**
+   * v1.0：Offer 四维评分、股权、签字费、通勤、截止日 —— 全是用户主观权衡的结果。
+   * 招聘平台上根本没有这些数字（平台只知道自己给的数，不知道你心里的权重），
+   * 所以平台永不写。offerWeights 是全局设置、offerDecision 是全局单例，都不在 Application 上。
+   */
+  offer: 'user-only',
+  /**
    * v0.5：回收站标记。**平台永不触碰**。
    * 否则会出现「你删掉的投递，下一次同步又被平台数据拉回来」这种灵异事件 ——
    * 从用户视角那就是「删不掉」，比不同步更让人绝望。

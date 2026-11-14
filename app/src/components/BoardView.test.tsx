@@ -295,4 +295,22 @@ describe('BoardView 窗口化（v0.9.1）', () => {
     expect(container.querySelectorAll('.app-card')).toHaveLength(40);
     expect(container.querySelector('[data-testid="board-more-chatting"]')).toBeNull();
   });
+
+  /**
+   * v1.0.0 回归（QA 补）：类名 token 表重排后，`CLS.aP` 被重指向到新模块的
+   * `dossier__stat-value`，而这里仍在用它渲染列头计数 —— 于是「列头计数徽章」
+   * 静默丢掉了 `.board__count` 的样式。
+   *
+   * 为什么既有测试全绿：`colHeadCount()` 只断言 **文字**（`45`），不断言类名；
+   * 而 `check:classes` 只保证「表里的串都被写成 CLS.x」，不保证 token 的语义没变。
+   * 所以这条断言必须钉在**渲染出来的 className** 上。
+   */
+  it('★ 列头计数徽章必须带 board__count（CLS token 重排不许换掉既有语义类名）', async () => {
+    await renderBoard(makeDb([makeApp({ id: 'app-1' }), makeApp({ id: 'app-2' })]));
+    const counts = Array.from(container.querySelectorAll('.board__count'));
+    expect(counts.length).toBeGreaterThan(0);
+    expect(counts.map((el) => el.textContent)).toContain('2');
+    // 反向断言：同样的位置上不该出现别的模块的类名
+    expect(container.querySelector('.dossier__stat-value')).toBeNull();
+  });
 });

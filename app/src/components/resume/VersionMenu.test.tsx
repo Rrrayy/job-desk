@@ -290,4 +290,17 @@ describe('VersionMenu（jsdom）', () => {
     expect(save).toHaveBeenCalledWith(RESUME.id, 'v5 定向版');
     expect(input.value).toBe('');
   });
+
+  /**
+   * v1.0.0 回归（QA 补）：token 表重排后 `CLS.aO` 被重指向到 `dossier__stat-label`，
+   * 版本行的容器（版本名 / 主版本徽章 / 时间）仍在用它 —— 丢掉 `.ver-item__row` 的排版后
+   * 三行会挤成一行。文字断言看不出来，只能断 className。
+   */
+  it('★ 版本行容器仍带 ver-item__row（CLS token 重排不许换掉既有语义类名）', async () => {
+    const { api } = fakeApi({ versions: [version('ver_1', '投递版A')] });
+    await render(api);
+    expect(container.querySelectorAll('.ver-item')).toHaveLength(1);
+    expect(container.querySelector('.ver-item__row')).not.toBeNull();
+    expect(container.querySelector('.dossier__stat-label')).toBeNull();
+  });
 });

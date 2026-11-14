@@ -557,7 +557,7 @@ export function SettingsDrawer({ api, onClose, importError, onDismissError, tras
               </div>
               <span className={CLS.aK}>
                 {formatBytes(dbSize)}
-                <span className={CLS.aN}>{budgetPercent}%</span>
+                <span className="stat-row__sub">{budgetPercent}%</span>
               </span>
             </div>
             <p className={CLS.c}>

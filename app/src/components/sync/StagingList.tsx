@@ -145,7 +145,7 @@ export function StagingList(props: StagingListProps) {
                 <div className="sync__staging-head">
                   <span className="sync__staging-company sync__staging-company--unknown">（没解析出公司名）</span>
                   <span className={CLS.aT}>{REASON_TEXT[item.reason]}</span>
-                  <span className={CLS.aQ}>
+                  <span className="sync__source">
                     {PLATFORM_LABEL[item.platform]} · {isoMinute(item.capturedAt)}
                   </span>
                 </div>
@@ -156,7 +156,7 @@ export function StagingList(props: StagingListProps) {
                   {item.reasonText ? `为什么没认出来：${item.reasonText}` : '没能从这一段里认出公司、岗位和状态。'}
                 </div>
 
-                <div className={CLS.aU}>
+                <div className="sync__staging-controls">
                   {aiButton(item)}
                   <button
                     type="button"
@@ -187,7 +187,7 @@ export function StagingList(props: StagingListProps) {
               <div className="sync__staging-head">
                 <span className="sync__staging-company">{item.parsed.companyName || '（没抓到公司名）'}</span>
                 <span className={CLS.aT}>{REASON_TEXT[item.reason]}</span>
-                <span className={CLS.aQ}>
+                <span className="sync__source">
                   {PLATFORM_LABEL[item.platform]} · {isoMinute(item.capturedAt)}
                 </span>
               </div>
@@ -206,7 +206,7 @@ export function StagingList(props: StagingListProps) {
                 </div>
               ) : null}
 
-              <div className={CLS.aU}>
+              <div className="sync__staging-controls">
                 {aiButton(item)}
                 <label className="sync__staging-pick">
                   <span className={CLS.a}>归到</span>

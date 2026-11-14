@@ -147,4 +147,18 @@ describe('SettingsDrawer 薄挂载（jsdom）', () => {
     // 设置页本体仍然在渲染 —— 否则上一条的「不存在」可能只是因为整页没渲染出来
     expect(container.querySelector('.drawer--settings')).not.toBeNull();
   });
+
+  /**
+   * v1.0.0 回归（QA 补）：token 表重排后 `CLS.aN` 被重指向到 `cap__row`，
+   * 而「存储占用」这一行仍在用它渲染百分比小字 —— 于是这一行掉了 `.stat-row__sub` 的样式。
+   * 断言落在 className 上：只断言文字（`0%`）是抓不到的。
+   */
+  it('★ 存储占用的百分比小字仍带 stat-row__sub（CLS token 重排不许换掉既有语义类名）', async () => {
+    await render(makeApi([]));
+    const subs = Array.from(container.querySelectorAll('.stat-row__sub'));
+    expect(subs.length).toBeGreaterThan(0);
+    expect(subs.some((el) => el.textContent?.includes('%'))).toBe(true);
+    // 反向断言：这个位置不该出现新模块的类名
+    expect(container.querySelector('.cap__row')).toBeNull();
+  });
 });

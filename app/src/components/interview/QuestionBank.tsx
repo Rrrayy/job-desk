@@ -58,6 +58,12 @@ interface QuestionGroup {
 export function QuestionBank({ api, onRecord }: QuestionBankProps) {
   const { db } = api;
   const [company, setCompany] = useState<string>('all');
+  /**
+   * v1.0 / COM-3：从公司档案跳过来时带一批 companyName。
+   * 非空时**并行**于下拉筛选（下拉是单选，档案可能要「这几家一起看」），
+   * 而不是覆盖它 —— 覆盖会让用户回到题库时发现自己的筛选被悄悄改了。
+   */
+  const nameFilter = api.interviewCompanyFilter;
   const [category, setCategory] = useState<'all' | QuestionCategory>('all');
   const [mastery, setMastery] = useState<MasteryFilter>('all');
   const [onlyDue, setOnlyDue] = useState(false);
@@ -90,7 +96,10 @@ export function QuestionBank({ api, onRecord }: QuestionBankProps) {
       if (mastery !== 'all' && question.mastery !== mastery) return false;
       if (category !== 'all' && question.category !== category) return false;
       if (onlyDue && !isDue(question, today)) return false;
-      if (company !== 'all') {
+      if (nameFilter && nameFilter.length > 0) {
+        const experience = experienceById.get(question.experienceId);
+        if (!experience || !nameFilter.includes(experience.companyName)) return false;
+      } else if (company !== 'all') {
         const experience = experienceById.get(question.experienceId);
         if (!experience || experience.companyName !== company) return false;
       }
@@ -100,7 +109,7 @@ export function QuestionBank({ api, onRecord }: QuestionBankProps) {
       }
       return true;
     });
-  }, [db.questions, mastery, category, onlyDue, today, company, experienceById, keyword]);
+  }, [db.questions, mastery, category, onlyDue, today, company, nameFilter, experienceById, keyword]);
 
   /** 复习模式用的顺序（「不会的先看」），列表模式不用它 */
   const sorted = useMemo(() => reviewQueue(filtered, nowIso), [filtered, nowIso]);
@@ -205,14 +214,27 @@ export function QuestionBank({ api, onRecord }: QuestionBankProps) {
       <div className="qb__toolbar">
         <label className="qb__filter">
           <span className={CLS.a}>公司</span>
-          <select className={CLS.q} value={company} onChange={(event) => setCompany(event.target.value)}>
-            <option value="all">全部</option>
-            {companies.map((name) => (
-              <option key={name} value={name}>
-                {name}
-              </option>
-            ))}
-          </select>
+          {nameFilter && nameFilter.length > 0 ? (
+            <span className="qb__filter-note" data-testid="qb-name-filter">
+              只看 {nameFilter.join(' / ')} 的题
+              <button
+                type="button"
+                className={CLS.k}
+                onClick={() => api.setInterviewCompanyFilter(null)}
+              >
+                看全部公司
+              </button>
+            </span>
+          ) : (
+            <select className={CLS.q} value={company} onChange={(event) => setCompany(event.target.value)}>
+              <option value="all">全部</option>
+              {companies.map((name) => (
+                <option key={name} value={name}>
+                  {name}
+                </option>
+              ))}
+            </select>
+          )}
         </label>
 
         <label className="qb__filter">

@@ -16,9 +16,12 @@ import type {
   NewExperienceInput,
   NewInterviewInput,
   QuestionDraft,
+  CompanyExtraPatch,
+  OfferPatch,
   QuickNoteContext,
   QuickNoteInput,
   QuickNoteResult,
+  SaveDecisionInput,
   StatusChangeOpts,
   SyncPlanOutcome,
   ViewKey,
@@ -33,6 +36,9 @@ import type {
   InterviewExperience,
   Mastery,
   NoteType,
+  OfferDecision,
+  OfferDetail,
+  OfferScoreKey,
   PlatformId,
   Question,
   ResumeContent,
@@ -59,11 +65,20 @@ import {
 import { buildSampleDB } from './lib/sample';
 import {
   STATUS_LABEL,
+  applyStatusChange,
   lastActivityAtOf,
   revertStatusChange,
   statusChangeText,
   type StatusUndo,
 } from './lib/rules';
+/* ---------------- v1.0.0：四个模块的纯函数层（组件之间零 import，全从这里拿） ---------------- */
+import { applyDecision, applyOfferPatch, decisionViewOf } from './lib/offer/decision';
+import { offerCandidatesOf } from './lib/offer/compare';
+import { offerWeightsOf } from './lib/offer/score';
+import { COMPANY_EXTRA_KEYS, normalizeCompanyExtras } from './lib/company/fields';
+import { sameNameCompanies } from './lib/company/dossier';
+import { planCaptureCommit, type CaptureContext, type ConfirmedCapture } from './lib/capture/parse';
+import { planBatchFollowup } from './lib/silence/list';
 import {
   extendResumeRetention,
   isDeleted,
@@ -166,6 +181,8 @@ import {
 } from './plugins/storage';
 import { RPC_VERSION, type PluginPermission, type PluginRegistration, type RpcEnvelope, type RpcErrorCode } from './plugins/types';
 import { PluginFrame } from './components/plugins/PluginsPanel';
+import { OfferPanel } from './components/offer/OfferPanel';
+import { CompanyDossier } from './components/company/CompanyDossier';
 import { SendPreviewDialog } from './components/ai/SendPreviewDialog';
 import { detectCapture, pickAdapter, toAdapterInput } from './lib/sync/capture';
 import {
@@ -252,7 +269,16 @@ type Undo =
    * 只回退一条投递的**四个绑定字段**（versionId / version / bindLog / updatedAt）——
    * 撤销一次绑定不该把「绑定之后用户又改了状态」一起退回去。
    */
-  | { kind: 'bind'; bind: BindUndo };
+  | { kind: 'bind'; bind: BindUndo }
+  /**
+   * v1.0 / D-10：批量放弃是「N 条状态变更」，但**只能有一个撤销点** ——
+   * 循环 changeStatus 会得到 N 个撤销点，一次 ⌘Z 只回滚 1 条，那不叫撤销。
+   */
+  | { kind: 'multiStatus'; entries: StatusUndo[] }
+  /** v1.0：Offer 详情改写。只回退那一条投递的 `offer` 字段，不碰状态与时间线 */
+  | { kind: 'offer'; appId: string; previous: OfferDetail | null }
+  /** v1.0：决策改写（全局单例，previous = null 表示撤销后「还没记」） */
+  | { kind: 'decision'; previous: OfferDecision | null };
 
 /** 撤销栈里的一格：撤销动作 + 给用户看的名字 +（可选）重做动作 */
 interface UndoEntry {
@@ -325,6 +351,18 @@ export default function App() {
   const [now, setNow] = useState<Date>(() => new Date());
   /** ＋记一家 的初始状态（看板某列里点「＋」时带入该列状态） */
   const [quickAddStatus, setQuickAddStatus] = useState<Status>('applied');
+  /* ---- v1.0.0：4 个面板的开关（D-03：开合在 App，面板内部草稿留在组件） ---- */
+  /** 列表页第二个页签（沉默待办 = 模块四的入口） */
+  const [listTab, setListTabState] = useState<'all' | 'silence'>('all');
+  /** 题库的公司筛选集合（COM-3 从公司档案跳过来时带一批名字）；null = 用下拉单选 */
+  const [interviewCompanyFilter, setInterviewCompanyFilterState] = useState<string[] | null>(null);
+  const [offerOpen, setOfferOpen] = useState(false);
+  const [dossierId, setDossierId] = useState<string | null>(null);
+  /**
+   * ＋记一家 打开时焦点落在哪：`Q` 键要落在「一句话快记」上，
+   * 点「＋记一家」按钮则落在表单第一格（用户已经决定手动填）。
+   */
+  const [quickAddFocus, setQuickAddFocus] = useState<'form' | 'capture'>('form');
 
   /* ------------------- v0.6 文件联动（D8） ------------------- */
   /**
@@ -428,7 +466,19 @@ export default function App() {
         else if (undo.kind === 'batch') revertQuestionBatch(draft, undo.batch);
         else if (undo.kind === 'resume') applyResumeSlice(draft, undo.resume);
         else if (undo.kind === 'bind') revertBind(draft, undo.bind);
-        else revertSync(draft, undo.sync);
+        else if (undo.kind === 'multiStatus') {
+          // 逐条回滚：revertStatusChange 已经覆盖 status / 两个时间戳 / 挂的轮次 / 自动 note 五字段
+          for (const entry of undo.entries) revertStatusChange(draft, entry);
+        } else if (undo.kind === 'offer') {
+          const target = draft.applications.find((app) => app.id === undo.appId);
+          if (target) {
+            if (undo.previous) target.offer = structuredClone(undo.previous);
+            else delete target.offer;
+          }
+        } else if (undo.kind === 'decision') {
+          if (undo.previous) draft.offerDecision = structuredClone(undo.previous);
+          else delete draft.offerDecision;
+        } else revertSync(draft, undo.sync);
       });
     },
     [mutate],
@@ -560,6 +610,14 @@ export default function App() {
   const openNew = useCallback((initialStatus?: Status): void => {
     // 兜底：某些 onClick 会把 MouseEvent 直接当参数传进来
     setQuickAddStatus(typeof initialStatus === 'string' ? initialStatus : 'applied');
+    setQuickAddFocus('form');
+    setQuickAddOpen(true);
+  }, []);
+
+  /** v1.0 §6.8：`Q` = 说一句话（不是「再记一家」——那是 N） */
+  const openCapture = useCallback((): void => {
+    setQuickAddStatus('applied');
+    setQuickAddFocus('capture');
     setQuickAddOpen(true);
   }, []);
 
@@ -717,33 +775,23 @@ export default function App() {
       const from = current.status;
       const at = opts?.at || new Date().toISOString();
       const systemNoteId = uid('n');
-      // 撤销快照只记「这次变更影响了什么」，不复制整库
-      const undo: StatusUndo = {
-        appId: id,
-        prevStatus: from,
-        prevStatusChangedAt: current.statusChangedAt,
-        prevLastActivityAt: current.lastActivityAt,
-        prevRejectedAtRound: current.rejectedAtRound ?? null,
-        createdNoteId: systemNoteId,
-      };
+      /**
+       * 写库配方只有一份：`lib/rules.applyStatusChange`。
+       * App 这边只负责「什么时候改、要不要入栈、提示什么」——
+       * 之前这里有一份内联副本，改一处忘另一处就会静默漂移（S1）。
+       */
+      const captured: StatusUndo[] = [];
       mutate((draft) => {
-        const target = draft.applications.find((a) => a.id === id);
-        if (!target) return;
-        target.status = status;
-        target.statusChangedAt = at;
-        target.lastActivityAt = at;
-        target.updatedAt = at;
-        target.userEditedAt = { ...(target.userEditedAt ?? {}), status: at };
-        if (status === 'rejected' && opts?.round) target.rejectedAtRound = opts.round;
-        draft.notes.push({
-          id: systemNoteId,
-          applicationId: id,
-          type: 'system',
-          content: statusChangeText(from, status),
-          auto: true,
-          touchedAt: at,
+        const entry = applyStatusChange(draft, id, status, {
+          at,
+          ...(opts?.round !== undefined ? { round: opts.round } : {}),
+          noteId: systemNoteId,
+          text: statusChangeText(from, status),
         });
+        if (entry) captured.push(entry);
       });
+      const undo = captured[0];
+      if (!undo) return;
       const snapshot: Undo = { kind: 'status', status: undo };
       pushUndo({
         label: `状态 ${STATUS_LABEL[from]} → ${STATUS_LABEL[status]}`,
@@ -2920,12 +2968,21 @@ export default function App() {
       if (typing) return;
 
       const overlayOpen =
-        quickAddOpen || settingsOpen || selectedId !== null || syncOpen || quickNoteCtx !== null;
+        quickAddOpen ||
+        settingsOpen ||
+        selectedId !== null ||
+        syncOpen ||
+        quickNoteCtx !== null ||
+        offerOpen ||
+        dossierId !== null;
 
       if (event.key === 'Escape') {
         if (quickNoteCtx !== null) setQuickNoteCtx(null);
         else if (experienceEditorId) setExperienceEditorId(null);
         else if (syncOpen) setSyncOpen(false);
+        // v1.0：这两个面板压在详情抽屉之上，必须先关它们
+        else if (dossierId !== null) setDossierId(null);
+        else if (offerOpen) setOfferOpen(false);
         else if (quickAddOpen) setQuickAddOpen(false);
         else if (settingsOpen) setSettingsOpen(false);
         else if (selectedId) setSelectedId(null);
@@ -2952,6 +3009,12 @@ export default function App() {
         openNew();
         return;
       }
+      // 只有「不在输入框里打字」时 Q 才抢——否则「q」这个字母就永远打不出来了
+      if (event.key === 'q' || event.key === 'Q') {
+        event.preventDefault();
+        openCapture();
+        return;
+      }
       // 数字键按「序号」比，不按字符串比：`'10' <= '6'` 是 false，
       // 视图涨到两位数那天字符串比较会静默失灵（第 10 项永远按不出来）。
       const index = Number(event.key);
@@ -2962,7 +3025,20 @@ export default function App() {
     };
     window.addEventListener('keydown', onKeyDown);
     return () => window.removeEventListener('keydown', onKeyDown);
-  }, [quickAddOpen, settingsOpen, selectedId, syncOpen, quickNoteCtx, experienceEditorId, undoLast, redoLast, openNew]);
+  }, [
+    quickAddOpen,
+    settingsOpen,
+    selectedId,
+    syncOpen,
+    quickNoteCtx,
+    experienceEditorId,
+    offerOpen,
+    dossierId,
+    undoLast,
+    redoLast,
+    openNew,
+    openCapture,
+  ]);
 
   /* ------------------------------------------------------------ 搜索结果 */
 
@@ -3013,6 +3089,179 @@ export default function App() {
 
   /** 插件注册表（pluginStorage 的 host 命名空间，reload 后原样恢复） */
   const pluginRegistry = useMemo<PluginRegistration[]>(() => readRegistry(db), [db]);
+
+  /* ================================================================
+   * v1.0.0 · 四个模块的写库入口
+   *
+   * 每个入口的注释都要回答两件事（架构 §6.7）：**进不进撤销栈**、**动不动 lastActivityAt**。
+   * 「派生量一律不落库」：综合分 / 年薪 / 沉默分组 / 公司小计都不写进 DB。
+   * ================================================================ */
+
+  /** 模块一：Offer 详情改写。进栈；**不动 lastActivityAt**（改薪资不该清零沉默） */
+  const saveOffer = useCallback(
+    (appId: string, patch: OfferPatch): void => {
+      const before = dbRef.current.applications.find((app) => app.id === appId)?.offer ?? null;
+      let changed = false;
+      mutate((draft) => {
+        changed = applyOfferPatch(draft, appId, patch, new Date().toISOString());
+      });
+      if (!changed) return;
+      pushUndo({
+        label: '改写 Offer 信息',
+        undo: { kind: 'offer', appId, previous: before ? structuredClone(before) : null },
+      });
+    },
+    [mutate, pushUndo],
+  );
+
+  /** 模块一：决策（覆盖式）。进栈；**不碰任何 Application 字段**（决策是独立的一条记录） */
+  const saveDecision = useCallback(
+    (input: SaveDecisionInput): void => {
+      const before = dbRef.current.offerDecision ? structuredClone(dbRef.current.offerDecision) : null;
+      mutate((draft) => applyDecision(draft, input));
+      pushUndo({ label: '记下 Offer 决策', undo: { kind: 'decision', previous: before } });
+      showToast('已记录你的选择', undoLast);
+    },
+    [mutate, pushUndo, showToast, undoLast],
+  );
+
+  /** 模块一：权重。**不进栈**（D-04：与 channelFactor 一致，拖错再拖回来） */
+  const setOfferWeights = useCallback(
+    (weights: Record<OfferScoreKey, number>): void => {
+      mutate((draft) => {
+        draft.settings.offerWeights = { ...weights };
+      });
+    },
+    [mutate],
+  );
+
+  /** 模块二：公司五字段。**不进栈**（逐字写库）；空值 = 删键，非法官网 = 拒收并说明 */
+  const saveCompanyExtras = useCallback(
+    (companyId: string, patch: CompanyExtraPatch): void => {
+      const normalized = normalizeCompanyExtras(patch);
+      const rejectedWebsite = Boolean(patch.website && !normalized.website);
+      mutate((draft) => {
+        const company = draft.companies.find((item) => item.id === companyId);
+        if (!company) return;
+        const raw: Record<string, unknown> = { ...patch };
+        for (const key of COMPANY_EXTRA_KEYS) {
+          if (!(key in patch)) continue;
+          if (key in normalized) company[key] = normalized[key] as never;
+          // 传了空值 = 用户要清空这一格；传了非法值 = 拒收，旧值原样留着
+          else if (!raw[key]) delete company[key];
+        }
+      });
+      if (rejectedWebsite) showToast('官网只接受 http(s) 开头的地址，这条没存');
+    },
+    [mutate, showToast],
+  );
+
+  /**
+   * 模块三：快记保存。
+   *
+   * **D-13：N 步 = N 个撤销点** —— 这里顺序调用既有的 addApplication / changeStatus /
+   * addNote / addInterview，绝不另开第二条写库路径（那正是 CAP-11 禁止的）。
+   * 代价是「记面试 + 改状态」要按两次 ⌘Z，所以 toast 里明说「可逐步撤销」。
+   */
+  const captureCommit = useCallback(
+    (confirmed: ConfirmedCapture): void => {
+      const current = dbRef.current;
+      const ctx: CaptureContext = {
+        now: new Date(),
+        companies: current.companies,
+        applications: current.applications.filter((app) => !app.deletedAt),
+        interviews: current.interviews,
+      };
+      for (const step of planCaptureCommit(confirmed, ctx)) {
+        if (step.kind === 'createApplication') {
+          addApplication({
+            companyName: step.companyName,
+            jobTitle: step.jobTitle,
+            status: step.status,
+          });
+        } else if (step.kind === 'changeStatus') {
+          changeStatus(
+            step.applicationId,
+            step.status,
+            step.round !== undefined ? { round: step.round } : undefined,
+          );
+        } else if (step.kind === 'addNote') {
+          addNote(step.applicationId, step.type, step.content);
+        } else {
+          addInterview(step.input);
+        }
+      }
+    },
+    [addApplication, addNote, addInterview, changeStatus],
+  );
+
+  /**
+   * 模块四：批量放弃。**一个 multiStatus 撤销点**（SIL-4）——
+   * 循环 changeStatus 会得到 N 个撤销点，一次 ⌘Z 只回滚一条，那不叫撤销。
+   */
+  const batchDrop = useCallback(
+    (ids: string[]): void => {
+      /**
+       * 首次执行与重做走同一条路径。
+       *
+       * 重做如果只 `mutate` 而不入栈，「批量放弃 → ⌘Z 回滚 → ⌘⇧Z 重做 → 再 ⌘Z」
+       * 就再也撤不回来了（栈里没有这一格）。批量放弃是数据破坏性操作，
+       * 这个洞比少按一次快捷键严重得多。
+       */
+      const run = (targetIds: string[]): void => {
+        const at = new Date().toISOString();
+        const entries: StatusUndo[] = [];
+        mutate((draft) => {
+          for (const id of targetIds) {
+            const app = draft.applications.find((item) => item.id === id);
+            if (!app || app.status === 'dropped') continue;
+            const entry = applyStatusChange(draft, id, 'dropped', {
+              at,
+              noteId: uid('n'),
+              text: statusChangeText(app.status, 'dropped'),
+            });
+            if (entry) entries.push(entry);
+          }
+        });
+        if (entries.length === 0) {
+          showToast('这几条已经是「已放弃」了');
+          return;
+        }
+        pushUndo({
+          label: `批量放弃 ${entries.length} 条`,
+          undo: { kind: 'multiStatus', entries },
+          // 重做 = 再改一次状态并**重新入栈**（会写新的系统记录，与 changeStatus 的 redo 同语义）
+          redo: () => run(targetIds),
+        });
+        showToast(`已把这 ${entries.length} 条标为已放弃`, undoLast);
+      };
+      run(ids);
+    },
+    [mutate, pushUndo, showToast, undoLast],
+  );
+
+  /** 模块四：批量静音。**不进栈**（再点一次就能取消，本身就是可逆的） */
+  const batchMute = useCallback(
+    (ids: string[], until: string): void => {
+      mutate((draft) => {
+        for (const id of ids) {
+          const app = draft.applications.find((item) => item.id === id);
+          if (app) app.mutedUntil = until;
+        }
+      });
+    },
+    [mutate],
+  );
+
+  /** 模块四：只给「已发出」的那些写 followup note（SIL-3）。走既有 addNote，不进栈 */
+  const batchFollowup = useCallback(
+    (ids: string[], confirmedIds: string[]): number => {
+      const targets = planBatchFollowup(ids, confirmedIds);
+      for (const id of targets) addNote(id, 'followup', '已催一下，等回复');
+      return targets.length;
+    },
+    [addNote],
+  );
 
   const api: AppApi = {
     // ★ 视图拿到的是**已摘掉回收站**的库；回收站页与设置页直接读 `db`（含已删除）。
@@ -3080,6 +3329,49 @@ export default function App() {
       referencesOf: (versionId: string) => referencingApplications(db, versionId).length,
       primaryVersionId: db.settings.defaultResumeVersionId ?? null,
     },
+
+    /* ---------------- v1.0.0 · 模块一：Offer 决策台 ---------------- */
+    offer: {
+      candidates: offerCandidatesOf(viewDB, now),
+      weights: offerWeightsOf(db.settings),
+      setWeights: setOfferWeights,
+      saveOffer,
+      saveDecision,
+      // App 层算好视图（含悬空兜底），面板不再重算 —— 重算会让「投递已删除」的标签丢掉
+      decision: decisionViewOf(viewDB, db.offerDecision),
+      open: () => setOfferOpen(true),
+    },
+
+    /* ---------------- v1.0.0 · 模块二：公司档案 ---------------- */
+    company: {
+      dossierId,
+      openDossier: (companyId: string) => setDossierId(companyId),
+      closeDossier: () => setDossierId(null),
+      saveExtras: saveCompanyExtras,
+      // COM-6：同名只提示、不拦、不合并（归一化后同名的一定要用户自己判断）
+      sameName: (name: string, excludeId?: string) => sameNameCompanies(db, name, excludeId),
+      // COM-3：跳题库并把这批公司名带过去，筛出来的 N 与档案里的 N 必须是同一个
+      openQuestionBank: (companyNames: string[]) => {
+        setInterviewCompanyFilterState(companyNames);
+        setInsightsTabState('interview');
+        setView('insights');
+      },
+    },
+
+    /* ---------------- v1.0.0 · 模块三：一句话快记 ---------------- */
+    capture: { commit: captureCommit },
+
+    /* ---------------- v1.0.0 · 模块四：沉默待办 ---------------- */
+    silence: {
+      batchDrop,
+      batchMute,
+      batchFollowup,
+    },
+
+    listTab,
+    setListTab: setListTabState,
+    interviewCompanyFilter,
+    setInterviewCompanyFilter: setInterviewCompanyFilterState,
 
     loadSampleData,
     clearAllData,
@@ -3323,7 +3615,12 @@ export default function App() {
         />
       ) : null}
       {quickAddOpen ? (
-        <QuickAdd api={api} initialStatus={quickAddStatus} onClose={() => setQuickAddOpen(false)} />
+        <QuickAdd
+          api={api}
+          initialStatus={quickAddStatus}
+          initialFocus={quickAddFocus}
+          onClose={() => setQuickAddOpen(false)}
+        />
       ) : null}
       {settingsOpen ? (
         <SettingsDrawer
@@ -3335,6 +3632,9 @@ export default function App() {
         />
       ) : null}
       {syncOpen ? <SyncDrawer api={api} onClose={closeSync} initialStep={syncStep} /> : null}
+      {/* v1.0 / 模块一、二：两个全屏面板由 App 挂载，开合统一受 Esc 管（D-03） */}
+      {offerOpen ? <OfferPanel api={api} onClose={() => setOfferOpen(false)} /> : null}
+      {dossierId ? <CompanyDossier api={api} /> : null}
       {importOpen && importPending ? (
         <ImportConfirm
           counts={importPending.plan.counts}

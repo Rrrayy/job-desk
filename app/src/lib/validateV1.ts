@@ -18,6 +18,8 @@ import type {
   Status,
 } from '../types';
 import { RESUME_BIND_LOG_LIMIT } from '../types';
+import { normalizeCompanyExtras } from './company/fields';
+import { normalizeOfferDetail } from './offer/validate';
 import { ALL_STATUSES } from './rules';
 
 /** v0.8：面试类型白名单（与 InterviewKind 一致；非法值回落 undefined，模式照 events.kind） */
@@ -180,6 +182,8 @@ export function normalizeCoreArrays(
       referrer: asOptionalString(item.referrer),
       impression: asOptionalString(item.impression),
       createdAt: asString(item.createdAt) || nowIso,
+      // v1.0.0：五个新字段全可选，缺失即不出现键（契约 4：不为旧数据造 `scale: ''`）
+      ...normalizeCompanyExtras(item),
     });
   }
 
@@ -256,6 +260,9 @@ export function normalizeCoreArrays(
     if (resumeVersionId) app.resumeVersionId = resumeVersionId;
     const bindLog = normalizeResumeBindLog(item.resumeBindLog);
     if (bindLog.length > 0) app.resumeBindLog = bindLog;
+    // v1.0.0：Offer 详情（嵌套）。没有任何有效字段 → 不写键（不造空对象）
+    const offer = normalizeOfferDetail(item.offer, nowIso);
+    if (offer) app.offer = offer;
     applications.push(app);
   }
 
