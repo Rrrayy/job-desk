@@ -67,7 +67,7 @@ grep -rn "<this-repo>" --include="*.md" . | grep -v node_modules
 - [ ] 迁移失败时**不覆盖**用户的 `jobdesk.v1`，并把原文另存到 `jobdesk.v1.failedAt.<ISO>`
 - [ ] 有对应的迁移单测（旧数据 → 新数据、空库、脏字段三种）
 
-## 4. 六道关卡全绿
+## 4. 九道关卡全绿
 
 ```bash
 cd app
@@ -78,12 +78,18 @@ npm run verify
 
 | # | 命令 | 通过标准 |
 | --- | --- | --- |
-| 1 | `npx tsc --noEmit` | 0 error |
+| 1 | `npx tsc --noEmit` | 0 error（strict + `noUncheckedIndexedAccess`） |
 | 2 | `npm test` | 全绿（含本轮新增的回归用例） |
-| 3 | `npm run check:no-network` | 源码零网络调用 |
-| 4 | `npm run build` | 产出 `app/dist/index.html` |
-| 5 | `npm run check:bundle` | ≤ 470KB 提示 / ≤ 540KB 硬红线 |
-| 6 | `npm run validate:community` | 社区面经格式 + 脱敏 + 唯一性 |
+| 3 | `npm run lint` | 0 error 0 warning |
+| 4 | `npm run check:no-network` | 源码零网络调用，白名单为空 |
+| 5 | `npm run build` | 产出 `app/dist/index.html` |
+| 6 | `npm run check:bundle` | ≤ 960 KB 提示 / ≤ 1.00 MB 硬红线 |
+| 7 | `npm run check:classes` | 类名压缩表往返一致 + 黄金副本等价 |
+| 8 | `npm run check:versions` | `package.json` = 扩展 `manifest.json` = 产物 |
+| 9 | `npm run validate:community` | 社区面经格式 + 脱敏 + 唯一性 |
+
+另有两条**不进 `verify`**（要起真浏览器，慢）：`npm run check:print`（8 套简历模板分页与装饰）
+与 `npm run check:resume`。动过简历模板或打印样式必须单独跑。
 
 任何一条红，都不要发版。
 

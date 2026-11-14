@@ -16,11 +16,42 @@
 
 ## [Unreleased]
 
+### 文档
+
+- **README 重写**：中文 487 → 155 行、英文 487 → 127 行。只留「这是什么 / 怎么用 / 守住了什么」，
+  深水区的设计取舍与架构细节整体搬到 [`docs/DESIGN-TRADEOFFS.md`](docs/DESIGN-TRADEOFFS.md)。
+- 修掉过期数字：徽章与基线表里的 320 条测试 / 480 KB / `schema-v2` / 560 KB 红线 / 543,377 B 产物
+  全部换成 v1.0.0 实测值（1506 条 / 91 文件、838,781 B、`schemaVersion 6`、960 KB 警告 / 1 MB 失败）；
+  硬编码数字的徽章换成 CI + Release + License，避免下次再变成谎话。
+- 功能列表补上 v1.0.0 的四个模块（Offer 决策台 / 公司档案 / 一句话快记 / 沉默待办）——
+  此前 README 完全没提它们；也补上了整块缺席的**简历**与 **AI**（8 套模板 / 8 个场景 / 7 家预设）。
+- `CONTRIBUTING.md` 的「六道关卡 / 11 个测试文件 / 450–600 KB 红线」改为九道关卡与当前阈值，
+  并补上 `npm run lint`（原文漏了 lint）与 `check:classes`、`check:versions`。
+- 三处**假话**改正：
+  1. 5 → 6 空迁移被说成「可回滚」。实际 `migrate.ts:81` 对版本高于当前的库是**硬拒绝**，
+     降级必须手动改回版本号 —— README 中英、`[1.0.0]` 条目、发布说明四处统一改正，
+     并把「结构没变」与「能回滚着用」明确分开写；
+  2. 硬约束「运行时零网络请求 / 数据不出本机」与 AI 功能直接冲突。改为「默认零请求 / 默认不出本机」，
+     并写清唯一出口是 `ai/gateway.ts`、只有勾选内容在你点发送时才会直连厂商、
+     `basics`（姓名 / 电话 / 邮箱 / 地址 / 照片）根本不是可选模块；
+  3. 硬约束「`lib/` 与 `adapters/` 不许 import React」也是夸大 —— eslint 只对 `adapters/` 硬拦
+     （`lib/` 会误伤 `import type`）。改为按实际规则写。
+- 重写 [`app/README.md`](app/README.md)：`verify` 展开成真实九步、129 → 1506 条用例、
+  412 KB → 819.1 KB、`schemaVersion: 2` → 6、`migrateV1ToV2` → 分发入口 `migrateV2ToV3`；
+  代码地图补上 `ai/` `resume/` `plugins/` `lib/{capture,offer,company,silence,storage,fileLink}`；
+  新增「类名压缩表」一节（`--write` / `--check` / `--golden` 的正确用法 + token 重排会静默换样式的教训）。
+- `docs/RELEASE-CHECKLIST.md` 第 4 节与 `docs/RELEASE-NOTES-v1.0.0.md` 的关卡数、
+  测试数、产物体积同步到实测值。
+
 ## [1.0.0] - 2026-11-10
 
 **四个模块，一次把「投递之后」的账算清。** 决策、公司档案、一句话快记、沉默待办。
 数据格式 `schemaVersion` 5 → 6，但这是一次**空迁移**：只改版本号 + 记一条 `lastMigration`，
-不补字段、不造默认值 —— 所以能干净地回滚到 v0.10.0（多出来的可选字段会被下一版忽略）。
+不补字段、不造默认值 —— 结构确实没变。
+
+但「结构没变」不等于「能回滚着用」：`migrate.ts:81` 对**版本高于当前**的库是硬拒绝
+（「这份备份来自 v6 数据格式的新版本，请先升级工具再导入」）。要真降到 v0.10.0，
+得手动把 `settings.schemaVersion` 改回 5 —— 结构没变，改回即可读。
 
 ### 模块一 · Offer 决策台（`OFF-1` ~ `OFF-8`）
 

@@ -10,7 +10,7 @@
 git clone <repo>
 cd job-desk/app
 npm install
-npm run verify      # 六道关卡，全绿才算能提 PR
+npm run verify      # 九道关卡，全绿才算能提 PR
 npm run dev         # 开发模式，http://localhost:5173
 ```
 
@@ -27,9 +27,9 @@ npm run dev         # 开发模式，http://localhost:5173
 | 不做 | 原因 |
 | --- | --- |
 | 自动登录 / 抓取招聘平台 | 要存 cookie 或账号、要过验证码，既不合规也把我们变成「数据中介」。同步永远是你给文本、我们解析。 |
-| 任何网络请求 | 数据只在你浏览器里。`check:no-network` 会在 CI 里拦住 `fetch` / `XHR` / `sendBeacon` / `WebSocket` / 远程 script。 |
+| 除 AI 调用以外的任何网络请求 | 数据只在你浏览器里。唯一出口是 `app/src/ai/gateway.ts`（你填自己的 API Key，直连你选的厂商）；其余 `fetch` / `XHR` / `sendBeacon` / `WebSocket` / 远程 script 全部由 `check:no-network` 在 CI 里拦住，白名单文件**保持为空**。 |
 | 云同步 / 账号体系 | 一旦有服务器，「数据只留在你本机」这句话就不成立了。备份靠导入导出。 |
-| 简历生成 / AI 代写 | 这是另一个产品。我们只做「投递管线 + 面经复盘」。 |
+| 简历代写 / 自动投递 | 简历模块做「结构化录入 + 8 套模板打印 + 版本绑定」，不做内容代写；AI 只出**建议**（带 diff，你点了才写库），不代写、不自动改、不替你投。 |
 
 另外：**不要引入 UI 组件库**。样式是手写的一份 `app/src/styles.css`，用 CSS 变量做设计令牌。
 这不是技术保守，是为了让产物能压进一个 `index.html`（体积红线见第 4 节）。
@@ -47,8 +47,9 @@ npm run dev         # 开发模式，http://localhost:5173
 3. **没有变化的记录不写 note。** 一次同步跑两次，第二次必须全部落进「无变化」，库里的 note 数量一条不增。
 4. **平台「邀请面试」只映射到 `chatting` + 一条待办。**
    不许自动进 `scheduled`，不许自动造 Interview 记录 —— 约在第几轮、约的几点，只有用户知道。
-5. **迁移（`migrateV1ToV2`）必须是无损、幂等、可回滚的纯函数。**
+5. **迁移（`app/src/lib/migrate.ts`）必须是无损、幂等、可回滚的纯函数。**
    只加字段不减字段；时间从 `ctx.nowIso` 注入，不读 `Date.now()`；迁两次结果和迁一次相同。
+   分发入口是 `migrateV2ToV3`（名字沿用历史，实际语义是「任意老版本 → 当前版本」）。
 6. **localStorage 键名 `jobdesk.v1` 不许改。** 改了等于所有老用户数据「消失」。
    schema 版本走数据内部的 `schemaVersion`，不走键名。
 7. **产物必须是单个 `app/dist/index.html`。** 不许拆出 `assets/*.js`、不许走 CDN、不许要求起服务。
@@ -65,33 +66,44 @@ job-desk/
 │   │   ├── types.ts        # 数据模型
 │   │   ├── styles.css      # 全部样式（唯一一份）
 │   │   ├── adapters/       # 适配器：纯解析函数，一个平台一个目录
+│   │   ├── ai/            # AI 层：gateway.ts 是唯一网络出口，其余纯函数
+│   │   ├── resume/         # 简历：schema / 版本 / 绑定 / 打印 / 8 套模板
+│   │   ├── plugins/        # 插件机制：manifest / sandbox / broker / storage
 │   │   ├── lib/            # 纯逻辑：rules / storage / migrate / interview / budget ...
 │   │   │   └── sync/       # 同步引擎：normalize / statusMap / ownership / engine
 │   │   └── components/     # 视图与浮层
-│   └── scripts/            # 三个自检脚本 + 测试启动器
+│   └── scripts/            # 自检脚本（bundle / no-network / classes / versions / community）
+│                           # + 冒烟（print / resume / plugin）+ 发版（pack / publish）
 ├── extension/              # 可选：MV3 扩展，抓当前页 → 剪贴板
 ├── community/              # 可选：社区面经（CC BY-SA 4.0）
 ├── docs/                   # 架构 / PRD / 适配器文档
 └── .github/                # CI + Issue / PR 模板
 ```
 
-一条硬规则：**`lib/` 与 `adapters/` 里不许 import React，也不许 import `storage`。**
+一条硬规则：**`adapters/` 里不许 import React，不许 import `storage` / `lib/sync`，不许读 DOM、不许 `fetch`**
+（eslint `no-restricted-imports` + `no-restricted-globals` 硬拦）。`lib/` 不硬禁 —— 像 `virtual.ts` 只
+`import type`，硬禁会误伤，靠 `consistent-type-imports` 与评审守。
 纯逻辑必须能在 node 环境里直接单测；碰 DOM 和 localStorage 的只能是 `components/` 与 `App.tsx`。
 
 ---
 
-## 4. 六道关卡（`npm run verify`）
+## 4. 九道关卡（`npm run verify`）
 
-在 `app/` 下执行，等价于 CI 的六步：
+在 `app/` 下执行，等价于 CI 的九步：
 
 | 命令 | 管什么 | 失败了怎么办 |
 | --- | --- | --- |
 | `npm run typecheck` | `tsc --noEmit` | 别用 `any` 糊过去。真需要 `any` 就在 PR 里说明理由。 |
-| `npm test` | 11 个测试文件 / 129 个用例 | 只测纯函数，不需要 DOM。测试挂了**改代码，不改断言**。 |
+| `npm test` | **1506 条 / 91 个文件**（含组件 jsdom 用例） | 测试挂了**改代码，不改断言**；确属断言过期，逐个在 PR 里说明理由。 |
+| `npm run lint` | correctness + hooks + 架构边界（`adapters/` 禁 import React 与 storage、禁读 DOM、禁 fetch） | 修代码，不加 `eslint-disable`。 |
 | `npm run check:no-network` | 扫 `app/src` + `extension`，禁止一切网络调用 | 真有正当理由 → 加到 `.github/no-network-allowlist`，并在 PR 里解释。**默认应当是空文件。** |
 | `npm run build` | 产出单文件 `dist/index.html` | 构建挂了先看 `vite.config.ts` 的 `base: './'` 和 `viteSingleFile()` 有没有被改。 |
-| `npm run check:bundle` | 产物 > 450 KB 警告，> 600 KB 失败 | 想想是不是把整个库引进来了。手写 30 行通常比 30 KB 的依赖划算。 |
+| `npm run check:bundle` | 产物 > 960 KB 警告，> 1 MB 失败；单次较基线涨 > 20 KB 也告警 | 想想是不是把整个库引进来了。手写 30 行通常比 30 KB 的依赖划算。 |
+| `npm run check:classes` | 类名压缩表往返一致、无漏网、黄金副本等价（100 条上限） | 改了 UI 就跑 `node scripts/tokenize-classes.mjs --write` 再 `--golden`。**顺序不能反，也不要手改表。** |
+| `npm run check:versions` | `package.json` / 扩展 `manifest.json` / 产物三处版本必须一致 | 三处一起改。 |
 | `npm run validate:community` | 校验 `community/` 的 id、枚举、长度、脱敏、索引对账 | 见第 6 节。 |
+
+另有两条要真浏览器的门禁，不进 `verify`（慢）：`npm run check:print`（8 套模板打印分页）与 `npm run check:resume`。改了简历模板或打印样式必须跑。
 
 单跑某一个：
 
@@ -102,7 +114,7 @@ npm run build && npm run check:bundle
 ```
 
 > `npm test` 默认**串行**执行（`--no-file-parallelism`）。原因是 Windows 上 vitest 的临时目录
-> 偶发 `EPERM`，串行 129 个用例只要 1~2 秒，换来确定的退出码，这笔交易划算。
+> 偶发 `EPERM`，串行换来确定的退出码，这笔交易划算。
 > 想并行：`PARALLEL=1 npm test`。
 
 ---
