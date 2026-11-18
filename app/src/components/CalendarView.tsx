@@ -75,7 +75,10 @@ export function CalendarView({ api }: { api: AppApi }) {
     return map;
   }, [dayEvents, db.events, db.interviews, db.applications]);
 
-  /** 全月冲突数：面试冲突 + 当月日程冲突（周课按当月出现次数计，够用作警示量级） */
+  /**
+   * 全部数据中**参与冲突的记录条数**（一场面试 +1、一条日程 +1，故一次撞车计 2）。
+   * 月格 ⚠ 是按**天**去重的另一口径，两者不相等是设计，不是 bug。
+   */
   const conflictTotal = useMemo(() => {
     let count = 0;
     for (const messages of conflictMap.values()) {
@@ -139,7 +142,7 @@ export function CalendarView({ api }: { api: AppApi }) {
         <h2 className={CLS.am}>面试日历</h2>
         <span className={CLS.ad}>
           {db.interviews.length} 场面试 · {db.events.length} 条日程
-          {conflictTotal > 0 ? ` · ⚠ ${conflictTotal} 处时间冲突` : ' · 暂无时间冲突'}
+          {conflictTotal > 0 ? ` · ⚠ ${conflictTotal} 条记录有冲突` : ' · 暂无冲突记录'}
         </span>
       </div>
 
