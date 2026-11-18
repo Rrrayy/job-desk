@@ -22,6 +22,23 @@ import { BindVersionSelect } from './BindVersionSelect';
 
 const AT = '2026-03-01T10:00:00.000Z';
 
+/**
+ * 把 ISO 串按「本地时区」拼成组件展示用的 `M/D HH:mm` 形状（月/日不补零、时分补两位）。
+ *
+ * 期望值必须和组件走同一套本地时间语义，否则断言就把某个时区写死进了测试：
+ * 同一份数据在东八区是 `3/7 18:00`、在 UTC 是 `3/7 10:00`，两者都是对的。
+ *
+ * 之所以**不在测试里钉 TZ**（不加 `process.env.TZ`、也不在 vitest 配置里设）：
+ * 那只是让测试在幻想时区里通过，真到别的时区出问题时照样看不见 —— 用同一套语义推期望值才测得住。
+ */
+function fmtLog(iso: string): string {
+  const d = new Date(iso);
+  const date = `${d.getMonth() + 1}/${d.getDate()}`;
+  const hh = `${d.getHours()}`.padStart(2, '0');
+  const mm = `${d.getMinutes()}`.padStart(2, '0');
+  return `${date} ${hh}:${mm}`;
+}
+
 function version(id: string, label: string, resumeId: string, deletedAt: string | null = null): ResumeVersion {
   return { id, resumeId, label, templateId: 'tech-single', content: { sections: [] }, createdAt: AT, deletedAt };
 }
@@ -162,14 +179,21 @@ describe('BindVersionSelect（jsdom）', () => {
   });
 
   it('改绑留痕：总数在 summary 上，展开后最新在前、最多 3 条', () => {
+    // 数据与期望值共用同一批 ISO 串：期望值由 fmtLog 按本地时区算出，不含任何写死的时区偏移。
+    const at = {
+      v1: '2026-03-01T10:00:00.000Z',
+      v2: '2026-03-05T10:00:00.000Z',
+      v3: '2026-03-06T10:00:00.000Z',
+      v4: '2026-03-07T10:00:00.000Z',
+    };
     const current = app({
       resumeVersionId: 'ver-2',
       resumeVersion: 'v2',
       resumeBindLog: [
-        { versionId: 'ver-1', label: 'v1', at: '2026-03-01T10:00:00.000Z' },
-        { versionId: 'ver-2', label: 'v2', at: '2026-03-05T10:00:00.000Z' },
-        { versionId: 'ver-3', label: 'v3', at: '2026-03-06T10:00:00.000Z' },
-        { versionId: 'ver-4', label: 'v4', at: '2026-03-07T10:00:00.000Z' },
+        { versionId: 'ver-1', label: 'v1', at: at.v1 },
+        { versionId: 'ver-2', label: 'v2', at: at.v2 },
+        { versionId: 'ver-3', label: 'v3', at: at.v3 },
+        { versionId: 'ver-4', label: 'v4', at: at.v4 },
       ],
     });
     const api = fakeApi({ db: makeDB([version('ver-2', 'v2', 'res-1')], [current]), calls });
@@ -179,7 +203,7 @@ describe('BindVersionSelect（jsdom）', () => {
     expect(summary.textContent).toContain('改绑记录（4）');
     act(() => summary.dispatchEvent(new MouseEvent('click', { bubbles: true })));
     const items = [...host.querySelectorAll('.bind__log li')].map((item) => item.textContent);
-    expect(items).toEqual(['3/7 18:00 · v4', '3/6 18:00 · v3', '3/5 18:00 · v2']);
+    expect(items).toEqual([`${fmtLog(at.v4)} · v4`, `${fmtLog(at.v3)} · v3`, `${fmtLog(at.v2)} · v2`]);
   });
 
   it('从没改绑过：不渲染留痕区（一个空的「改绑记录（0）」是噪音）', () => {

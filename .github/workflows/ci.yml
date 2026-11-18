@@ -1,10 +1,11 @@
 name: CI
 
-# 六步全绿才算过：
-#   ① 类型  ② 单测  ③ 零网络扫描  ④ 构建  ⑤ 产物体积  ⑥ 社区面经校验
+# 九步全绿才算过（顺序与 app/package.json 的 `verify` 完全一致，改一边请改另一边）：
+#   ① 类型  ② 单测  ③ lint  ④ 零网络扫描  ⑤ 构建  ⑥ 产物体积  ⑦ 样式类名  ⑧ 版本号一致  ⑨ 社区面经校验
 #
 # 每一步都对应产品的一条硬承诺，不是「顺手加上去」的检查：
-#   ③ 对应「数据不出本机」，⑤ 对应「单文件双击就能用」，⑥ 对应「社区数据不许带隐私」。
+#   ④ 对应「数据不出本机」，⑥ 对应「单文件双击就能用」，⑨ 对应「社区数据不许带隐私」。
+# 任何一步红都必须让整条流水线红，并让人从日志一行看出是哪一道（step name 带序号）。
 
 on:
   push:
@@ -44,22 +45,31 @@ jobs:
       - name: Install
         run: npm ci
 
-      - name: ① 类型检查
+      - name: ① 类型检查（tsc --noEmit，0 error）
         run: npx tsc --noEmit
 
-      - name: ② 单元测试（纯函数）
+      - name: ② 单元测试（vitest，全绿）
         run: npm test
 
-      - name: ③ 零网络扫描（app/src + extension）
+      - name: ③ lint（eslint src + scripts，0 error / 0 warning）
+        run: npm run lint
+
+      - name: ④ 零网络扫描（app/src + extension，0 处外发请求）
         run: npm run check:no-network
 
-      - name: ④ 构建单文件产物
+      - name: ⑤ 构建单文件产物
         run: npm run build
 
-      - name: ⑤ 产物体积红线（>450KB 警告 / >600KB 失败）
+      - name: ⑥ 产物体积红线（>960KB 警告 / >1024KB 失败）
         run: npm run check:bundle
 
-      - name: ⑥ 社区面经格式与脱敏
+      - name: ⑦ 样式类名一致性（tokenize-classes --check，0 处漂移）
+        run: npm run check:classes
+
+      - name: ⑧ 版本号一致（app/package.json 与扩展 manifest 对齐）
+        run: npm run check:versions
+
+      - name: ⑨ 社区面经格式与脱敏（0 处隐私字段）
         run: npm run validate:community
 
       - name: 产物存档（方便 review 时下载来看）
