@@ -1,15 +1,21 @@
 /**
  * U1 备战包纯函数层测试。
  *
- * 两条主线：
+ * 三条主线：
  * 1. **固定优先级**（同类挂过 → 这家问过 → 复习到期）与**跨档去重**——
- *    一道题既「这家问过」又「刚好到期」，只能出现一次，且按更硬的那档记。
- * 2. **写库口径**（`withSuggestedPrepItem`）：只有 id/text/done 三个字段、
+ *    一道题可能同时命中两档，只能出现一次，且按更硬的那档记来源。
+ *    交错命中是三条规则叠加后**唯一的真实错误源**（静默错标），所以单独立一组用例。
+ * 2. **料够就全给**：到期题全部列出，实现里不许偷偷 `slice(0, 5)`。
+ * 3. **写库口径**（`withSuggestedPrepItem`）：只有 id/text/done 三个字段、
  *    done 恒 false、id 带 `p` 前缀、题干过 `clampText`。
  *
- * 示例库（`buildSampleDB`）单独一条：这条守的是「整库跑一遍也不塌」，
- * 但它**测不到第 1 档** —— 示例库里两场面经都是 `passed`，没有挂过的题。
- * 第 1 档的口径由下面的合成库用例负责。
+ * ★ 关于示例库（`buildSampleDB`）的实测事实，改断言前先读这两句：
+ *   - **示例库 5 道题，其中 due 只有 2 道；两场面经的 `result` 都是 `passed`，
+ *     所以第 1 档（同类挂过）在示例库里恒为空** —— 这是示例数据的事实，
+ *     不是实现漏了规则。
+ *   - 因此「每场未开始面试都 ≥ 3 条」在示例库上**不可达**（腾讯一面没有同公司历史，
+ *     全库又只有 2 道 due）。**不许为了让断言变绿去放宽规则 3、或往示例库塞题** ——
+ *     料不够就该少给，这是设计不是缺陷。第 1 档与交错命中的口径由合成库用例负责。
  */
 
 import { describe, expect, it } from 'vitest';
@@ -197,7 +203,7 @@ describe('buildPrepPack（固定优先级）', () => {
     expect(buildPrepPack({ db, interview: db.interviews[0], now: NOW })).toEqual([]);
   });
 
-  it('到期题全部列出，不做条数上限', () => {
+  it('★ 料够就全给：合成库 12 道 due → 12 条全列出，实现里不许偷偷 slice', () => {
     const db = emptyDB();
     db.companies = [{ id: 'c1', name: '甲公司', createdAt: '2026-01-01T00:00:00.000Z' }];
     db.applications = [];
@@ -218,6 +224,119 @@ describe('buildPrepPack（固定优先级）', () => {
   });
 });
 
+/**
+ * 交错命中用的库：五种题分别只命中①/只命中②/只命中③/①②同时/②③同时。
+ * 公司统一叫「甲公司」，这样「同公司」与「别家」一眼能分辨。
+ */
+function buildCrossHitDB(): DB {
+  const db = emptyDB();
+  db.companies = [
+    { id: 'c1', name: '甲公司', shortName: '甲', createdAt: '2026-01-01T00:00:00.000Z' },
+    { id: 'c2', name: '乙公司', createdAt: '2026-01-01T00:00:00.000Z' },
+    { id: 'c3', name: '丙公司', createdAt: '2026-01-01T00:00:00.000Z' },
+  ];
+  db.applications = [
+    {
+      id: 'app-1',
+      companyId: 'c1',
+      jobTitle: '前端实习',
+      status: 'scheduled',
+      statusChangedAt: '2026-06-01T01:00:00.000Z',
+      lastActivityAt: '2026-06-01T01:00:00.000Z',
+      createdAt: '2026-06-01T01:00:00.000Z',
+      updatedAt: '2026-06-01T01:00:00.000Z',
+      rejectedAtRound: null,
+    },
+  ];
+  db.interviews = [interview()];
+  db.experiences = [
+    // 挂在这家 → 它的题既「同类挂过」又「这家问过」
+    experience({ id: 'exp_fail_same', companyName: '甲公司', interviewDate: '2026-09-10', result: 'failed' }),
+    experience({ id: 'exp_pass_same', applicationId: 'app-1', companyName: '甲公司', interviewDate: '2026-10-01' }),
+    experience({ id: 'exp_fail_far', companyName: '乙公司', interviewDate: '2026-08-01', result: 'failed' }),
+    experience({ id: 'exp_pass_far', companyName: '丙公司', interviewDate: '2026-07-01' }),
+  ];
+  const future = '2026-12-31';
+  const past = '2026-06-01';
+  db.questions = [
+    // ①② 同时命中（挂着 + 这家问过，未到期）→ 记在更硬的第 1 档
+    question({
+      id: 'q_both12',
+      experienceId: 'exp_fail_same',
+      category: 'algo',
+      text: '算法题A',
+      rootCause: 'forgot',
+      nextReviewAt: future,
+    }),
+    // ②③ 同时命中（这家问过 + 到期）→ 记在第 2 档
+    question({
+      id: 'q_both23',
+      experienceId: 'exp_pass_same',
+      category: 'project',
+      text: '项目题B',
+      nextReviewAt: past,
+    }),
+    // 只命中 ①
+    question({
+      id: 'q_only1',
+      experienceId: 'exp_fail_far',
+      category: 'algo',
+      text: '算法题C',
+      rootCause: 'conceptGap',
+      nextReviewAt: future,
+    }),
+    // 只命中 ②
+    question({
+      id: 'q_only2',
+      experienceId: 'exp_pass_same',
+      category: 'concept',
+      text: '八股题D',
+      nextReviewAt: future,
+    }),
+    // 只命中 ③
+    question({
+      id: 'q_only3',
+      experienceId: 'exp_pass_far',
+      category: 'behavior',
+      text: '行为题E',
+      nextReviewAt: past,
+    }),
+  ];
+  return db;
+}
+
+describe('buildPrepPack（交错命中：去重与来源归属）', () => {
+  /**
+   * ★ 三条规则叠加后唯一的真实错误源：一道题同时命中两档时被列两遍，
+   * 或者被算到较软的那一档（来源静默错标）。这里把四种交错全造出来。
+   */
+  it('★ 每种交错只出现一次，来源取优先级更高的那档（① > ② > ③）', () => {
+    const db = buildCrossHitDB();
+    const pack = buildPrepPack({ db, interview: db.interviews[0], now: NOW });
+
+    // 总数 = 5 道题各一次（没有因为交错命中而膨胀）
+    expect(pack).toHaveLength(5);
+    expect(pack.map((item) => item.text)).toEqual(['算法题A', '算法题C', '项目题B', '八股题D', '行为题E']);
+    expect(pack.map((item) => item.kind)).toEqual(['rootCause', 'rootCause', 'company', 'company', 'due']);
+
+    const byText = new Map(pack.map((item) => [item.text, item]));
+    // ①② 同时命中 → 归第 1 档，来源写「上次挂在…」，不写「这家问过」
+    expect(byText.get('算法题A')?.kind).toBe('rootCause');
+    expect(byText.get('算法题A')?.source).toBe('上次挂在「算法」·写过忘了');
+    // ②③ 同时命中 → 归第 2 档，来源写「这家问过」，不写「复习到期」
+    expect(byText.get('项目题B')?.kind).toBe('company');
+    expect(byText.get('项目题B')?.source).toBe('这家问过 1 次');
+    // 只命中一档的三种
+    expect(byText.get('算法题C')?.source).toBe('上次挂在「算法」·概念没懂');
+    expect(byText.get('八股题D')?.source).toBe('这家问过 1 次');
+    expect(byText.get('行为题E')?.source).toBe('复习到期 · 2026-06-01');
+
+    // 没有任何题干出现两次
+    const texts = pack.map((item) => item.text.trim().toLowerCase());
+    expect(new Set(texts).size).toBe(texts.length);
+  });
+});
+
 describe('buildSampleDB（示例库整库口径）', () => {
   /**
    * ★ 示例库的实测底数（2026-06-15 为基准，`sample.ts` 改了就重算这两行）：
@@ -225,9 +344,10 @@ describe('buildSampleDB（示例库整库口径）', () => {
    * - 两场面经都是 `passed` → 第 1 档（同类挂过）在示例库里恒为空；
    * - 未开始的面试只有 2 场：阿里二面（有同公司历史）、腾讯一面（只有到期题）。
    *
-   * 所以「每场未开始面试都 ≥ 3 条」在这份数据上做不到：腾讯那场没有同公司历史，
-   * 全库又只有 2 道到期题 —— 这是**数据不够**，不是实现 bug（规则 3 只取 due 的题，
-   * 不许为了凑数放宽）。下面的断言按真实可达的边界写，缺口处显式钉住数字。
+   * 所以「每场未开始面试都 ≥ 3 条」在这份数据上**不可达**：腾讯那场没有同公司历史，
+   * 全库又只有 2 道到期题 —— 这是**数据不够**，不是实现 bug；**不许为了让断言变绿
+   * 去放宽规则 3 或往示例库塞题**。料不够就该少给，这是设计不是缺陷。
+   * 下面的断言按真实可达的边界写，缺口处显式钉住数字。
    */
   const SAMPLE_DUE = 2;
 
@@ -259,13 +379,16 @@ describe('buildSampleDB（示例库整库口径）', () => {
     }
   });
 
-  it('★ 有同公司历史的未开始面试（阿里二面）→ 预填项 ≥ 3，且这家问过的题全在最前面', () => {
+  it('★ 有同公司历史的未开始面试（阿里二面）→ 预填项 ≥ 3、每项带来源，且这家问过的题全在最前面', () => {
     const db = buildSampleDB(NOW);
     const alibaba = db.interviews.find((item) => item.id === 'iv_alibaba_2') as Interview;
     expect(isUpcomingInterview(alibaba, NOW)).toBe(true);
 
     const pack = buildPrepPack({ db, interview: alibaba, now: NOW });
     expect(pack.length).toBeGreaterThanOrEqual(3);
+    for (const item of pack) {
+      expect(item.source.trim(), `「${item.text}」没写来源`).not.toBe('');
+    }
 
     const stat = statsByCompany(db).find((entry) => entry.companyName === '阿里巴巴');
     expect(stat).toBeDefined();
@@ -276,7 +399,7 @@ describe('buildSampleDB（示例库整库口径）', () => {
     expect(pack.filter((item) => item.kind === 'company')).toHaveLength(companyCount);
   });
 
-  it('★ 只有到期题的那场（腾讯一面）：条数 = 库里 due 的题数 —— 缺口钉在 2，谁改了示例库这里会红', () => {
+  it('★ 只有到期题的那场（腾讯一面）：条数 = 全库 due 数（2）、每项带来源、优先级单调、无重复', () => {
     const db = buildSampleDB(NOW);
     const dueCount = db.questions.filter((item) => isDue(item, TODAY)).length;
     expect(dueCount).toBe(SAMPLE_DUE);
@@ -284,8 +407,20 @@ describe('buildSampleDB（示例库整库口径）', () => {
     const tencent = db.interviews.find((item) => item.id === 'iv_tencent_1') as Interview;
     expect(isUpcomingInterview(tencent, NOW)).toBe(true);
     const pack = buildPrepPack({ db, interview: tencent, now: NOW });
+
+    // 料只有 2 道 due → 就给 2 条。**少给是正确的**，不是缺陷。
     expect(pack).toHaveLength(SAMPLE_DUE);
     expect(pack.every((item) => item.kind === 'due')).toBe(true);
+    for (const item of pack) {
+      expect(item.source.trim(), `「${item.text}」没写来源`).not.toBe('');
+    }
+
+    const rank = { rootCause: 0, company: 1, due: 2 } as const;
+    const ranks = pack.map((item) => rank[item.kind]);
+    expect(ranks).toEqual([...ranks].sort((a, b) => a - b));
+
+    const texts = pack.map((item) => item.text.trim().toLowerCase());
+    expect(new Set(texts).size).toBe(texts.length);
   });
 
   it('示例库里两场面经都是 passed → 第 1 档为空（这正是它测不到第 1 档的原因）', () => {
