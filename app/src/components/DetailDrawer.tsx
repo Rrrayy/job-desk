@@ -40,8 +40,9 @@ import {
   toLocalDateTimeInput,
 } from '../lib/date';
 import { experienceForInterview, questionsOf } from '../lib/interview';
+import { buildPrepPack, isUpcomingInterview, withSuggestedPrepItem, type PrepSuggestion } from '../lib/prepPack';
 import { PLATFORM_LABEL } from '../adapters/registry';
-import { copyText, cx, orDash } from '../lib/util';
+import { copyText, cx, orDash, uid } from '../lib/util';
 import { Field, InfoRow, SelectField } from './Field';
 import { BindVersionSelect } from './BindVersionSelect';
 import { JdPanel } from './JdPanel';
@@ -869,7 +870,7 @@ function statusLabelOf(status: Status): string {
 }
 
 /** 单场面试卡片：结果、准备清单、备注、删除 */function InterviewCard({ api, interview }: { api: AppApi; interview: Interview }) {
-  const { db } = api;
+  const { db, now } = api;
   const conflicts = useMemo(
     () => findConflicts(interview, db.interviews, db.applications, db.events),
     [interview, db.interviews, db.applications, db.events],
@@ -877,6 +878,15 @@ function statusLabelOf(status: Status): string {
   const checklist = interview.prepChecklist || [];
   const doneCount = checklist.filter((item) => item.done).length;
   const [newItem, setNewItem] = useState('');
+
+  /**
+   * U1 备战包：**只在打开一场未开始的面试时**派生（单场作用域，别接进批量视图）。
+   * 纯派生、不落库；点「加入清单」才走 addSuggested 写一条普通准备项。
+   */
+  const prepPack = useMemo(
+    () => (isUpcomingInterview(interview, now) ? buildPrepPack({ db, interview, now }) : []),
+    [db, interview, now],
+  );
 
   // v0.2：这场比赛记过面经吗？记过就显示题数，没记过就显示入口
   const app = db.applications.find((item) => item.id === interview.applicationId);
@@ -904,6 +914,20 @@ function statusLabelOf(status: Status): string {
       ],
     });
     setNewItem('');
+  };
+
+  /**
+   * 「加入清单」：不可撤销（撤销栈里没有面试类，`Undo` 联合类型里没有它），
+   * 所以 toast **不许**说「可撤销」—— 给一个按不响的承诺比不给更糟。
+   */
+  const addSuggested = (suggestion: PrepSuggestion): void => {
+    const result = withSuggestedPrepItem(checklist, suggestion.text, uid);
+    if (!result.added) {
+      api.toast('这条已经在准备清单里了');
+      return;
+    }
+    patch({ prepChecklist: result.next });
+    api.toast(result.truncated ? '题干太长，已截到 2000 字加进清单' : '已加进准备清单');
   };
 
   return (
@@ -987,6 +1011,26 @@ function statusLabelOf(status: Status): string {
           </>
         )}
       </div>
+
+      {/* U1：建议带进去（派生视图，只有点「加入清单」才写库） */}
+      {prepPack.length > 0 ? (
+        <section className="iv-card__prep" aria-label="建议带进去">
+          <div className="iv-card__prep-head">
+            建议带进去（{prepPack.length}）· 点「加入清单」才写进去
+          </div>
+          <ul className="prep-list">
+            {prepPack.map((suggestion) => (
+              <li key={suggestion.key} className="iv-card__exp">
+                <span>{suggestion.text}</span>
+                <span className={CLS.d}>{suggestion.source}</span>
+                <button type="button" className={CLS.k} onClick={() => addSuggested(suggestion)}>
+                  加入清单
+                </button>
+              </li>
+            ))}
+          </ul>
+        </section>
+      ) : null}
 
       <div className="iv-card__prep">
         <div className="iv-card__prep-head">
