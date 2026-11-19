@@ -19,6 +19,9 @@ coverage/
 .tmp-tests/
 app/node_modules/.tmp/
 .vitest/
+# vitest 每次启动会在配置旁吐一个 ts 时间戳临时文件；不忽略的话
+# `git add -A` 会把它们扫进去（2026-11-19 实测漏下 4 个）
+vitest.config.ts.timestamp-*
 *.log
 npm-debug.log*
 yarn-debug.log*
