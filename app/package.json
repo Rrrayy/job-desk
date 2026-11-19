@@ -21,7 +21,7 @@
     "single-file"
   ],
   "engines": {
-    "node": ">=18"
+    "node": ">=22.22.2"
   },
   "scripts": {
     "dev": "vite",
@@ -33,6 +33,7 @@
     "check:bundle": "node scripts/check-bundle.mjs",
     "check:classes": "node scripts/tokenize-classes.mjs --check",
     "check:no-network": "node scripts/check-no-network.mjs",
+    "check:engines": "node scripts/check-engines.mjs",
     "check:print": "node scripts/smoke-print.mjs",
     "check:resume": "node scripts/smoke-resume.mjs",
     "validate:community": "node scripts/validate-community.mjs",

@@ -14,7 +14,10 @@ npm run verify      # 九道关卡，全绿才算能提 PR
 npm run dev         # 开发模式，http://localhost:5173
 ```
 
-- 提 PR 前必须 `npm run verify` 全绿（CI 会再跑一遍，Node 18 / 20 双矩阵）。
+- 提 PR 前必须 `npm run verify` 全绿（CI 会再跑一遍，Node 22 / 24 双矩阵）。
+  本机需要 **Node ≥ 22.22.2** —— 不是洁癖，是 `jsdom@30` 与 `eslint@10` 的 `engines` 下界，
+  低于它 `npm test` 会在 jsdom 构造阶段就崩，报错看起来像「测试挂了」而其实是环境不达标。
+  改依赖后跑一次 `node scripts/check-engines.mjs` 可以确认下界有没有被抬高。
 - 有 bug 或想法？先开 Issue，用仓库里的模板（bug 模板第一句会教你先把数据抢救出来）。
 - **不要**在 PR 里顺手格式化整个文件、升级无关依赖、改别人写的文案。
 

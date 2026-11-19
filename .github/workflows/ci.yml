@@ -25,7 +25,16 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        node: ['18', '20']
+        # 只测仍在维护期的 LTS。两条硬事实决定这里不能写 18 / 20：
+        #   ① Node 18 于 2025-04-30 EOL，Node 20 于 2026-04-30 EOL，测它们是给死版本交保护费；
+        #   ② 工具链自己就不支持 —— jsdom@30 要 `^22.22.2 || ^24.15.0 || >=26`（连 node 20 都不满足，
+        #      连带 whatwg-url / tr46 / data-urls / undici 共 9 个包），eslint@10 要
+        #      `^20.19.0 || ^22.13.0 || >=24`（node 18 不满足，连带 @eslint/* 共 21 个包）。
+        #      而 jsdom 构造失败会让所有 `.tsx` 测试在挂载 React 之前就报错，表现为
+        #      「单测 17 秒就红」（本地全量 198 秒），极难从日志看出是环境问题。
+        # 曾经这里写的是 ['18','20']，于是两档都必红、连红 21 次。改矩阵前先跑一遍：
+        #   node scripts/check-engines.mjs
+        node: ['22', '24']
 
     defaults:
       run:
