@@ -63,8 +63,13 @@ jobs:
       - name: Install
         run: npm ci
 
+      # 用 `npm run typecheck`（= tsc --noEmit）而不是 `npx tsc`：
+      # npx 在找不到本地 bin 时会去 registry 取一个**同名的废包 tsc**，那个包以
+      # "This is not the tsc command you are looking for" + exit 2 退出 —— 2 秒内失败、
+      # 报错与类型错误毫无关系的指纹，正好和 node 24 上观测到的现象一致。
+      # npm run 走的是 npm 注入的 node_modules/.bin PATH，不经过解析/下载这一步。
       - name: ① 类型检查（tsc --noEmit，0 error）
-        run: npx tsc --noEmit
+        run: npm run typecheck
 
       - name: ② 单元测试（vitest，全绿）
         run: npm test
