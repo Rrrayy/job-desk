@@ -140,7 +140,7 @@
  * ★ 改动阈值必须写进 docs/RELEASE-NOTES：涨红线不是技术决策，是产品决策。
  */
 
-import { existsSync, statSync } from 'node:fs';
+import { readFileSync, existsSync, statSync } from 'node:fs';
 import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
@@ -154,6 +154,55 @@ import { fileURLToPath } from 'node:url';
  */
 const WARN_BYTES = 960 * 1024;
 const FAIL_BYTES = 1024 * 1024;
+
+/**
+ * ★ v2 · C6：总量红线拆成三项（CSS / JS / 中文）。
+ *
+ * ## 为什么总量红线不够
+ *
+ * 产物到 819 KB 时，总量闸门只会说「胖了」。而**能采取的动作完全取决于胖子是谁**：
+ *   - CSS 胖 → 合并规则组、删死 CSS（改 `src/styles.css`）；
+ *   - JS 胖 → 砍功能、换小依赖（改 `src/**`，且**不能**靠拆包，见下）；
+ *   - 中文胖 → 压文案（改界面文字，3 B/字 的硬成本）。
+ * 三种动作互不相同，给错了方向就是白干一天。所以总量闸门保留（它是真失败闸门），
+ * 另加三项分项红线，超了直接红 —— 分项不是「参考值」。
+ *
+ * ## 怎么从单文件里切出这三项（口径，实测得出，不是估的）
+ *
+ * 构建产物是一个 html，三块结构：
+ *   1. **CSS** = 所有 `<style>…</style>` 的**内容**字节和（不含标签）。本仓 `cssCodeSplit:false`
+ *      + `cssMinify:'esbuild'`，全部样式都在这里，没有外部 .css 文件。
+ *   2. **JS** = 所有 `<script>…</script>` 的**内容**字节和（不含标签）。`viteSingleFile()` 把
+ *      entry chunk 内联成**一个** script。
+ *   3. **外壳** = 总字节 − CSS − JS（`<!doctype>`/`<head>`/`<body>` 与标签本身，实测 ~1.2 KB）。
+ *
+ * **中文** = 全文里 CJK 统一表意文字（U+4E00–U+9FFF）的**字数 × 3 B**。
+ *   为什么是 3 B：这些码位全在 BMP，UTF-8 恒为 3 字节，而且 minifier 不碰中文 ——
+ *   一个汉字省不掉，所以它是一条**独立的成本维度**，不能和 CSS/JS 混在一起看。
+ *   只数表意文字、不数标点：中文标点（U+3000–303F）与全角形式（U+FF00–FFEF）另有约 8 KB，
+ *   混进来会让「字数」这个用户能理解的指标失真。想看全量非 ASCII 成本时：
+ *   本版实测 90.0 KB（含标点与全角），表意文字部分 79.5 KB。
+ *
+ * ★ **三项不可相加**：中文就长在 JS 里（本版 27,146 个汉字里 27,029 个在 script 内、
+ *   117 个在外壳、0 个在 CSS）。CSS + JS + 外壳 = 总量；中文是总量内部的构成。
+ *   报告里必须写明这一点，否则后来人会拿三项去求和，然后以为脚本算错了。
+ *
+ * ## 阈值怎么定的（本版实测基线，2026-11-19，产物 842,492 B）
+ *
+ *   CSS    91,009 B =  88.9 KB   → 红线 100 KB（占 89%）
+ *   JS    750,284 B = 732.7 KB   → 红线 780 KB（占 94%；其中 React+ReactDOM ≈ 142 KB 是地板）
+ *   中文   27,146 字 =  79.5 KB   → 红线  85 KB（占 94%；再涨 1,867 字就红）
+ *
+ * 三项都留**同量级**的余量（6%–11%），不是给某一项开空白支票：
+ * 一个中等功能的增量（v0.9 实测 +5～18 KB）刚好能触发对应那一项，
+ * 触发时你会被指着去动正确的地方，而不是笼统地「优化体积」。
+ * 抬任何一项之前先问：**这一项真的该长吗**，理由写进 docs/RELEASE-NOTES。
+ */
+const SUB_LIMITS = {
+  css: 100 * 1024,
+  js: 780 * 1024,
+  cjk: 85 * 1024,
+};
 
 /**
  * 当前版本的体积基线（每次发版更新，用来在 CI 里显示「这次改动胖了多少」）。
@@ -178,33 +227,169 @@ if (!existsSync(target)) {
 }
 
 const bytes = statSync(target).size;
-const kb = bytes / 1024;
 const ratio = (bytes / FAIL_BYTES) * 100;
 const delta = bytes - BASELINE_BYTES;
 const deltaText = `${delta >= 0 ? '+' : '-'}${human(Math.abs(delta))}`;
 
+/* ------------------------------ 分项测量 ------------------------------ */
+
+const STYLE_RE = /<style[^>]*>([\s\S]*?)<\/style>/gi;
+const SCRIPT_RE = /<script[^>]*>([\s\S]*?)<\/script>/gi;
+
+/** CJK 统一表意文字个数（U+4E00–U+9FFF；UTF-8 恒 3 B/字，minifier 不碰） */
+function countCjk(text) {
+  let n = 0;
+  for (const ch of text) {
+    const cp = ch.codePointAt(0);
+    if (cp >= 0x4e00 && cp <= 0x9fff) n += 1;
+  }
+  return n;
+}
+
+/**
+ * 把单文件产物切成 CSS / JS / 外壳 + 中文。返回单位全部是**字节**。
+ * 切不出来就返回 `error`：产物结构变了（比如哪天不再内联）宁可红，
+ * 也不能静默报 0 然后「通过」—— 那正是「常态绿灯」的来源。
+ */
+function measureComposition(html, totalBytes) {
+  const styles = [...html.matchAll(STYLE_RE)].map((match) => match[1]);
+  const scripts = [...html.matchAll(SCRIPT_RE)].map((match) => match[1]);
+  if (styles.length === 0) {
+    return { error: '产物里找不到内联 <style> —— 切分口径失效，先更新本脚本再谈红线' };
+  }
+  if (scripts.length === 0) {
+    return { error: '产物里找不到内联 <script> —— 切分口径失效，先更新本脚本再谈红线' };
+  }
+
+  const cssBytes = styles.reduce((sum, text) => sum + Buffer.byteLength(text, 'utf8'), 0);
+  const jsBytes = scripts.reduce((sum, text) => sum + Buffer.byteLength(text, 'utf8'), 0);
+  const cjkCss = countCjk(styles.join(''));
+  const cjkJs = countCjk(scripts.join(''));
+  const cjkShell = countCjk(html) - cjkCss - cjkJs;
+  const cjkChars = cjkCss + cjkJs + cjkShell;
+
+  if (cjkChars === 0) {
+    return { error: '全文数出 0 个汉字 —— 要么文案全没了，要么读取编码坏了，都不该静默通过' };
+  }
+
+  return {
+    cssBytes,
+    jsBytes,
+    shellBytes: totalBytes - cssBytes - jsBytes,
+    styleBlocks: styles.length,
+    scriptBlocks: scripts.length,
+    cjkChars,
+    cjkBytes: cjkChars * 3,
+    cjkCss,
+    cjkJs,
+    cjkShell,
+  };
+}
+
+const comp = measureComposition(readFileSync(target, 'utf8'), bytes);
+if (comp.error) {
+  console.error(`✗ ${comp.error}`);
+  process.exit(1);
+}
+
+const pctOf = (used, limit) => `${Math.round((used / limit) * 100)}%`;
+const kbOf = (value) => (value / 1024).toFixed(1);
+
 console.log(`产物：dist/index.html`);
-console.log(`体积：${human(bytes)}（${kb.toFixed(1)} KB / 上限 ${human(FAIL_BYTES)}，占 ${ratio.toFixed(0)}%）`);
+console.log(`体积：${human(bytes)}（${bytes} B / 总上限 ${human(FAIL_BYTES)}，占 ${ratio.toFixed(0)}%）`);
 console.log(`基线：${human(BASELINE_BYTES)}（本次 ${deltaText}）`);
-console.log(`水位：WARN ${human(WARN_BYTES)} · FAIL ${human(FAIL_BYTES)}`);
+console.log(
+  `水位：总 WARN ${human(WARN_BYTES)} · FAIL ${human(FAIL_BYTES)}｜分项 CSS ${human(SUB_LIMITS.css)} · JS ${human(SUB_LIMITS.js)} · 中文 ${human(SUB_LIMITS.cjk)}`,
+);
+console.log('');
+console.log('分项（三项互相重叠、**不可相加** —— 中文就长在 JS 和 CSS 里面）：');
+console.log(
+  `  CSS   ${kbOf(comp.cssBytes).padStart(6)} KB / ${String(SUB_LIMITS.css / 1024).padStart(3)} KB   ${pctOf(comp.cssBytes, SUB_LIMITS.css).padStart(4)}   <style> ×${comp.styleBlocks}（全部样式，无外部 .css）`,
+);
+console.log(
+  `  JS    ${kbOf(comp.jsBytes).padStart(6)} KB / ${String(SUB_LIMITS.js / 1024).padStart(3)} KB   ${pctOf(comp.jsBytes, SUB_LIMITS.js).padStart(4)}   <script> ×${comp.scriptBlocks}（其中 React/ReactDOM ≈ 142 KB 是地板）`,
+);
+console.log(
+  `  中文  ${kbOf(comp.cjkBytes).padStart(6)} KB / ${String(SUB_LIMITS.cjk / 1024).padStart(3)} KB   ${pctOf(comp.cjkBytes, SUB_LIMITS.cjk).padStart(4)}   ${comp.cjkChars.toLocaleString('en-US')} 字 × 3 B（在 JS 内 ${comp.cjkJs.toLocaleString('en-US')} · 外壳 ${comp.cjkShell.toLocaleString('en-US')} · CSS ${comp.cjkCss.toLocaleString('en-US')}）`,
+);
+console.log(`  外壳  ${kbOf(comp.shellBytes).padStart(6)} KB /   —   <html>/<head> 框架，不计入任何红线`);
+
+/* ------------------------------ 判定 ------------------------------ */
+
+/**
+ * 每条红线各自带一份「该动哪里」：分项红线存在的唯一理由就是给出方向。
+ * 汇总后一次性打印并 exit 1 —— 分项超阈值和总量超阈值一样是**失败**，不是提示。
+ */
+const breaches = [];
 
 if (bytes > FAIL_BYTES) {
-  console.error(`\n✗ 超出红线：${human(bytes)} > ${human(FAIL_BYTES)}`);
-  console.error(`  这个产品是靠「单文件、双击就能用」立身的，超过 ${human(FAIL_BYTES)} 首屏会明显变慢。`);
-  console.error('  处理方向：把低频功能（面经编辑器 / 社区导入）按需拆出去，或砍掉重复的工具函数。');
-  console.error('  不要第一反应就调高阈值 —— 那等于把警报器拆了。');
+  breaches.push({
+    title: `总量超出红线：${human(bytes)} > ${human(FAIL_BYTES)}（超 ${human(bytes - FAIL_BYTES)}）`,
+    detail: [
+      `这个产品是靠「单文件、双击就能用」立身的，超过 ${human(FAIL_BYTES)} 首屏会明显变慢。`,
+      '处理方向只有两条：**砍功能**，或者**压文案**。先看上面的分项，确认是 CSS / JS / 中文 哪一项胖了再动手。',
+      '注意：本仓 vite.config.ts 是 viteSingleFile() + assetsInlineLimit: 100 MB，',
+      '动态 import() 的 chunk 也会被内联回同一个 html —— 「把低频功能按需拆出去」在本仓架构上不存在，',
+      '照着那句去拆包，文件一个字节都不会小。',
+    ],
+  });
+}
+
+if (comp.cssBytes > SUB_LIMITS.css) {
+  breaches.push({
+    title: `CSS 超出分项红线：${kbOf(comp.cssBytes)} KB > ${SUB_LIMITS.css / 1024} KB（占 ${pctOf(comp.cssBytes, SUB_LIMITS.css)}，超 ${kbOf(comp.cssBytes - SUB_LIMITS.css)} KB）`,
+    detail: [
+      '该动哪里：**动样式**，不要去动 JS 和文案 —— 这一项超了说明胖的是 CSS 本身。',
+      '全部样式来自 src/styles.css（cssCodeSplit:false + cssMinify:esbuild，压完内联进 <style>）。',
+      '能用手段按收益排序：① 合并同 @media 条件下声明体完全相同的规则组；',
+      '② 删死 CSS —— 模板字符串拼出来的类名 grep 不到，要先搜 `${`；③ 收敛重复的原子类（见 classTokens）。',
+    ],
+  });
+}
+
+if (comp.jsBytes > SUB_LIMITS.js) {
+  breaches.push({
+    title: `JS 超出分项红线：${kbOf(comp.jsBytes)} KB > ${SUB_LIMITS.js / 1024} KB（占 ${pctOf(comp.jsBytes, SUB_LIMITS.js)}，超 ${kbOf(comp.jsBytes - SUB_LIMITS.js)} KB）`,
+    detail: [
+      '该动哪里：**动代码**，不要去动样式和文案 —— 删文案省下的那点钱填不上这个坑。',
+      'React + ReactDOM 生产版 ≈ 142 KB 是硬地板，砍不掉；地板之上的部分才是你能动的。',
+      '本仓架构下「按需拆包」不存在（viteSingleFile 会把动态 import 也内联），能做的只有：',
+      '① 砍功能；② 换更小的依赖（手写 30 行通常比 30 KB 的依赖划算）；③ 删重复的工具函数。',
+    ],
+  });
+}
+
+if (comp.cjkBytes > SUB_LIMITS.cjk) {
+  breaches.push({
+    title: `中文文案超出分项红线：${kbOf(comp.cjkBytes)} KB（${comp.cjkChars.toLocaleString('en-US')} 字）> ${SUB_LIMITS.cjk / 1024} KB（占 ${pctOf(comp.cjkBytes, SUB_LIMITS.cjk)}，超 ${(comp.cjkChars - Math.floor(SUB_LIMITS.cjk / 3)).toLocaleString('en-US')} 字）`,
+    detail: [
+      '该动哪里：**压文案**，不要去动 CSS / JS 结构 —— 这一项超了说明胖的是界面文字。',
+      '中文是 3 B/字 的硬成本，minifier 一个字都压不掉：砍 1,000 字 ≈ 省 2.9 KB。',
+      `当前分布：JS ${comp.cjkJs.toLocaleString('en-US')} 字 · 外壳 ${comp.cjkShell.toLocaleString('en-US')} 字 · CSS ${comp.cjkCss.toLocaleString('en-US')} 字 —— 文案几乎都在 JS 里，所以压文案会连带把 JS 那一项也压小。`,
+      '找法：同一个提示在 N 个面板各写一遍是最常见的浪费（注意短串跨文件抽常量是负收益，v0.9 T00 实测过）。',
+    ],
+  });
+}
+
+if (breaches.length > 0) {
+  for (const breach of breaches) {
+    console.error(`\n✗ ${breach.title}`);
+    for (const line of breach.detail) console.error(`  ${line}`);
+  }
+  console.error('\n不要第一反应就调高阈值 —— 那等于把警报器拆了。');
   process.exit(1);
 }
 
 if (bytes > WARN_BYTES) {
   console.warn(`\n⚠ 已过警戒线：${human(bytes)} > ${human(WARN_BYTES)}（还没到红线，但该看看哪里胖了）`);
-  console.warn('  提示：npm run build 之后可以用 `npx vite-bundle-visualizer` 看构成。');
+  console.warn('  先看上面分项：超的那一项会告诉你该动 CSS / JS / 中文 里的哪一个。');
   process.exit(0);
 }
 
 if (delta > 20 * 1024) {
   // 单次改动涨超过 20 KB，几乎一定是有意无意引入了大依赖（日期库、图标库、polyfill）
   console.warn(`\n⚠ 本次比基线胖了 ${deltaText}。确认一下这不是顺手引了个库。`);
+  console.warn('  分项里哪一项涨得最多，就是它。');
 }
 
-console.log('\n✓ 体积在预算内');
+console.log('\n✓ 体积在预算内（总量 + CSS / JS / 中文 三项分项全绿）');

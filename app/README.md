@@ -24,7 +24,7 @@ npx tsc --noEmit                    # 1 类型（strict + noUncheckedIndexedAcce
 && npm run lint                     # 3 correctness + hooks + 架构边界
 && npm run check:no-network         # 4 11 条规则，白名单为空
 && npm run build                    # 5 产出 dist/index.html
-&& npm run check:bundle             # 6 960 KB 警告 / 1.00 MB 失败（基线 708 KB）
+&& npm run check:bundle             # 6 总量 960 KB 警告 / 1.00 MB 失败；分项 CSS 100 / JS 780 / 中文 85 KB 硬红线
 && npm run check:classes            # 7 类名压缩表往返一致 + 黄金副本等价
 && npm run check:versions           # 8 package.json = 扩展 manifest = 产物
 && npm run validate:community       # 9 ../community 面经格式 + 脱敏

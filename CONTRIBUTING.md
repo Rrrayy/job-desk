@@ -88,6 +88,29 @@ job-desk/
 `import type`，硬禁会误伤，靠 `consistent-type-imports` 与评审守。
 纯逻辑必须能在 node 环境里直接单测；碰 DOM 和 localStorage 的只能是 `components/` 与 `App.tsx`。
 
+### 3.1 纯函数必须自带同名测试（或登记豁免）
+
+**凡在 `app/src/lib/**` 下新增纯函数模块，必须在同一批改动里新增同名 `.test.ts`**
+（`lib/foo.ts` → `lib/foo.test.ts`）。做不到就在本节末尾登记豁免，写清楚为什么做不到
+（「还没写」不算理由；「依赖 `window`，只能在组件层测」算）。
+
+为什么是**人工规则**而不是覆盖率工具：本仓 `npm test` 已经是「91 文件 / 1506 条」的确定性闸门，
+再引一个 `c8` / `istanbul` 只换来一个新 devDependency、一份新配置和一堆「覆盖率 63%」的噪声，
+而我们要守的是**「纯函数有测试」这条底线**，不是某个百分比 —— 指标一旦可度量，就会有人为了
+数字写空测试。这条规则只需要人能回答一句「这个模块的测试文件在哪」。
+
+**当前账（2026-11-19 实测，只列不改）**：
+
+| 状态 | 数量 | 模块 |
+| --- | --- | --- |
+| 有同名 `.test.ts` | 16 | `boardWindow` · `courseImport` · `crypto` · `csvImport` · `interview` · `interviewMarkdown` · `merge` · `migrate` · `portable` · `rules` · `selfSnapshot` · `startup` · `storage` · `tableExport` · `trash` · `virtual` |
+| 无同名测试，但被其他测试间接 import | 6 | `api`（19 个测试文件）· `defaults`（32）· `sample`（4）· `date`（1）· `util`（1）· `validateV2`（1） |
+| 无同名测试，也没有任何测试 import | 4 | `budget` · `classTokens` · `rollback` · `validateV1` |
+
+最后一行那 4 个是这条规则生效**之前**的存量欠账（本版不清理，只登记）。**新增模块不许再欠。**
+另外 `lib/disaster.test.ts` 是跨模块的灾难恢复用例，没有同名 `disaster.ts` —— 这不算违规，
+它是「一个测试覆盖多个模块」的合法形态。
+
 ---
 
 ## 4. 九道关卡（`npm run verify`）
@@ -101,7 +124,7 @@ job-desk/
 | `npm run lint` | correctness + hooks + 架构边界（`adapters/` 禁 import React 与 storage、禁读 DOM、禁 fetch） | 修代码，不加 `eslint-disable`。 |
 | `npm run check:no-network` | 扫 `app/src` + `extension`，禁止一切网络调用 | 真有正当理由 → 加到 `.github/no-network-allowlist`，并在 PR 里解释。**默认应当是空文件。** |
 | `npm run build` | 产出单文件 `dist/index.html` | 构建挂了先看 `vite.config.ts` 的 `base: './'` 和 `viteSingleFile()` 有没有被改。 |
-| `npm run check:bundle` | 产物 > 960 KB 警告，> 1 MB 失败；单次较基线涨 > 20 KB 也告警 | 想想是不是把整个库引进来了。手写 30 行通常比 30 KB 的依赖划算。 |
+| `npm run check:bundle` | 总量 > 960 KB 警告、> 1 MB 失败；**分项 CSS ≤ 100 KB / JS ≤ 780 KB / 中文 ≤ 85 KB 直接失败**；单次较基线涨 > 20 KB 也告警 | 先看报的是哪一项：CSS 胖 → 合并同 `@media` 下声明体相同的规则组、删死 CSS；JS 胖 → 砍功能或换更小的依赖（**按需拆包在本仓无效**，`viteSingleFile` 会把动态 `import()` 也内联回同一个 html）；中文胖 → 压文案（3 B/字，minifier 一个字都压不掉）。 |
 | `npm run check:classes` | 类名压缩表往返一致、无漏网、黄金副本等价（100 条上限） | 改了 UI 就跑 `node scripts/tokenize-classes.mjs --write` 再 `--golden`。**顺序不能反，也不要手改表。** |
 | `npm run check:versions` | `package.json` / 扩展 `manifest.json` / 产物三处版本必须一致 | 三处一起改。 |
 | `npm run validate:community` | 校验 `community/` 的 id、枚举、长度、脱敏、索引对账 | 见第 6 节。 |

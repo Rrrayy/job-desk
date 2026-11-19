@@ -83,7 +83,7 @@ npm run verify
 | 3 | `npm run lint` | 0 error 0 warning |
 | 4 | `npm run check:no-network` | 源码零网络调用，白名单为空 |
 | 5 | `npm run build` | 产出 `app/dist/index.html` |
-| 6 | `npm run check:bundle` | ≤ 960 KB 提示 / ≤ 1.00 MB 硬红线 |
+| 6 | `npm run check:bundle` | 总量 > 960 KB 提示 / > 1.00 MB 硬红线；**分项** CSS ≤ 100 KB、JS ≤ 780 KB、中文 ≤ 85 KB（超了直接失败，报错会指出是哪一项） |
 | 7 | `npm run check:classes` | 类名压缩表往返一致 + 黄金副本等价 |
 | 8 | `npm run check:versions` | `package.json` = 扩展 `manifest.json` = 产物 |
 | 9 | `npm run validate:community` | 社区面经格式 + 脱敏 + 唯一性 |

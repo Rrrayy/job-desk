@@ -12,7 +12,25 @@
 
 import { useState } from 'react';
 import { downloadRawJSON } from '../lib/storage';
+import { MSG_BACKUP_TOO_NEW_HEAD, SCHEMA_VERSION_CURRENT } from '../lib/migrate';
 import { CLS } from '../lib/classTokens';
+
+/** 发版页。静态超链接：只有用户主动点它才会联网，本页自身不发出任何请求。 */
+const RELEASES_URL = 'https://github.com/Rrrayy/job-desk/releases';
+
+/**
+ * 「这份库比我新」的判定（C7①）。
+ *
+ * `lib/migrate` 对**更高版本**的库是硬拒绝（不猜着降级读，那会把新字段悄悄丢掉），
+ * 拼出来的 reason 是 `MSG_BACKUP_TOO_NEW_HEAD + 版本号 + MSG_BACKUP_TOO_NEW_MID + …`。
+ * 这里只在**同一个常量前缀**上取版本号：两边共用常量，改了文案也不会出现
+ * 「本页悄悄不再提示」的哑火。取不到版本号就返回 null —— 不猜、不冒充。
+ */
+function readTooNewVersion(reason: string): string | null {
+  if (!reason.startsWith(MSG_BACKUP_TOO_NEW_HEAD)) return null;
+  const matched = /^(\d+)/.exec(reason.slice(MSG_BACKUP_TOO_NEW_HEAD.length));
+  return matched ? matched[1] : null;
+}
 
 export interface MigrationFailPageProps {
   reason: string;
@@ -30,6 +48,7 @@ export function MigrationFailPage(props: MigrationFailPageProps) {
   const { reason, raw, backupKey, failedAtKey, onRetry, onStartEmpty } = props;
   const [downloaded, setDownloaded] = useState(false);
   const [copied, setCopied] = useState(false);
+  const tooNewVersion = readTooNewVersion(reason);
 
   const copyKey = (): void => {
     if (!failedAtKey) return;
@@ -47,6 +66,18 @@ export function MigrationFailPage(props: MigrationFailPageProps) {
         <div className={CLS.ag}>
           <strong>数据读取失败，已暂停加载</strong>
           <p>{reason}</p>
+          {tooNewVersion ? (
+            <p className={CLS.d}>
+              这份数据是 <strong>v{tooNewVersion}</strong> 写的，请用{' '}
+              <strong>v{tooNewVersion} 或更高版本</strong>的工具打开 —— 当前版本只认得 v
+              {SCHEMA_VERSION_CURRENT} 及更早的格式，读不懂就不猜着读（猜会把新字段悄悄丢掉）。
+              新版在{' '}
+              <a href={RELEASES_URL} target="_blank" rel="noreferrer">
+                github.com/Rrrayy/job-desk/releases
+              </a>
+              —— 这是个静态链接，只有你主动点它才会联网。
+            </p>
+          ) : null}
           <p className={CLS.d}>
             我们<strong>没有删除</strong>你的数据，也<strong>不会</strong>在你看这一页的时候写回任何内容
             —— 这个页面上所有按钮都不会覆盖 <code>jobdesk.v1</code>。
